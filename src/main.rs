@@ -38,8 +38,26 @@ mod test {
         let mut cg = ConstraintGenerator::new();
         let m = cg.infer(Ctx::empty(), &neg).unwrap();
         match m {
-            MigrationalType::Fun(_dom, cod) => assert_eq!(*cod, MigrationalType::Base(BaseType::Bool)),
-            _ => panic!("expected function type"),
+            MigrationalType::Fun(dom, cod) => {
+                match (*dom, *cod) {
+                    (MigrationalType::Var(_alpha), MigrationalType::Var(_beta)) => (),
+                    (dom, cod) => panic!("expected variables, got {:?} and {:?}", dom, cod),
+                }
+            }
+            _ => panic!("expected function type, got {:?}", m),
         };
+    }
+
+    #[test]
+    pub fn infer_conditional() {
+        let e = Expr::if_(Expr::bool(true), Expr::bool(false), Expr::bool(true));
+
+        let mut cg = ConstraintGenerator::new();
+        let m = cg.infer(Ctx::empty(), &e).unwrap();
+
+        match m {
+            MigrationalType::Var(_alpha) => (),
+            _ => panic!("expected a type variable, got {:?}", m),
+        }
     }
 }

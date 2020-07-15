@@ -393,13 +393,22 @@ impl ConstraintGenerator {
                     MigrationalType::Base(BaseType::Bool),
                 ));
 
+                let k = self.fresh_variable();
+                let m_res = MigrationalType::Var(k);
+
                 self.add_constraint(Constraint::Consistent(
                     Pattern::Top(),
-                    m_then.clone(),
-                    m_else,
+                    m_then,
+                    m_res.clone(),
                 ));
 
-                Some(m_then)
+                self.add_constraint(Constraint::Consistent(
+                    Pattern::Top(),
+                    m_else,
+                    m_res.clone(),
+                ));
+
+                Some(m_res)
             }
         }
     }
