@@ -352,6 +352,7 @@ impl Subst {
         self.0.get(a)
     }
 
+    // BUG this should be union w/fresh vars, not intersection
     pub fn merge(self, other: Subst, d: Variation) -> Self {
         Subst(self.0.intersection_with(other.0, |v1, v2| {
             VariationalType::choice(d, v1, v2)
