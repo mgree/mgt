@@ -1,3 +1,5 @@
+use im_rc::HashMap;
+
 use std::cmp::PartialEq;
 
 /// gamma
@@ -8,7 +10,8 @@ pub enum BaseType {
 }
 
 /// alpha
-pub type TypeVariable = usize;
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TypeVariable(usize);
 
 /// T
 #[derive(Clone, Debug, PartialEq)]
@@ -27,7 +30,8 @@ pub enum GradualType {
     Dyn(),
 }
 
-pub type Variation = usize;
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Variation(usize);
 
 /// M
 #[derive(Clone, Debug, PartialEq)]
@@ -84,6 +88,14 @@ pub enum Expr {
 }
 
 impl Expr {
+    pub fn bool(b: bool) -> Expr {
+        Expr::Const(Constant::Bool(b))
+    }
+
+    pub fn int(n: usize) -> Expr {
+        Expr::Const(Constant::Int(n))
+    }
+
     pub fn lam(v: Variable, e: Expr) -> Expr {
         Expr::Lam(v, Box::new(e))
     }
@@ -214,6 +226,15 @@ impl From<&GradualType> for MigrationalType {
     }
 }
 
+impl From<&Constant> for MigrationalType {
+    fn from(c: &Constant) -> Self {
+        match c {
+            Constant::Bool(_) => MigrationalType::Base(BaseType::Bool),
+            Constant::Int(_) => MigrationalType::Base(BaseType::Bool),
+        }
+    }
+}
+
 impl Pattern {
     pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
         Pattern::Choice(d, Box::new(pat1), Box::new(pat2))
@@ -259,16 +280,37 @@ impl From<Constraint> for Constraints {
     }
 }
 
-pub struct ConstraintGenerator {
-    next_variable: TypeVariable,
-    next_variation: Variation,
-    pattern: Pattern,
-    constraints: Constraints,
+// Gamma
+#[derive(Clone, Debug)]
+pub struct Ctx(HashMap<Variable, MigrationalType>);
+
+impl Ctx {
+    pub fn empty() -> Self {
+        Ctx(HashMap::new())
+    }
+
+    pub fn extend(&self, x: Variable, m: MigrationalType) -> Self {
+        Ctx(self.0.update(x, m))
+    }
+
+    pub fn lookup(&self, x: &Variable) -> Option<&MigrationalType> {
+        self.0.get(x)
+    }
 }
 
-// TODO all this can be made imperative, I think
+pub struct ConstraintGenerator {
+    next_variable: usize,
+    next_variation: usize,
+    pub pattern: Pattern,
+    pub constraints: Constraints,
+}
+
 impl ConstraintGenerator {
     pub fn new() -> ConstraintGenerator {
+        /* TODO really, we need to associate these inferred types with bindings
+           in the term... which means that fresh variables might need to start
+           later (or we expand our variables have a notion of name)
+        */
         ConstraintGenerator {
             next_variable: 0,
             next_variation: 0,
@@ -277,39 +319,88 @@ impl ConstraintGenerator {
         }
     }
 
-    pub fn fresh_variable(&mut self) -> TypeVariable {
+    fn fresh_variable(&mut self) -> TypeVariable {
         let next = self.next_variable;
         self.next_variable += 1;
-
-        next
+        TypeVariable(next)
     }
 
-    pub fn fresh_variation(&mut self) -> Variation {
+    fn fresh_variation(&mut self) -> Variation {
         let next = self.next_variation;
         self.next_variation += 1;
-
-        next
+        Variation(next)
     }
 
-    pub fn add_constrain(&mut self, c: Constraint) {
+    fn add_constraint(&mut self, c: Constraint) {
         self.constraints.and(c);
     }
 
-    pub fn add_constraints(&mut self, cs: Constraints) {
+    fn add_constraints(&mut self, cs: Constraints) {
         self.constraints.and_many(cs);
     }
 
-    pub fn add_pattern(&mut self, p: Pattern) {
+    fn add_pattern(&mut self, p: Pattern) {
         self.pattern = self.pattern.meet(p);
     }
 
-    // PICK UP HERE: from(expr)
+    pub fn infer(&mut self, ctx: Ctx, e: &Expr) -> Option<MigrationalType> {
+        match e {
+            Expr::Const(c) => Some(c.into()),
+            Expr::Var(x) => ctx.lookup(x).cloned(),
+            Expr::Lam(x, e) => {
+                let m_dom = MigrationalType::Var(self.fresh_variable());
+                let m_cod = self.infer(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-    pub fn dom(
-        &mut self,
-        m_fun: &MigrationalType,
-        m_arg: &MigrationalType,
-    ) -> (Constraints, Pattern) {
+                Some(MigrationalType::fun(m_dom, m_cod))
+            }
+            Expr::LamDyn(x, e) => {
+                let d = self.fresh_variation();
+                let m_dom = MigrationalType::choice(
+                    d,
+                    MigrationalType::Dyn(),
+                    MigrationalType::Var(self.fresh_variable()),
+                );
+                let m_cod = self.infer(ctx.extend(x.clone(), m_dom.clone()), e)?;
+
+                Some(MigrationalType::fun(m_dom, m_cod))
+            }
+            Expr::App(e_fun, e_arg) => {
+                let m_fun = self.infer(ctx.clone(), e_fun)?;
+                let m_arg = self.infer(ctx, e_arg)?;
+
+                let (m_res, cs_res, pat_res) = self.cod(&m_fun);
+                self.add_constraints(cs_res);
+                self.add_pattern(pat_res);
+                let (cs_arg, pat_arg) = self.dom(&m_fun, &m_arg);
+                self.add_constraints(cs_arg);
+                self.add_pattern(pat_arg);
+
+                Some(m_res)
+            }
+            Expr::If(e_cond, e_then, e_else) => {
+                // ??? MMG this rule isn't in the paper :(
+                let m_cond = self.infer(ctx.clone(), e_cond)?;
+                let m_then = self.infer(ctx.clone(), e_then)?;
+                let m_else = self.infer(ctx.clone(), e_else)?;
+
+                self.add_constraint(Constraint::Consistent(
+                    Pattern::Top(),
+                    m_cond,
+                    MigrationalType::Base(BaseType::Bool),
+                ));
+
+                self.add_constraint(Constraint::Consistent(
+                    Pattern::Top(),
+                    m_then.clone(),
+                    m_else,
+                ));
+
+                Some(m_then)
+            }
+        }
+    }
+
+    fn dom(&mut self, m_fun: &MigrationalType, m_arg: &MigrationalType) -> (Constraints, Pattern) {
         match m_fun {
             MigrationalType::Dyn() => (Constraints::epsilon(), Pattern::Top()),
             MigrationalType::Fun(m_dom, _m_cod) => (
@@ -345,7 +436,7 @@ impl ConstraintGenerator {
         }
     }
 
-    pub fn cod(&mut self, m_fun: &MigrationalType) -> (MigrationalType, Constraints, Pattern) {
+    fn cod(&mut self, m_fun: &MigrationalType) -> (MigrationalType, Constraints, Pattern) {
         match m_fun {
             MigrationalType::Dyn() => (
                 MigrationalType::Dyn(),
