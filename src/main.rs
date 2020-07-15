@@ -8,9 +8,9 @@ fn main() {
     let big_omega = Expr::app(little_omega.clone(), little_omega.clone());
     println!("{:?}", big_omega);
 
-    let mut cg = ConstraintGenerator::new();
-    println!("{:?}", cg.infer(Ctx::empty(), &little_omega));
-    println!("{:?}", cg.constraints);
+    let mut ti = TypeInference::new();
+    println!("{:?}", ti.generate_constraints(Ctx::empty(), &little_omega));
+    println!("{:?}", ti.constraints);
 }
 
 #[cfg(test)]
@@ -22,8 +22,8 @@ mod test {
         let x = String::from("x");
         let id = Expr::lam(x.clone(), Expr::Var(x));
 
-        let mut cg = ConstraintGenerator::new();
-        let m = cg.infer(Ctx::empty(), &id).unwrap();
+        let mut ti = TypeInference::new();
+        let m = ti.generate_constraints(Ctx::empty(), &id).unwrap();
         match m {
             MigrationalType::Fun(dom, cod) => assert_eq!(dom, cod),
             _ => panic!("expected function type"),
@@ -38,8 +38,8 @@ mod test {
             Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
         );
 
-        let mut cg = ConstraintGenerator::new();
-        let m = cg.infer(Ctx::empty(), &neg).unwrap();
+        let mut ti = TypeInference::new();
+        let m = ti.generate_constraints(Ctx::empty(), &neg).unwrap();
         match m {
             MigrationalType::Fun(dom, cod) => match (*dom, *cod) {
                 (MigrationalType::Var(_alpha), MigrationalType::Var(_beta)) => (),
@@ -53,8 +53,8 @@ mod test {
     pub fn infer_conditional() {
         let e = Expr::if_(Expr::bool(true), Expr::bool(false), Expr::bool(true));
 
-        let mut cg = ConstraintGenerator::new();
-        let m = cg.infer(Ctx::empty(), &e).unwrap();
+        let mut ti = TypeInference::new();
+        let m = ti.generate_constraints(Ctx::empty(), &e).unwrap();
 
         match m {
             MigrationalType::Var(_alpha) => (),
@@ -64,11 +64,11 @@ mod test {
 
     #[test]
     pub fn subst_merge() {
-        let mut cg = ConstraintGenerator::new();
-        let a = cg.fresh_variable();
-        let b = cg.fresh_variable();
-        let c = cg.fresh_variable();
-        let e = cg.fresh_variable();
+        let mut ti = TypeInference::new();
+        let a = ti.fresh_variable();
+        let b = ti.fresh_variable();
+        let c = ti.fresh_variable();
+        let e = ti.fresh_variable();
 
         let theta1 = Subst::empty()
             .extend(a, VariationalType::Base(BaseType::Bool))
@@ -83,8 +83,8 @@ mod test {
             )
             .extend(c, VariationalType::Base(BaseType::Bool));
 
-        let d = cg.fresh_variation();
-        let theta = cg.merge(d, &theta1, &theta2);
+        let d = ti.fresh_variation();
+        let theta = ti.merge(d, &theta1, &theta2);
 
         assert_eq!(
             theta.lookup(&a).unwrap(),

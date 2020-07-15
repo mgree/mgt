@@ -1,6 +1,6 @@
-use std::iter::FromIterator;
-use im_rc::HashSet;
 use im_rc::HashMap;
+use im_rc::HashSet;
+use std::iter::FromIterator;
 
 use std::cmp::PartialEq;
 
@@ -32,7 +32,7 @@ pub enum GradualType {
     Dyn(),
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Variation(usize);
 
 /// V
@@ -218,6 +218,35 @@ impl MigrationalType {
     pub fn choice(d: Variation, m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
         MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
     }
+
+    pub fn has_dyn(&self) -> bool {
+        match self {
+            MigrationalType::Dyn() => true,
+            MigrationalType::Fun(t1, t2) => t1.has_dyn() || t2.has_dyn(),
+            MigrationalType::Choice(_d, t1, t2) => t1.has_dyn() || t2.has_dyn(),
+            MigrationalType::Base(_) => false,
+            MigrationalType::Var(_) => false,
+        }
+    }
+
+    pub fn vars(&self) -> HashSet<&TypeVariable> {
+        match self {
+            MigrationalType::Dyn() | MigrationalType::Base(_) => HashSet::new(),
+            MigrationalType::Var(alpha) => HashSet::unit(alpha),
+            MigrationalType::Fun(t1, t2) => t1.vars().union(t2.vars()),
+            MigrationalType::Choice(_d, t1, t2) => t1.vars().union(t2.vars()),
+        }
+    }
+
+    pub fn choices(&self) -> HashSet<&Variation> {
+        match self {
+            MigrationalType::Dyn() | MigrationalType::Base(_) | MigrationalType::Var(_) => {
+                HashSet::new()
+            }
+            MigrationalType::Fun(t1, t2) => t1.choices().union(t2.choices()),
+            MigrationalType::Choice(d, t1, t2) => t1.choices().union(t2.choices()).update(d),
+        }
+    }
 }
 
 impl From<&StaticType> for MigrationalType {
@@ -356,30 +385,31 @@ impl Subst {
 
     // BUG this should be union w/fresh vars, not intersection
     pub fn merge(self, other: Subst, d: Variation) -> Self {
-        Subst(self.0.intersection_with(other.0, |v1, v2| {
-            VariationalType::choice(d, v1, v2)
-        }))
+        Subst(
+            self.0
+                .intersection_with(other.0, |v1, v2| VariationalType::choice(d, v1, v2)),
+        )
     }
 }
 
-pub struct ConstraintGenerator {
+pub struct TypeInference {
     next_variable: usize,
     next_variation: usize,
     pub pattern: Pattern,
     pub constraints: Constraints,
 }
 
-impl ConstraintGenerator {
-    pub fn new() -> ConstraintGenerator {
+impl TypeInference {
+    pub fn new() -> TypeInference {
         /* TODO really, we need to associate these inferred types with bindings
            in the term... which means that fresh variables might need to start
            later (or we expand our variables have a notion of name)
 
-           one nice approach: allow type annotations on lambdas, but `infer`
+           one nice approach: allow type annotations on lambdas, but `generate_constraints`
            mutates the expression as it goes, setting the annotations to fresh
            type variables on unannotated binders
         */
-        ConstraintGenerator {
+        TypeInference {
             next_variable: 0,
             next_variation: 0,
             pattern: Pattern::Top(),
@@ -411,13 +441,13 @@ impl ConstraintGenerator {
         self.pattern = self.pattern.meet(p);
     }
 
-    pub fn infer(&mut self, ctx: Ctx, e: &Expr) -> Option<MigrationalType> {
+    pub fn generate_constraints(&mut self, ctx: Ctx, e: &Expr) -> Option<MigrationalType> {
         match e {
             Expr::Const(c) => Some(c.into()),
             Expr::Var(x) => ctx.lookup(x).cloned(),
             Expr::Lam(x, e) => {
                 let m_dom = MigrationalType::Var(self.fresh_variable());
-                let m_cod = self.infer(ctx.extend(x.clone(), m_dom.clone()), e)?;
+                let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
                 Some(MigrationalType::fun(m_dom, m_cod))
             }
@@ -428,13 +458,13 @@ impl ConstraintGenerator {
                     MigrationalType::Dyn(),
                     MigrationalType::Var(self.fresh_variable()),
                 );
-                let m_cod = self.infer(ctx.extend(x.clone(), m_dom.clone()), e)?;
+                let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
                 Some(MigrationalType::fun(m_dom, m_cod))
             }
             Expr::App(e_fun, e_arg) => {
-                let m_fun = self.infer(ctx.clone(), e_fun)?;
-                let m_arg = self.infer(ctx, e_arg)?;
+                let m_fun = self.generate_constraints(ctx.clone(), e_fun)?;
+                let m_arg = self.generate_constraints(ctx, e_arg)?;
 
                 let (m_res, cs_res, pat_res) = self.cod(&m_fun);
                 self.add_constraints(cs_res);
@@ -447,9 +477,9 @@ impl ConstraintGenerator {
             }
             Expr::If(e_cond, e_then, e_else) => {
                 // ??? MMG this rule isn't in the paper... but annotations are? :(
-                let m_cond = self.infer(ctx.clone(), e_cond)?;
-                let m_then = self.infer(ctx.clone(), e_then)?;
-                let m_else = self.infer(ctx.clone(), e_else)?;
+                let m_cond = self.generate_constraints(ctx.clone(), e_cond)?;
+                let m_then = self.generate_constraints(ctx.clone(), e_then)?;
+                let m_else = self.generate_constraints(ctx.clone(), e_else)?;
 
                 self.add_constraint(Constraint::Consistent(
                     Pattern::Top(),
@@ -559,8 +589,14 @@ impl ConstraintGenerator {
 
         let mut map = HashMap::new();
         for a in dom1.union(dom2) {
-            let v1 = theta1.lookup(a).cloned().unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
-            let v2 = theta2.lookup(a).cloned().unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
+            let v1 = theta1
+                .lookup(a)
+                .cloned()
+                .unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
+            let v2 = theta2
+                .lookup(a)
+                .cloned()
+                .unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
             map.insert(a.clone(), VariationalType::choice(d, v1, v2));
         }
 
