@@ -55,7 +55,7 @@ pub enum MigrationalType {
 }
 
 /// pi
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Pattern {
     Bot(),
     Top(),
@@ -212,7 +212,11 @@ impl VariationalType {
     }
 
     pub fn choice(d: Variation, m1: VariationalType, m2: VariationalType) -> VariationalType {
-        VariationalType::Choice(d, Box::new(m1), Box::new(m2))
+        if m1 == m2 {
+            m1
+        } else {
+            VariationalType::Choice(d, Box::new(m1), Box::new(m2))
+        }
     }
 }
 
@@ -222,7 +226,11 @@ impl MigrationalType {
     }
 
     pub fn choice(d: Variation, m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
-        MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
+        if m1 == m2 {
+            m1
+        } else {
+            MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
+        }
     }
 
     pub fn has_dyn(&self) -> bool {
@@ -325,7 +333,11 @@ impl From<&Constant> for MigrationalType {
 
 impl Pattern {
     pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
-        Pattern::Choice(d, Box::new(pat1), Box::new(pat2))
+        if pat1 == pat2 {
+            pat1
+        } else {
+            Pattern::Choice(d, Box::new(pat1), Box::new(pat2))
+        }
     }
 
     pub fn meet(&self, other: Pattern) -> Pattern {
