@@ -310,6 +310,10 @@ impl ConstraintGenerator {
         /* TODO really, we need to associate these inferred types with bindings
            in the term... which means that fresh variables might need to start
            later (or we expand our variables have a notion of name)
+
+           one nice approach: allow type annotations on lambdas, but `infer` 
+           mutates the expression as it goes, setting the annotations to fresh 
+           type variables on unannotated binders
         */
         ConstraintGenerator {
             next_variable: 0,
