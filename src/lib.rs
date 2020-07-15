@@ -27,6 +27,38 @@ pub enum GradualType {
     Dyn(),
 }
 
+pub type Variation = usize;
+
+/// M
+#[derive(Clone, Debug, PartialEq)]
+pub enum MigrationalType {
+    Base(BaseType),
+    Var(TypeVariable),
+    Fun(Box<MigrationalType>, Box<MigrationalType>),
+    Dyn(),
+    Choice(Variation, Box<MigrationalType>, Box<MigrationalType>), // TODO first one is really always Dyn()...
+}
+
+/// pi
+#[derive(Clone, Debug)]
+pub enum Pattern {
+    Bot(),
+    Top(),
+    Choice(Variation, Box<Pattern>, Box<Pattern>),
+}
+
+/// C
+///
+/// we treat /\ and epsilon by just using vectors
+#[derive(Clone, Debug)]
+pub enum Constraint {
+    Consistent(Pattern, MigrationalType, MigrationalType),
+    Choice(Variation, Constraints, Constraints),
+}
+
+#[derive(Clone, Debug)]
+pub struct Constraints(Vec<Constraint>);
+
 /// c
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
@@ -47,6 +79,8 @@ pub enum Expr {
     App(Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     // TODO operations on constants
+    // TODO explicitly typed lambdas
+    // TODO ascriptions
 }
 
 impl Expr {
@@ -107,7 +141,7 @@ impl GradualType {
             (g1, g2) => {
                 assert_eq!(g1, g2, "meet is only defined on consistent types");
                 g1.clone()
-            },
+            }
         }
     }
 
@@ -125,7 +159,7 @@ impl GradualType {
                 } else {
                     None
                 }
-            },
+            }
         }
     }
 }
@@ -139,6 +173,133 @@ impl From<&StaticType> for GradualType {
                 GradualType::from(t1.as_ref()),
                 GradualType::from(t2.as_ref()),
             ),
+        }
+    }
+}
+
+impl MigrationalType {
+    pub fn fun(g1: MigrationalType, g2: MigrationalType) -> MigrationalType {
+        MigrationalType::Fun(Box::new(g1), Box::new(g2))
+    }
+}
+
+impl From<&StaticType> for MigrationalType {
+    fn from(t: &StaticType) -> Self {
+        match t {
+            StaticType::Base(b) => MigrationalType::Base(b.clone()),
+            StaticType::Var(a) => MigrationalType::Var(a.clone()),
+            StaticType::Fun(t1, t2) => MigrationalType::fun(
+                MigrationalType::from(t1.as_ref()),
+                MigrationalType::from(t2.as_ref()),
+            ),
+        }
+    }
+}
+
+impl From<&GradualType> for MigrationalType {
+    fn from(t: &GradualType) -> Self {
+        match t {
+            GradualType::Base(b) => MigrationalType::Base(b.clone()),
+            GradualType::Var(a) => MigrationalType::Var(a.clone()),
+            GradualType::Dyn() => MigrationalType::Dyn(),
+            GradualType::Fun(t1, t2) => MigrationalType::fun(
+                MigrationalType::from(t1.as_ref()),
+                MigrationalType::from(t2.as_ref()),
+            ),
+        }
+    }
+}
+
+impl Constraint {
+    pub fn and(self, other: Constraint) -> Constraints {
+        Constraints(vec![self, other])
+    }
+}
+
+impl Constraints {
+    pub fn epsilon() -> Constraints {
+        Constraints(Vec::new())
+    }
+
+    pub fn and(&mut self, c: Constraint) {
+        self.0.push(c);
+    }
+}
+
+impl From<Constraint> for Constraints {
+    fn from(c: Constraint) -> Self {
+        Constraints(vec![c])
+    }
+}
+
+pub struct ConstraintGenerator {
+    next_variable: TypeVariable,
+    next_variation: Variation,
+}
+
+// TODO all this can be made imperative, I think
+impl ConstraintGenerator {
+    pub fn new() -> ConstraintGenerator {
+        ConstraintGenerator {
+            next_variable: 0,
+            next_variation: 0,
+        }
+    }
+
+    pub fn fresh_variable(&mut self) -> TypeVariable {
+        let next = self.next_variable;
+        self.next_variable += 1;
+
+        next
+    }
+
+    pub fn fresh_variation(&mut self) -> Variation {
+        let next = self.next_variation;
+        self.next_variation += 1;
+
+        next
+    }
+    
+    // PICK UP HERE: cod, from(expr), pattern meet
+
+    pub fn dom(
+        &mut self,
+        m_fun: &MigrationalType,
+        m_arg: &MigrationalType,
+    ) -> (Constraints, Pattern) {
+        match m_fun {
+            MigrationalType::Dyn() => (Constraints::epsilon(), Pattern::Top()),
+            MigrationalType::Fun(m_dom, _m_cod) => (
+                // ??? MMG paper just says pi here (p15)
+                Constraint::Consistent(Pattern::Top(), *m_dom.clone(), m_arg.clone()).into(),
+                Pattern::Top(),
+            ),
+            MigrationalType::Var(_alpha) => {
+                let k1 = self.fresh_variable();
+                let k2 = self.fresh_variable();
+                let real_fun =
+                    MigrationalType::fun(MigrationalType::Var(k1), MigrationalType::Var(k2));
+                (
+                    Constraint::Consistent(Pattern::Top(), m_fun.clone(), real_fun).and(
+                        Constraint::Consistent(
+                            Pattern::Top(),
+                            MigrationalType::Var(k1),
+                            m_arg.clone(),
+                        ),
+                    ),
+                    Pattern::Top(),
+                )
+            }
+            MigrationalType::Choice(d, m_fun1, m_fun2) => {
+                let (cs1, pat1) = self.dom(m_fun1, m_arg);
+                let (cs2, pat2) = self.dom(m_fun2, m_arg);
+
+                (
+                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Pattern::Choice(*d, Box::new(pat1), Box::new(pat2)),
+                )
+            }
+            _ => (Constraints::epsilon(), Pattern::Bot()),
         }
     }
 }
