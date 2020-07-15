@@ -207,16 +207,12 @@ impl From<&StaticType> for GradualType {
 }
 
 impl VariationalType {
-    pub fn fun(m1: VariationalType, m2: VariationalType) -> VariationalType {
-        VariationalType::Fun(Box::new(m1), Box::new(m2))
+    pub fn fun(v1: VariationalType, v2: VariationalType) -> VariationalType {
+        VariationalType::Fun(Box::new(v1), Box::new(v2))
     }
 
-    pub fn choice(d: Variation, m1: VariationalType, m2: VariationalType) -> VariationalType {
-        if m1 == m2 {
-            m1
-        } else {
-            VariationalType::Choice(d, Box::new(m1), Box::new(m2))
-        }
+    pub fn choice(d: Variation, v1: VariationalType, v2: VariationalType) -> VariationalType {
+        VariationalType::Choice(d, Box::new(v1), Box::new(v2))
     }
 }
 
@@ -226,10 +222,37 @@ impl MigrationalType {
     }
 
     pub fn choice(d: Variation, m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
-        if m1 == m2 {
-            m1
-        } else {
-            MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
+        // MMG: no smart constructor, since case (b) of unification needs to generate choices with identical branches!
+        MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
+    }
+
+    /// set left = true to select the left variation (i.e., d_1), left = false to select the right one (d_2)
+    pub fn select(&self, d: Variation, left: bool) -> MigrationalType {
+        match self {
+            MigrationalType::Dyn() => MigrationalType::Dyn(),
+            MigrationalType::Base(b) => MigrationalType::Base(b.clone()),
+            MigrationalType::Var(a) => MigrationalType::Var(*a),
+            MigrationalType::Fun(m1, m2) => {
+                MigrationalType::fun(m1.select(d, left), m2.select(d, left))
+            }
+            MigrationalType::Choice(d2, m1, m2) => {
+                if d == *d2 {
+                    if left {
+                        *m1.clone()
+                    } else {
+                        *m2.clone()
+                    }
+                } else {
+                    MigrationalType::choice(*d2, m1.select(d, left), m2.select(d, left))
+                }
+            }
+        }
+    }
+
+    pub fn is_fun(&self) -> bool {
+        match self {
+            MigrationalType::Fun(_, _) => true,
+            _ => false,
         }
     }
 
@@ -272,6 +295,26 @@ impl MigrationalType {
                 let t2 = m2.try_static()?;
 
                 Some(StaticType::fun(t1, t2))
+            }
+        }
+    }
+
+    pub fn try_variational(&self) -> Option<VariationalType> {
+        match self {
+            MigrationalType::Dyn() => None,
+            MigrationalType::Base(b) => Some(VariationalType::Base(b.clone())),
+            MigrationalType::Var(a) => Some(VariationalType::Var(*a)),
+            MigrationalType::Choice(d, m1, m2) => {
+                let v1 = m1.try_variational()?;
+                let v2 = m2.try_variational()?;
+
+                Some(VariationalType::choice(*d, v1, v2))
+            }
+            MigrationalType::Fun(m1, m2) => {
+                let v1 = m1.try_variational()?;
+                let v2 = m2.try_variational()?;
+
+                Some(VariationalType::fun(v1, v2))
             }
         }
     }
@@ -354,6 +397,16 @@ impl Pattern {
     }
 }
 
+impl From<bool> for Pattern {
+    fn from(b: bool) -> Self {
+        if b {
+            Pattern::Top()
+        } else {
+            Pattern::Bot()
+        }
+    }
+}
+
 impl Constraint {
     pub fn and(self, other: Constraint) -> Constraints {
         Constraints(vec![self, other])
@@ -415,12 +468,8 @@ impl Subst {
         self.0.get(a)
     }
 
-    // BUG this should be union w/fresh vars, not intersection
-    pub fn merge(self, other: Subst, d: Variation) -> Self {
-        Subst(
-            self.0
-                .intersection_with(other.0, |v1, v2| VariationalType::choice(d, v1, v2)),
-        )
+    pub fn union(self, other: Subst) -> Subst {
+        Subst(self.0.union(other.0))
     }
 }
 
@@ -615,7 +664,7 @@ impl TypeInference {
         }
     }
 
-    pub fn merge(&mut self, d: Variation, theta1: &Subst, theta2: &Subst) -> Subst {
+    pub fn merge(&mut self, d: Variation, theta1: Subst, theta2: Subst) -> Subst {
         let dom1: HashSet<&TypeVariable> = HashSet::from_iter(theta1.0.keys());
         let dom2: HashSet<&TypeVariable> = HashSet::from_iter(theta2.0.keys());
 
@@ -633,5 +682,119 @@ impl TypeInference {
         }
 
         Subst(map)
+    }
+
+    pub fn unify(&mut self, constraints: Constraints) -> (Subst, Pattern) {
+        // (g)
+        let mut theta = Subst::empty();
+        let mut pi = Pattern::Top();
+
+        for c in constraints.0.into_iter() {
+            // (i)
+            let (theta_c, pi_c) = self.unify1(c);
+            theta = theta.union(theta_c);
+            pi = pi.meet(pi_c);
+        }
+
+        (theta, pi)
+    }
+
+    fn unify1(&mut self, c: Constraint) -> (Subst, Pattern) {
+        match c {
+            Constraint::Consistent(_p, MigrationalType::Dyn(), _)
+            | Constraint::Consistent(_p, _, MigrationalType::Dyn()) => {
+                // (a), (a*)
+                (Subst::empty(), Pattern::Top())
+            }
+            Constraint::Consistent(p, MigrationalType::Var(a), m)
+            | Constraint::Consistent(p, m, MigrationalType::Var(a)) => {
+                // (b), (b*)
+                let alpha = MigrationalType::Var(a); // can't use @ patterns, unstable
+
+                if !m.vars().contains(&a) {
+                    if let Some(v) = m.try_variational() {
+                        return (Subst::empty().extend(a, v), Pattern::Top()); // first case: direct binding
+                    } else if m.is_fun() {
+                        // third case: check if M is a function
+                        let k1 = self.fresh_variable();
+                        let k2 = self.fresh_variable();
+                        let kfun = MigrationalType::fun(
+                            MigrationalType::Var(k1),
+                            MigrationalType::Var(k2),
+                        );
+
+                        let (theta1, pi1) = self.unify1(Constraint::Consistent(
+                            Pattern::Top(),
+                            alpha.clone(),
+                            kfun.clone(),
+                        ));
+                        let (theta2, pi2) =
+                            self.unify1(Constraint::Consistent(Pattern::Top(), kfun, m.clone())); // ??? MMG paper says pi2, not Top
+                        return (theta1.union(theta2), pi1.meet(pi2));
+                    }
+                }
+
+                match m.choices().iter().next() {
+                    None => (Subst::empty(), Pattern::Bot()), // failure case
+                    Some(d) => {
+                        // second case: case splitting
+                        self.unify1(Constraint::Consistent(
+                            p.clone(),
+                            MigrationalType::choice(**d, alpha.clone(), alpha.clone()),
+                            m.clone(),
+                        ))
+                    }
+                }
+            }
+            Constraint::Consistent(
+                p,
+                MigrationalType::Choice(d1, m1, m2),
+                MigrationalType::Choice(d2, m3, m4),
+            ) if d1 == d2 => {
+                // (c)
+                let (theta1, pi1) = self.unify1(Constraint::Consistent(p.clone(), *m1, *m3));
+                let (theta2, pi2) = self.unify1(Constraint::Consistent(p, *m2, *m4));
+
+                let theta = self.merge(d1, theta1, theta2);
+                (theta, Pattern::choice(d1, pi1, pi2))
+            }
+            Constraint::Consistent(p, MigrationalType::Choice(d, m1, m2), m)
+            | Constraint::Consistent(p, m, MigrationalType::Choice(d, m1, m2)) => {
+                // (d), (d*)
+                self.unify1(Constraint::Consistent(
+                    p,
+                    MigrationalType::Choice(d, m1, m2),
+                    MigrationalType::choice(d, m.select(d, true), m.select(d, false)),
+                ))
+            }
+            Constraint::Consistent(
+                p,
+                MigrationalType::Fun(m11, m12),
+                MigrationalType::Fun(m21, m22),
+            ) => {
+                // (e), (f)
+                let (theta1, pi1) = self.unify1(Constraint::Consistent(p.clone(), *m11, *m21));
+                let (theta2, pi2) = self.unify1(Constraint::Consistent(p, *m12, *m22));
+
+                (theta1.union(theta2), pi1.meet(pi2))
+            }
+            Constraint::Consistent(_p, MigrationalType::Base(b1), MigrationalType::Base(b2)) => {
+                // (e)
+                (Subst::empty(), (b1 == b2).into())
+            }
+            Constraint::Consistent(_p, MigrationalType::Base(_), MigrationalType::Fun(_, _))
+            | Constraint::Consistent(_p, MigrationalType::Fun(_, _), MigrationalType::Base(_)) => {
+                // (e)
+                (Subst::empty(), Pattern::Bot())
+            }
+            Constraint::Choice(d, cs1, cs2) => {
+                // (h)
+                let (theta1, pi1) = self.unify(cs1);
+                let (theta2, pi2) = self.unify(cs2);
+
+                let theta = self.merge(d, theta1, theta2);
+                (theta, Pattern::choice(d, pi1, pi2))
+            }
+        }
     }
 }

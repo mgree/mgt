@@ -84,7 +84,7 @@ mod test {
             .extend(c, VariationalType::Base(BaseType::Bool));
 
         let d = ti.fresh_variation();
-        let theta = ti.merge(d, &theta1, &theta2);
+        let theta = ti.merge(d, theta1.clone(), theta2.clone());
 
         assert_eq!(
             theta.lookup(&a).unwrap(),
