@@ -382,7 +382,7 @@ impl ConstraintGenerator {
                 Some(m_res)
             }
             Expr::If(e_cond, e_then, e_else) => {
-                // ??? MMG this rule isn't in the paper :(
+                // ??? MMG this rule isn't in the paper... but annotations are? :(
                 let m_cond = self.infer(ctx.clone(), e_cond)?;
                 let m_then = self.infer(ctx.clone(), e_then)?;
                 let m_else = self.infer(ctx.clone(), e_else)?;
