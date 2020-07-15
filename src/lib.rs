@@ -218,6 +218,19 @@ impl Pattern {
     pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
         Pattern::Choice(d, Box::new(pat1), Box::new(pat2))
     }
+
+    pub fn meet(&self, other: Pattern) -> Pattern {
+        match self {
+            Pattern::Top() => other,
+            Pattern::Bot() => Pattern::Bot(),
+            Pattern::Choice(d1, pat11, pat12) => match other {
+                Pattern::Choice(d2, pat21, pat22) if *d1 == d2 => {
+                    Pattern::choice(*d1, pat11.meet(*pat21), pat12.meet(*pat22))
+                }
+                _ => Pattern::choice(*d1, pat11.meet(other.clone()), pat12.meet(other)),
+            },
+        }
+    }
 }
 
 impl Constraint {
@@ -234,6 +247,10 @@ impl Constraints {
     pub fn and(&mut self, c: Constraint) {
         self.0.push(c);
     }
+
+    pub fn and_many(&mut self, mut other: Constraints) {
+        self.0.append(&mut other.0);
+    }
 }
 
 impl From<Constraint> for Constraints {
@@ -245,6 +262,8 @@ impl From<Constraint> for Constraints {
 pub struct ConstraintGenerator {
     next_variable: TypeVariable,
     next_variation: Variation,
+    pattern: Pattern,
+    constraints: Constraints,
 }
 
 // TODO all this can be made imperative, I think
@@ -253,6 +272,8 @@ impl ConstraintGenerator {
         ConstraintGenerator {
             next_variable: 0,
             next_variation: 0,
+            pattern: Pattern::Top(),
+            constraints: Constraints::epsilon(),
         }
     }
 
@@ -270,7 +291,19 @@ impl ConstraintGenerator {
         next
     }
 
-    // PICK UP HERE: cod, from(expr), pattern meet
+    pub fn add_constrain(&mut self, c: Constraint) {
+        self.constraints.and(c);
+    }
+
+    pub fn add_constraints(&mut self, cs: Constraints) {
+        self.constraints.and_many(cs);
+    }
+
+    pub fn add_pattern(&mut self, p: Pattern) {
+        self.pattern = self.pattern.meet(p);
+    }
+
+    // PICK UP HERE: from(expr)
 
     pub fn dom(
         &mut self,
@@ -296,7 +329,7 @@ impl ConstraintGenerator {
                             MigrationalType::Var(k1),
                             m_arg.clone(),
                         )),
-                    Pattern::Top(),
+                    Pattern::Top(), // ??? MMG paper just says pi here
                 )
             }
             MigrationalType::Choice(d, m_fun1, m_fun2) => {
@@ -331,7 +364,7 @@ impl ConstraintGenerator {
                     MigrationalType::Var(k2),
                     Constraint::Consistent(Pattern::Top(), MigrationalType::Var(*alpha), real_fun)
                         .into(),
-                    Pattern::Top(), // ??? paper just says pi
+                    Pattern::Top(), // ??? MMG paper just says pi
                 )
             }
             MigrationalType::Choice(d, m_fun1, m_fun2) => {
