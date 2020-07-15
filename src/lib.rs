@@ -10,7 +10,7 @@ pub enum BaseType {
 }
 
 /// alpha
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct TypeVariable(usize);
 
 /// T
@@ -30,8 +30,17 @@ pub enum GradualType {
     Dyn(),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub struct Variation(usize);
+
+/// V
+#[derive(Clone, Debug, PartialEq)]
+pub enum VariationalType {
+    Base(BaseType),
+    Var(TypeVariable),
+    Fun(Box<VariationalType>, Box<VariationalType>),
+    Choice(Variation, Box<VariationalType>, Box<VariationalType>),
+}
 
 /// M
 #[derive(Clone, Debug, PartialEq)]
@@ -189,6 +198,16 @@ impl From<&StaticType> for GradualType {
     }
 }
 
+impl VariationalType {
+    pub fn fun(m1: VariationalType, m2: VariationalType) -> VariationalType {
+        VariationalType::Fun(Box::new(m1), Box::new(m2))
+    }
+
+    pub fn choice(d: Variation, m1: VariationalType, m2: VariationalType) -> VariationalType {
+        VariationalType::Choice(d, Box::new(m1), Box::new(m2))
+    }
+}
+
 impl MigrationalType {
     pub fn fun(m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
         MigrationalType::Fun(Box::new(m1), Box::new(m2))
@@ -219,6 +238,24 @@ impl From<&GradualType> for MigrationalType {
             GradualType::Var(a) => MigrationalType::Var(a.clone()),
             GradualType::Dyn() => MigrationalType::Dyn(),
             GradualType::Fun(t1, t2) => MigrationalType::fun(
+                MigrationalType::from(t1.as_ref()),
+                MigrationalType::from(t2.as_ref()),
+            ),
+        }
+    }
+}
+
+impl From<&VariationalType> for MigrationalType {
+    fn from(t: &VariationalType) -> Self {
+        match t {
+            VariationalType::Base(b) => MigrationalType::Base(b.clone()),
+            VariationalType::Var(a) => MigrationalType::Var(a.clone()),
+            VariationalType::Choice(d, t1, t2) => MigrationalType::choice(
+                *d,
+                MigrationalType::from(t1.as_ref()),
+                MigrationalType::from(t2.as_ref()),
+            ),
+            VariationalType::Fun(t1, t2) => MigrationalType::fun(
                 MigrationalType::from(t1.as_ref()),
                 MigrationalType::from(t2.as_ref()),
             ),
@@ -298,6 +335,30 @@ impl Ctx {
     }
 }
 
+// theta
+#[derive(Clone, Debug)]
+pub struct Subst(HashMap<TypeVariable, VariationalType>);
+
+impl Subst {
+    pub fn empty() -> Self {
+        Subst(HashMap::new())
+    }
+
+    pub fn extend(&self, a: TypeVariable, v: VariationalType) -> Self {
+        Subst(self.0.update(a, v))
+    }
+
+    pub fn lookup(&self, a: &TypeVariable) -> Option<&VariationalType> {
+        self.0.get(a)
+    }
+
+    pub fn merge(self, other: Subst, d: Variation) -> Self {
+        Subst(self.0.intersection_with(other.0, |v1, v2| {
+            VariationalType::choice(d, v1, v2)
+        }))
+    }
+}
+
 pub struct ConstraintGenerator {
     next_variable: usize,
     next_variation: usize,
@@ -311,8 +372,8 @@ impl ConstraintGenerator {
            in the term... which means that fresh variables might need to start
            later (or we expand our variables have a notion of name)
 
-           one nice approach: allow type annotations on lambdas, but `infer` 
-           mutates the expression as it goes, setting the annotations to fresh 
+           one nice approach: allow type annotations on lambdas, but `infer`
+           mutates the expression as it goes, setting the annotations to fresh
            type variables on unannotated binders
         */
         ConstraintGenerator {
@@ -323,13 +384,13 @@ impl ConstraintGenerator {
         }
     }
 
-    fn fresh_variable(&mut self) -> TypeVariable {
+    pub fn fresh_variable(&mut self) -> TypeVariable {
         let next = self.next_variable;
         self.next_variable += 1;
         TypeVariable(next)
     }
 
-    fn fresh_variation(&mut self) -> Variation {
+    pub fn fresh_variation(&mut self) -> Variation {
         let next = self.next_variation;
         self.next_variation += 1;
         Variation(next)
