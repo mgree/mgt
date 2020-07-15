@@ -1,3 +1,5 @@
+use std::iter::FromIterator;
+use im_rc::HashSet;
 use im_rc::HashMap;
 
 use std::cmp::PartialEq;
@@ -549,5 +551,19 @@ impl ConstraintGenerator {
                 Pattern::Bot(),
             ),
         }
+    }
+
+    pub fn merge(&mut self, d: Variation, theta1: &Subst, theta2: &Subst) -> Subst {
+        let dom1: HashSet<&TypeVariable> = HashSet::from_iter(theta1.0.keys());
+        let dom2: HashSet<&TypeVariable> = HashSet::from_iter(theta2.0.keys());
+
+        let mut map = HashMap::new();
+        for a in dom1.union(dom2) {
+            let v1 = theta1.lookup(a).cloned().unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
+            let v2 = theta2.lookup(a).cloned().unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
+            map.insert(a.clone(), VariationalType::choice(d, v1, v2));
+        }
+
+        Subst(map)
     }
 }

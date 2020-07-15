@@ -68,6 +68,7 @@ mod test {
         let a = cg.fresh_variable();
         let b = cg.fresh_variable();
         let c = cg.fresh_variable();
+        let e = cg.fresh_variable();
 
         let theta1 = Subst::empty()
             .extend(a, VariationalType::Base(BaseType::Bool))
@@ -83,20 +84,41 @@ mod test {
             .extend(c, VariationalType::Base(BaseType::Bool));
 
         let d = cg.fresh_variation();
-        let theta = theta1.merge(theta2, d);
+        let theta = cg.merge(d, &theta1, &theta2);
 
         assert_eq!(
             theta.lookup(&a).unwrap(),
             &VariationalType::choice(
                 d,
-                VariationalType::Base(BaseType::Bool),
-                VariationalType::fun(
-                    VariationalType::Base(BaseType::Int),
-                    VariationalType::Base(BaseType::Int),
-                )
+                theta1.lookup(&a).unwrap().clone(),
+                theta2.lookup(&a).unwrap().clone()
             )
         );
-        assert_eq!(theta.lookup(&b), None);
-        assert_eq!(theta.lookup(&c), None);
+
+        match theta.lookup(&b).unwrap() {
+            VariationalType::Choice(d2, v1, v2) => {
+                assert_eq!(*d2, d);
+                assert_eq!(**v1, theta1.lookup(&b).unwrap().clone());
+                match **v2 {
+                    VariationalType::Var(_) => (),
+                    _ => panic!("expected type variable, got {:?}", v2),
+                }
+            }
+            v => panic!("expected variational choice, got {:?}", v)
+        }
+
+        match theta.lookup(&c).unwrap() {
+            VariationalType::Choice(d2, v1, v2) => {
+                assert_eq!(*d2, d);
+                match **v1 {
+                    VariationalType::Var(_) => (),
+                    _ => panic!("expected type variable, got {:?}", v2),
+                }
+                assert_eq!(**v2, theta2.lookup(&c).unwrap().clone());
+            }
+            v => panic!("expected variational choice, got {:?}", v)
+        }
+
+        assert_eq!(theta.lookup(&e), None);
     }
 }
