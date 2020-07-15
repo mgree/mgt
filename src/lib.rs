@@ -178,8 +178,12 @@ impl From<&StaticType> for GradualType {
 }
 
 impl MigrationalType {
-    pub fn fun(g1: MigrationalType, g2: MigrationalType) -> MigrationalType {
-        MigrationalType::Fun(Box::new(g1), Box::new(g2))
+    pub fn fun(m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
+        MigrationalType::Fun(Box::new(m1), Box::new(m2))
+    }
+
+    pub fn choice(d: Variation, m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
+        MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
     }
 }
 
@@ -207,6 +211,12 @@ impl From<&GradualType> for MigrationalType {
                 MigrationalType::from(t2.as_ref()),
             ),
         }
+    }
+}
+
+impl Pattern {
+    pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
+        Pattern::Choice(d, Box::new(pat1), Box::new(pat2))
     }
 }
 
@@ -259,7 +269,7 @@ impl ConstraintGenerator {
 
         next
     }
-    
+
     // PICK UP HERE: cod, from(expr), pattern meet
 
     pub fn dom(
@@ -274,19 +284,18 @@ impl ConstraintGenerator {
                 Constraint::Consistent(Pattern::Top(), *m_dom.clone(), m_arg.clone()).into(),
                 Pattern::Top(),
             ),
-            MigrationalType::Var(_alpha) => {
+            MigrationalType::Var(alpha) => {
                 let k1 = self.fresh_variable();
                 let k2 = self.fresh_variable();
                 let real_fun =
                     MigrationalType::fun(MigrationalType::Var(k1), MigrationalType::Var(k2));
                 (
-                    Constraint::Consistent(Pattern::Top(), m_fun.clone(), real_fun).and(
-                        Constraint::Consistent(
+                    Constraint::Consistent(Pattern::Top(), MigrationalType::Var(*alpha), real_fun)
+                        .and(Constraint::Consistent(
                             Pattern::Top(),
                             MigrationalType::Var(k1),
                             m_arg.clone(),
-                        ),
-                    ),
+                        )),
                     Pattern::Top(),
                 )
             }
@@ -296,10 +305,50 @@ impl ConstraintGenerator {
 
                 (
                     Constraint::Choice(*d, cs1, cs2).into(),
-                    Pattern::Choice(*d, Box::new(pat1), Box::new(pat2)),
+                    Pattern::choice(*d, pat1, pat2),
                 )
             }
             _ => (Constraints::epsilon(), Pattern::Bot()),
+        }
+    }
+
+    pub fn cod(&mut self, m_fun: &MigrationalType) -> (MigrationalType, Constraints, Pattern) {
+        match m_fun {
+            MigrationalType::Dyn() => (
+                MigrationalType::Dyn(),
+                Constraints::epsilon(),
+                Pattern::Top(),
+            ),
+            MigrationalType::Fun(_m_dom, m_cod) => {
+                (*m_cod.clone(), Constraints::epsilon(), Pattern::Top())
+            }
+            MigrationalType::Var(alpha) => {
+                let k1 = self.fresh_variable();
+                let k2 = self.fresh_variable();
+                let real_fun =
+                    MigrationalType::fun(MigrationalType::Var(k1), MigrationalType::Var(k2));
+                (
+                    MigrationalType::Var(k2),
+                    Constraint::Consistent(Pattern::Top(), MigrationalType::Var(*alpha), real_fun)
+                        .into(),
+                    Pattern::Top(), // ??? paper just says pi
+                )
+            }
+            MigrationalType::Choice(d, m_fun1, m_fun2) => {
+                let (m1, cs1, pat1) = self.cod(m_fun1);
+                let (m2, cs2, pat2) = self.cod(m_fun2);
+
+                (
+                    MigrationalType::choice(*d, m1, m2),
+                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Pattern::choice(*d, pat1, pat2),
+                )
+            }
+            _ => (
+                MigrationalType::Var(self.fresh_variable()),
+                Constraints::epsilon(),
+                Pattern::Bot(),
+            ),
         }
     }
 }
