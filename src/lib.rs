@@ -123,6 +123,12 @@ impl Expr {
     }
 }
 
+impl StaticType {
+    pub fn fun(t1: StaticType, t2: StaticType) -> StaticType {
+        StaticType::Fun(Box::new(t1), Box::new(t2))
+    }
+}
+
 impl GradualType {
     pub fn fun(g1: GradualType, g2: GradualType) -> GradualType {
         GradualType::Fun(Box::new(g1), Box::new(g2))
@@ -222,8 +228,8 @@ impl MigrationalType {
     pub fn has_dyn(&self) -> bool {
         match self {
             MigrationalType::Dyn() => true,
-            MigrationalType::Fun(t1, t2) => t1.has_dyn() || t2.has_dyn(),
-            MigrationalType::Choice(_d, t1, t2) => t1.has_dyn() || t2.has_dyn(),
+            MigrationalType::Fun(m1, m2) => m1.has_dyn() || m2.has_dyn(),
+            MigrationalType::Choice(_d, m1, m2) => m1.has_dyn() || m2.has_dyn(),
             MigrationalType::Base(_) => false,
             MigrationalType::Var(_) => false,
         }
@@ -233,8 +239,8 @@ impl MigrationalType {
         match self {
             MigrationalType::Dyn() | MigrationalType::Base(_) => HashSet::new(),
             MigrationalType::Var(alpha) => HashSet::unit(alpha),
-            MigrationalType::Fun(t1, t2) => t1.vars().union(t2.vars()),
-            MigrationalType::Choice(_d, t1, t2) => t1.vars().union(t2.vars()),
+            MigrationalType::Fun(m1, m2) => m1.vars().union(m2.vars()),
+            MigrationalType::Choice(_d, m1, m2) => m1.vars().union(m2.vars()),
         }
     }
 
@@ -243,8 +249,22 @@ impl MigrationalType {
             MigrationalType::Dyn() | MigrationalType::Base(_) | MigrationalType::Var(_) => {
                 HashSet::new()
             }
-            MigrationalType::Fun(t1, t2) => t1.choices().union(t2.choices()),
-            MigrationalType::Choice(d, t1, t2) => t1.choices().union(t2.choices()).update(d),
+            MigrationalType::Fun(m1, m2) => m1.choices().union(m2.choices()),
+            MigrationalType::Choice(d, m1, m2) => m1.choices().union(m2.choices()).update(d),
+        }
+    }
+
+    pub fn try_static(&self) -> Option<StaticType> {
+        match self {
+            MigrationalType::Dyn() | MigrationalType::Choice(_, _, _) => None,
+            MigrationalType::Base(b) => Some(StaticType::Base(b.clone())),
+            MigrationalType::Var(a) => Some(StaticType::Var(*a)),
+            MigrationalType::Fun(m1, m2) => {
+                let t1 = m1.try_static()?;
+                let t2 = m2.try_static()?;
+
+                Some(StaticType::fun(t1, t2))
+            }
         }
     }
 }
