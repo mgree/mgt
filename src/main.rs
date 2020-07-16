@@ -116,6 +116,31 @@ mod test {
     }
 
     #[test]
+    pub fn infer_dyn_boolean_negation() {
+        let b = String::from("b");
+        let neg = Expr::lam_dyn(
+            b.clone(),
+            Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
+        );
+
+        let (m, ves) = TypeInference::infer(&neg).unwrap();
+
+        // just one maximal eliminator
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        // assigns the static type
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Bool),
+                MigrationalType::Base(BaseType::Bool)
+            )
+        );
+    }
+
+    #[test]
     pub fn infer_conditional() {
         let e = Expr::if_(Expr::bool(true), Expr::bool(false), Expr::bool(true));
 

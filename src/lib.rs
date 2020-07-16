@@ -263,8 +263,8 @@ impl MigrationalType {
             MigrationalType::Choice(d2, m1, m2) => {
                 if d == *d2 {
                     match side {
-                        Side::Left() => *m1.clone(),
-                        Side::Right() => *m2.clone(),
+                        Side::Left() => m1.select(d, side),
+                        Side::Right() => m2.select(d, side),
                     }
                 } else {
                     MigrationalType::choice(*d2, m1.select(d, side), m2.select(d, side))
