@@ -1,6 +1,5 @@
 extern crate mgt;
 
-use im_rc::HashSet;
 use mgt::*;
 
 fn main() {
@@ -10,48 +9,29 @@ fn main() {
 
     debug_inferred_type(&little_omega);
 
-    debug_inferred_type(&big_omega);
+    // debug_inferred_type(&big_omega);
 }
 
 fn debug_inferred_type(e: &Expr) {
-    let mut ti = TypeInference::new();
-    let m = ti.generate_constraints(Ctx::empty(), e);
-    let m = match m {
-        None => {
-            println!("constraint generation failed");
-            return;
-        }
-        Some(m) => m,
-    };
+    let (m, ves) = TypeInference::infer(e).expect("constraint generation failed");
 
-    let (theta, pi) = ti.unify(ti.constraints.clone());
-    let m_theta = m.clone().apply(&theta);
-
-    let ds = m_theta.choices().clone();
-    let ve: HashSet<HashSet<_>> = pi
-        .clone()
-        .valid_eliminators()
-        .into_iter()
-        .map(move |ve| expand(ve, &ds))
-        .collect();
-
-    println!(
-        "e = {:?}\nm = {:?}\n\t(originally {:?}\ntheta = {:?}\npi = {:?}\nves = {:?}\n",
-        e, m_theta, m, theta, pi, ve
-    );
+    println!("e = {:?}", e);
+    println!("m = {:?}", m);
+    println!("ves = {:?}", ves);
+    println!("");
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use im_rc::HashSet;
 
     #[test]
     pub fn infer_identity() {
         let x = String::from("x");
         let id = Expr::lam(x.clone(), Expr::Var(x));
 
-        let mut ti = TypeInference::new();
-        let (m, ves) = ti.infer(&id).unwrap();
+        let (m, ves) = TypeInference::infer(&id).unwrap();
         match m {
             MigrationalType::Fun(dom, cod) => match (*dom, *cod) {
                 (MigrationalType::Var(a_dom), MigrationalType::Var(a_cod)) => {
@@ -69,8 +49,7 @@ mod test {
         let x = String::from("x");
         let id = Expr::lam_dyn(x.clone(), Expr::Var(x));
 
-        let mut ti = TypeInference::new();
-        let (m, ves) = ti.infer(&id).unwrap();
+        let (m, ves) = TypeInference::infer(&id).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
@@ -95,8 +74,7 @@ mod test {
         let y = String::from("y");
         let k = Expr::lam_dyn(x.clone(), Expr::lam_dyn(y, Expr::Var(x)));
 
-        let mut ti = TypeInference::new();
-        let (m, ves) = ti.infer(&k).unwrap();
+        let (m, ves) = TypeInference::infer(&k).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
@@ -129,8 +107,7 @@ mod test {
             Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
         );
 
-        let mut ti = TypeInference::new();
-        let (m, ves) = ti.infer(&neg).unwrap();
+        let (m, ves) = TypeInference::infer(&neg).unwrap();
 
         assert_eq!(
             m,
@@ -146,8 +123,7 @@ mod test {
     pub fn infer_conditional() {
         let e = Expr::if_(Expr::bool(true), Expr::bool(false), Expr::bool(true));
 
-        let mut ti = TypeInference::new();
-        let (m, ves) = ti.infer(&e).unwrap();
+        let (m, ves) = TypeInference::infer(&e).unwrap();
 
         assert_eq!(m, MigrationalType::Base(BaseType::Bool));
         assert_eq!(ves, HashSet::unit(HashSet::new()));

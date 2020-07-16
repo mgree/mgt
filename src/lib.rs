@@ -877,9 +877,12 @@ impl TypeInference {
         }
     }
 
-    pub fn infer(&mut self, e: &Expr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
+    pub fn infer(e: &Expr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
         let mut ti = TypeInference::new();
         let m = ti.generate_constraints(Ctx::empty(), e)?;
+
+        eprintln!("m = {:?}", m);
+        eprintln!("constraints = {:?}", ti.constraints);
 
         let (theta, pi) = ti.unify(ti.constraints.clone());
         let m = m.clone().apply(&theta);
