@@ -32,8 +32,20 @@ pub enum GradualType {
     Dyn(),
 }
 
+/// d
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Variation(usize);
+
+/// .1 or .2
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum Side {
+    Left(),
+    Right(),
+}
+
+/// d.1 or d.2
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct Eliminator(pub Variation, pub Side);
 
 /// V
 #[derive(Clone, Debug, PartialEq)]
@@ -214,6 +226,20 @@ impl VariationalType {
     pub fn choice(d: Variation, v1: VariationalType, v2: VariationalType) -> VariationalType {
         VariationalType::Choice(d, Box::new(v1), Box::new(v2))
     }
+
+    pub fn apply(self, theta: &Subst) -> VariationalType {
+        match self {
+            VariationalType::Base(b) => VariationalType::Base(b),
+            VariationalType::Fun(v1, v2) => VariationalType::fun(v1.apply(theta), v2.apply(theta)),
+            VariationalType::Choice(d, v1, v2) => {
+                VariationalType::choice(d, v1.apply(theta), v2.apply(theta))
+            }
+            VariationalType::Var(a) => match theta.lookup(&a) {
+                None => VariationalType::Var(a),
+                Some(v) => v.clone().apply(theta),
+            },
+        }
+    }
 }
 
 impl MigrationalType {
@@ -226,24 +252,22 @@ impl MigrationalType {
         MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
     }
 
-    /// set left = true to select the left variation (i.e., d_1), left = false to select the right one (d_2)
-    pub fn select(&self, d: Variation, left: bool) -> MigrationalType {
+    pub fn select(&self, d: Variation, side: Side) -> MigrationalType {
         match self {
             MigrationalType::Dyn() => MigrationalType::Dyn(),
             MigrationalType::Base(b) => MigrationalType::Base(b.clone()),
             MigrationalType::Var(a) => MigrationalType::Var(*a),
             MigrationalType::Fun(m1, m2) => {
-                MigrationalType::fun(m1.select(d, left), m2.select(d, left))
+                MigrationalType::fun(m1.select(d, side), m2.select(d, side))
             }
             MigrationalType::Choice(d2, m1, m2) => {
                 if d == *d2 {
-                    if left {
-                        *m1.clone()
-                    } else {
-                        *m2.clone()
+                    match side {
+                        Side::Left() => *m1.clone(),
+                        Side::Right() => *m2.clone(),
                     }
                 } else {
-                    MigrationalType::choice(*d2, m1.select(d, left), m2.select(d, left))
+                    MigrationalType::choice(*d2, m1.select(d, side), m2.select(d, side))
                 }
             }
         }
@@ -253,6 +277,20 @@ impl MigrationalType {
         match self {
             MigrationalType::Fun(_, _) => true,
             _ => false,
+        }
+    }
+    pub fn apply(self, theta: &Subst) -> MigrationalType {
+        match self {
+            MigrationalType::Dyn() => MigrationalType::Dyn(),
+            MigrationalType::Base(b) => MigrationalType::Base(b),
+            MigrationalType::Fun(m1, m2) => MigrationalType::fun(m1.apply(theta), m2.apply(theta)),
+            MigrationalType::Choice(d, m1, m2) => {
+                MigrationalType::choice(d, m1.apply(theta), m2.apply(theta))
+            }
+            MigrationalType::Var(a) => match theta.lookup(&a) {
+                None => MigrationalType::Var(a),
+                Some(v) => v.clone().apply(theta).into(),
+            },
         }
     }
 
@@ -320,47 +358,42 @@ impl MigrationalType {
     }
 }
 
-impl From<&StaticType> for MigrationalType {
-    fn from(t: &StaticType) -> Self {
+impl From<StaticType> for MigrationalType {
+    fn from(t: StaticType) -> Self {
         match t {
-            StaticType::Base(b) => MigrationalType::Base(b.clone()),
-            StaticType::Var(a) => MigrationalType::Var(a.clone()),
-            StaticType::Fun(t1, t2) => MigrationalType::fun(
-                MigrationalType::from(t1.as_ref()),
-                MigrationalType::from(t2.as_ref()),
-            ),
+            StaticType::Base(b) => MigrationalType::Base(b),
+            StaticType::Var(a) => MigrationalType::Var(a),
+            StaticType::Fun(t1, t2) => {
+                MigrationalType::fun(MigrationalType::from(*t1), MigrationalType::from(*t2))
+            }
         }
     }
 }
 
-impl From<&GradualType> for MigrationalType {
-    fn from(t: &GradualType) -> Self {
-        match t {
-            GradualType::Base(b) => MigrationalType::Base(b.clone()),
-            GradualType::Var(a) => MigrationalType::Var(a.clone()),
+impl From<GradualType> for MigrationalType {
+    fn from(g: GradualType) -> Self {
+        match g {
+            GradualType::Base(b) => MigrationalType::Base(b),
+            GradualType::Var(a) => MigrationalType::Var(a),
             GradualType::Dyn() => MigrationalType::Dyn(),
-            GradualType::Fun(t1, t2) => MigrationalType::fun(
-                MigrationalType::from(t1.as_ref()),
-                MigrationalType::from(t2.as_ref()),
-            ),
+            GradualType::Fun(g1, g2) => {
+                MigrationalType::fun(MigrationalType::from(*g1), MigrationalType::from(*g2))
+            }
         }
     }
 }
 
-impl From<&VariationalType> for MigrationalType {
-    fn from(t: &VariationalType) -> Self {
+impl From<VariationalType> for MigrationalType {
+    fn from(t: VariationalType) -> Self {
         match t {
-            VariationalType::Base(b) => MigrationalType::Base(b.clone()),
-            VariationalType::Var(a) => MigrationalType::Var(a.clone()),
-            VariationalType::Choice(d, t1, t2) => MigrationalType::choice(
-                *d,
-                MigrationalType::from(t1.as_ref()),
-                MigrationalType::from(t2.as_ref()),
-            ),
-            VariationalType::Fun(t1, t2) => MigrationalType::fun(
-                MigrationalType::from(t1.as_ref()),
-                MigrationalType::from(t2.as_ref()),
-            ),
+            VariationalType::Base(b) => MigrationalType::Base(b),
+            VariationalType::Var(a) => MigrationalType::Var(a),
+            VariationalType::Choice(d, t1, t2) => {
+                MigrationalType::choice(d, MigrationalType::from(*t1), MigrationalType::from(*t2))
+            }
+            VariationalType::Fun(t1, t2) => {
+                MigrationalType::fun(MigrationalType::from(*t1), MigrationalType::from(*t2))
+            }
         }
     }
 }
@@ -395,6 +428,39 @@ impl Pattern {
             },
         }
     }
+
+    pub fn valid_eliminators(self) -> HashSet<HashSet<Eliminator>> {
+        match self {
+            Pattern::Top() => HashSet::unit(HashSet::new()),
+            Pattern::Bot() => HashSet::new(),
+            Pattern::Choice(d, pi1, pi2) => {
+                let ves1: HashSet<HashSet<Eliminator>> = pi1
+                    .valid_eliminators()
+                    .into_iter()
+                    .map(|ve| ve.update(Eliminator(d, Side::Left())))
+                    .collect();
+                let ves2: HashSet<HashSet<Eliminator>> = pi2
+                    .valid_eliminators()
+                    .into_iter()
+                    .map(|ve| ve.update(Eliminator(d, Side::Right())))
+                    .collect();
+
+                ves1.union(ves2)
+            }
+        }
+    }
+}
+
+pub fn expand(elim: HashSet<Eliminator>, ds: &HashSet<&Variation>) -> HashSet<Eliminator> {
+    let mut elim = elim;
+
+    for d in ds.iter() {
+        if !elim.contains(&Eliminator(**d, Side::Left())) {
+            elim.insert(Eliminator(**d, Side::Right()));
+        }
+    }
+
+    elim
 }
 
 impl From<bool> for Pattern {
@@ -468,6 +534,7 @@ impl Subst {
         self.0.get(a)
     }
 
+    // PICK UP HERE is this what they mean?
     pub fn union(self, other: Subst) -> Subst {
         Subst(self.0.union(other.0))
     }
@@ -711,7 +778,7 @@ impl TypeInference {
                 // (b), (b*)
                 let alpha = MigrationalType::Var(a); // can't use @ patterns, unstable
 
-                if !m.vars().contains(&a) {
+                if !m.vars().contains(&a) { // occurs check!
                     if let Some(v) = m.try_variational() {
                         return (Subst::empty().extend(a, v), Pattern::Top()); // first case: direct binding
                     } else if m.is_fun() {
@@ -764,7 +831,11 @@ impl TypeInference {
                 self.unify1(Constraint::Consistent(
                     p,
                     MigrationalType::Choice(d, m1, m2),
-                    MigrationalType::choice(d, m.select(d, true), m.select(d, false)),
+                    MigrationalType::choice(
+                        d,
+                        m.select(d, Side::Left()),
+                        m.select(d, Side::Right()),
+                    ),
                 ))
             }
             Constraint::Consistent(
