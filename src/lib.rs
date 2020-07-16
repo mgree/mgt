@@ -273,6 +273,13 @@ impl MigrationalType {
         }
     }
 
+    pub fn eliminate(mut self, elim: HashSet<Eliminator>) -> MigrationalType {
+        for Eliminator(d, side) in elim.into_iter() {
+            self = self.select(d, side);
+        }
+        self
+    }
+
     pub fn is_fun(&self) -> bool {
         match self {
             MigrationalType::Fun(_, _) => true,
@@ -778,7 +785,8 @@ impl TypeInference {
                 // (b), (b*)
                 let alpha = MigrationalType::Var(a); // can't use @ patterns, unstable
 
-                if !m.vars().contains(&a) { // occurs check!
+                if !m.vars().contains(&a) {
+                    // occurs check!
                     if let Some(v) = m.try_variational() {
                         return (Subst::empty().extend(a, v), Pattern::Top()); // first case: direct binding
                     } else if m.is_fun() {
@@ -867,5 +875,23 @@ impl TypeInference {
                 (theta, Pattern::choice(d, pi1, pi2))
             }
         }
+    }
+
+    pub fn infer(&mut self, e: &Expr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
+        let mut ti = TypeInference::new();
+        let m = ti.generate_constraints(Ctx::empty(), e)?;
+
+        let (theta, pi) = ti.unify(ti.constraints.clone());
+        let m = m.clone().apply(&theta);
+
+        let ds = m.choices().clone();
+        let ves = pi
+            .clone()
+            .valid_eliminators()
+            .into_iter()
+            .map(move |ve| expand(ve, &ds))
+            .collect();
+
+        Some((m, ves))
     }
 }
