@@ -1,16 +1,45 @@
 extern crate mgt;
 
+use im_rc::HashSet;
 use mgt::*;
 
 fn main() {
     let x = Expr::Var(String::from("x"));
     let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
     let big_omega = Expr::app(little_omega.clone(), little_omega.clone());
-    println!("{:?}", big_omega);
 
+    debug_inferred_type(&little_omega);
+
+    debug_inferred_type(&big_omega);
+
+    let x = String::from("x");
+    let id = Expr::lam(x.clone(), Expr::Var(x.clone()));
+
+    debug_inferred_type(&id);
+
+    let id_dyn = Expr::lam_dyn(x.clone(), Expr::Var(x));
+
+    debug_inferred_type(&id_dyn);
+}
+
+fn debug_inferred_type(e: &Expr) {
     let mut ti = TypeInference::new();
-    println!("{:?}", ti.generate_constraints(Ctx::empty(), &little_omega));
-    println!("{:?}", ti.constraints);
+    let m = ti.generate_constraints(Ctx::empty(), e);
+    let m = match m {
+        None => {
+            println!("constraint generation failed");
+            return;
+        },
+        Some(m) => m,
+    };
+
+    let (theta, pi) = ti.unify(ti.constraints.clone());
+    let m_theta = m.clone().apply(&theta);
+
+    let ds = m_theta.choices().clone();
+    let ve: HashSet<HashSet<_>> = pi.clone().valid_eliminators().into_iter().map(move |ve| expand(ve, &ds)).collect();
+
+    println!("e = {:?}\nm = {:?}\n\t(originally {:?}\ntheta = {:?}\npi = {:?}\nves = {:?}\n", e, m_theta, m, theta, pi, ve);
 }
 
 #[cfg(test)]
@@ -24,6 +53,7 @@ mod test {
 
         let mut ti = TypeInference::new();
         let m = ti.generate_constraints(Ctx::empty(), &id).unwrap();
+        println!("{:?}", m);
         match m {
             MigrationalType::Fun(dom, cod) => assert_eq!(dom, cod),
             _ => panic!("expected function type"),
