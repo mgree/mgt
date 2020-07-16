@@ -5,7 +5,7 @@ use mgt::*;
 fn main() {
     let x = Expr::Var(String::from("x"));
     let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
-    let big_omega = Expr::app(little_omega.clone(), little_omega.clone());
+    let _big_omega = Expr::app(little_omega.clone(), little_omega.clone());
 
     debug_inferred_type(&little_omega);
 
@@ -13,12 +13,8 @@ fn main() {
 }
 
 fn debug_inferred_type(e: &Expr) {
-    let (m, ves) = TypeInference::infer(e).expect("constraint generation failed");
-
-    println!("e = {:?}", e);
-    println!("m = {:?}", m);
-    println!("ves = {:?}", ves);
-    println!("");
+    let (_m, _ves) = TypeInference::infer(e).expect("constraint generation failed");
+    eprintln!("");
 }
 
 #[cfg(test)]
@@ -127,6 +123,29 @@ mod test {
 
         assert_eq!(m, MigrationalType::Base(BaseType::Bool));
         assert_eq!(ves, HashSet::unit(HashSet::new()));
+    }
+
+    #[test]
+    pub fn infer_little_omega() {
+        let x = Expr::Var(String::from("x"));
+        let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
+
+        let (m, ves) = TypeInference::infer(&little_omega).unwrap();
+
+        assert!(m.is_fun());
+        assert!(ves.is_empty());
+    }
+
+    #[test]
+    pub fn infer_big_omega() {
+        let x = Expr::Var(String::from("x"));
+        let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
+        let big_omega = Expr::app(little_omega.clone(), little_omega.clone());
+    
+        let (_m, ves) = TypeInference::infer(&big_omega).unwrap();
+
+        // m will probably be a type variable, but who cares
+        assert!(ves.is_empty());
     }
 
     #[test]

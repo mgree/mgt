@@ -484,6 +484,13 @@ impl Constraint {
     pub fn and(self, other: Constraint) -> Constraints {
         Constraints(vec![self, other])
     }
+
+    pub fn apply(self, theta: &Subst) -> Constraint {
+        match self {
+            Constraint::Consistent(pi, m1, m2) => Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta)),
+            Constraint::Choice(d, cs1, cs2) => Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta)),
+        }
+    }
 }
 
 impl Constraints {
@@ -497,6 +504,10 @@ impl Constraints {
 
     pub fn and_many(&mut self, mut other: Constraints) {
         self.0.append(&mut other.0);
+    }
+
+    pub fn apply(self, theta: &Subst) -> Constraints {
+        Constraints(self.0.into_iter().map(|c| c.apply(theta)).collect())
     }
 }
 
@@ -541,9 +552,14 @@ impl Subst {
         self.0.get(a)
     }
 
-    // PICK UP HERE is this what they mean?
-    pub fn union(self, other: Subst) -> Subst {
-        Subst(self.0.union(other.0))
+    pub fn compose(self, other: Subst) -> Subst {
+        let composed: HashMap<_, _> = other
+            .0
+            .into_iter()
+            .map(|(a, v)| (a, v.apply(&self)))
+            .collect();
+
+        Subst(composed.union(self.0)) // prioritizes mappings in composed over self
     }
 }
 
@@ -765,8 +781,9 @@ impl TypeInference {
 
         for c in constraints.0.into_iter() {
             // (i)
-            let (theta_c, pi_c) = self.unify1(c);
-            theta = theta.union(theta_c);
+            let (theta_c, pi_c) = self.unify1(c.apply(&theta));
+
+            theta = theta_c.compose(theta);
             pi = pi.meet(pi_c);
         }
 
@@ -805,9 +822,11 @@ impl TypeInference {
                         ));
                         let (theta2, pi2) =
                             self.unify1(Constraint::Consistent(Pattern::Top(), kfun, m.clone())); // ??? MMG paper says pi2, not Top
-                        return (theta1.union(theta2), pi1.meet(pi2));
+                        return (theta2.compose(theta1), pi2.meet(pi1));
                     }
                 }
+
+                // failed occurs check! choices could let us avoid some of the branches, though...
 
                 match m.choices().iter().next() {
                     None => (Subst::empty(), Pattern::Bot()), // failure case
@@ -855,7 +874,7 @@ impl TypeInference {
                 let (theta1, pi1) = self.unify1(Constraint::Consistent(p.clone(), *m11, *m21));
                 let (theta2, pi2) = self.unify1(Constraint::Consistent(p, *m12, *m22));
 
-                (theta1.union(theta2), pi1.meet(pi2))
+                (theta2.compose(theta1), pi2.meet(pi1))
             }
             Constraint::Consistent(_p, MigrationalType::Base(b1), MigrationalType::Base(b2)) => {
                 // (e)
@@ -879,13 +898,19 @@ impl TypeInference {
 
     pub fn infer(e: &Expr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
         let mut ti = TypeInference::new();
+
         let m = ti.generate_constraints(Ctx::empty(), e)?;
 
-        eprintln!("m = {:?}", m);
-        eprintln!("constraints = {:?}", ti.constraints);
+        eprintln!("Generated constraints:");
+        eprintln!("  m = {:?}", m);
+        eprintln!("  constraints = {:?}", ti.constraints);
 
         let (theta, pi) = ti.unify(ti.constraints.clone());
         let m = m.clone().apply(&theta);
+        eprintln!("Unified constraints:");
+        eprintln!("  theta = {:?}", theta);
+        eprintln!("  pi = {:?}", pi);
+        eprintln!("  m = {:?}", m);
 
         let ds = m.choices().clone();
         let ves = pi
@@ -894,6 +919,9 @@ impl TypeInference {
             .into_iter()
             .map(move |ve| expand(ve, &ds))
             .collect();
+
+        eprintln!("Maximal valid eliminators:");
+        eprintln!("  ves = {:?}", ves);
 
         Some((m, ves))
     }
