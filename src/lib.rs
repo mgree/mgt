@@ -487,8 +487,12 @@ impl Constraint {
 
     pub fn apply(self, theta: &Subst) -> Constraint {
         match self {
-            Constraint::Consistent(pi, m1, m2) => Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta)),
-            Constraint::Choice(d, cs1, cs2) => Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta)),
+            Constraint::Consistent(pi, m1, m2) => {
+                Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
+            }
+            Constraint::Choice(d, cs1, cs2) => {
+                Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta))
+            }
         }
     }
 }
@@ -650,7 +654,7 @@ impl TypeInference {
                 // ??? MMG this rule isn't in the paper... but annotations are? :(
                 let m_cond = self.generate_constraints(ctx.clone(), e_cond)?;
                 let m_then = self.generate_constraints(ctx.clone(), e_then)?;
-                let m_else = self.generate_constraints(ctx.clone(), e_else)?;
+                let m_else = self.generate_constraints(ctx, e_else)?;
 
                 self.add_constraint(Constraint::Consistent(
                     Pattern::Top(),
@@ -658,20 +662,13 @@ impl TypeInference {
                     MigrationalType::Base(BaseType::Bool),
                 ));
 
-                let k = self.fresh_variable();
-                let m_res = MigrationalType::Var(k);
+                let (m_res, c_res, _pat_res) = self.meet(&m_then, &m_else);
 
-                self.add_constraint(Constraint::Consistent(
-                    Pattern::Top(),
-                    m_then,
-                    m_res.clone(),
-                ));
-
-                self.add_constraint(Constraint::Consistent(
-                    Pattern::Top(),
-                    m_else,
-                    m_res.clone(),
-                ));
+                eprintln!(
+                    "if constraints on {:?} and {:?}: {:?}",
+                    m_then, m_else, c_res
+                );
+                self.add_constraints(c_res);
 
                 Some(m_res)
             }
@@ -746,6 +743,51 @@ impl TypeInference {
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
+            _ => (
+                MigrationalType::Var(self.fresh_variable()),
+                Constraints::epsilon(),
+                Pattern::Bot(),
+            ),
+        }
+    }
+
+    pub fn meet(
+        &mut self,
+        m1: &MigrationalType,
+        m2: &MigrationalType,
+    ) -> (MigrationalType, Constraints, Pattern) {
+        match (m1, m2) {
+            (MigrationalType::Var(a), m) | (m, MigrationalType::Var(a)) => {
+                let alpha = MigrationalType::Var(*a);
+
+                (
+                    alpha.clone(),
+                    Constraint::Consistent(Pattern::Top(), alpha, m.clone()).into(),
+                    Pattern::Top(),
+                )
+            }
+            (MigrationalType::Dyn(), m) | (m, MigrationalType::Dyn()) => {
+                (m.clone(), Constraints::epsilon(), Pattern::Top())
+            }
+            (MigrationalType::Choice(d, m1, m2), m) | (m, MigrationalType::Choice(d, m1, m2)) => {
+                let (m1, cs1, pat1) = self.meet(m1, m);
+                let (m2, cs2, pat2) = self.meet(m2, m);
+
+                (
+                    MigrationalType::choice(*d, m1, m2),
+                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Pattern::choice(*d, pat1, pat2),
+                )
+            }
+            (MigrationalType::Fun(m11, m12), MigrationalType::Fun(m21, m22)) => {
+                let (m1, mut cs1, pat1) = self.meet(m11, m21);
+                let (m2, cs2, pat2) = self.meet(m12, m22);
+
+                cs1.and_many(cs2);
+
+                (MigrationalType::fun(m1, m2), cs1, pat1.meet(pat2))
+            }
+            (MigrationalType::Base(b1), MigrationalType::Base(b2)) if b1 == b2 => (m1.clone(), Constraints::epsilon(), Pattern::Top()),
             _ => (
                 MigrationalType::Var(self.fresh_variable()),
                 Constraints::epsilon(),
