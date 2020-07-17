@@ -249,8 +249,9 @@ impl MigrationalType {
     }
 
     pub fn choice(d: Variation, m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
-        // MMG: no smart constructor, since case (b) of unification needs to generate choices with identical branches!
-        MigrationalType::Choice(d, Box::new(m1), Box::new(m2))
+        // reduced smart constructor, since case (b) of unification needs to generate choices with identical branches!
+        // we _do_ project the inner types to the appropriate side of that variation, though
+        MigrationalType::Choice(d, Box::new(m1.select(d, Side::Left())), Box::new(m2.select(d, Side::Right())))
     }
 
     pub fn select(&self, d: Variation, side: Side) -> MigrationalType {
