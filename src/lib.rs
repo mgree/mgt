@@ -54,26 +54,31 @@ impl TypeInference {
         self.pattern = self.pattern.meet(p);
     }
 
-    pub fn generate_constraints(&mut self, ctx: Ctx, e: &Expr) -> Option<MigrationalType> {
+    pub fn generate_constraints(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<MigrationalType> {
         match e {
             Expr::Const(c) => Some(c.into()),
             Expr::Var(x) => ctx.lookup(x).cloned(),
-            Expr::Lam(x, e) => {
-                let m_dom = MigrationalType::Var(self.fresh_variable());
-                let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
-
-                Some(MigrationalType::fun(m_dom, m_cod))
-            }
-            Expr::LamDyn(x, e) => {
-                let d = self.fresh_variation();
-                let m_dom = MigrationalType::choice(
-                    d,
-                    MigrationalType::Dyn(),
-                    MigrationalType::Var(self.fresh_variable()),
-                );
-                let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
-
-                Some(MigrationalType::fun(m_dom, m_cod))
+            Expr::Lam(x, t, e) => {
+                match t {
+                    Some(GradualType::Dyn()) => {
+                        let d = self.fresh_variation();
+                        let m_dom = MigrationalType::choice(
+                            d,
+                            MigrationalType::Dyn(),
+                            MigrationalType::Var(self.fresh_variable()),
+                        );
+                        let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
+        
+                        Some(MigrationalType::fun(m_dom, m_cod))
+                    },
+                    Some(_t) => unimplemented!(),
+                    None => {
+                        let m_dom = MigrationalType::Var(self.fresh_variable());
+                        let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
+        
+                        Some(MigrationalType::fun(m_dom, m_cod))
+                    }
+                }
             }
             Expr::App(e_fun, e_arg) => {
                 let m_fun = self.generate_constraints(ctx.clone(), e_fun)?;
@@ -376,7 +381,7 @@ impl TypeInference {
         }
     }
 
-    pub fn infer(e: &Expr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
+    pub fn infer(e: &SourceExpr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
         let mut ti = TypeInference::new();
 
         let m = ti.generate_constraints(Ctx::empty(), e)?;
