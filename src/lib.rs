@@ -71,7 +71,11 @@ impl TypeInference {
         
                         Some(MigrationalType::fun(m_dom, m_cod))
                     },
-                    Some(_t) => unimplemented!(),
+                    Some(m_dom) => {
+                        let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
+
+                        Some(MigrationalType::fun(m_dom.clone().into(), m_cod))
+                    }   
                     None => {
                         let m_dom = MigrationalType::Var(self.fresh_variable());
                         let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;

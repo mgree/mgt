@@ -28,6 +28,15 @@ mod test {
         Expr::lam(x.clone(), None, Expr::Var(x))
     }
 
+    fn bool_identity() -> SourceExpr {
+        let x = String::from("x");
+        Expr::lam(
+            x.clone(),
+            Some(GradualType::Base(BaseType::Bool)),
+            Expr::Var(x),
+        )
+    }
+
     fn dyn_identity() -> SourceExpr {
         let x = String::from("x");
         Expr::lam(x.clone(), Some(GradualType::Dyn()), Expr::Var(x))
@@ -242,6 +251,23 @@ mod test {
 
         // m will probably be a type variable, but who cares
         assert!(ves.is_empty());
+    }
+
+    #[test]
+    pub fn infer_bool_id() {
+        let (m, ves) = TypeInference::infer(&bool_identity()).unwrap();
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        assert!(ve.is_empty());
+
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Bool),
+                MigrationalType::Base(BaseType::Bool)
+            )
+        );
     }
 
     #[test]
