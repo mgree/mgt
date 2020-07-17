@@ -1,6 +1,7 @@
 extern crate mgt;
 
 use mgt::*;
+use mgt::syntax::*;
 
 fn main() {
     let x = Expr::Var(String::from("x"));
