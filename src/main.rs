@@ -271,6 +271,39 @@ mod test {
     }
 
     #[test]
+    pub fn eg_width() {
+        let fixed: String = "fixed".into();
+        let width_func: String = "width_func".into();
+
+        let width: SourceExpr = Expr::lam(
+            fixed.clone(),
+            Some(GradualType::Dyn()),
+            Expr::lam(
+                width_func.clone(),
+                Some(GradualType::Dyn()),
+                Expr::if_(
+                    Expr::Var(fixed.clone()),
+                    Expr::app(Expr::Var(width_func.clone()), Expr::Var(fixed.clone())),
+                    Expr::app(Expr::Var(width_func.clone()), Expr::Const(Constant::Int(5))),
+                ),
+            ),
+        );
+
+        let (m, ves) = TypeInference::infer(&width).unwrap();
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Bool),
+                MigrationalType::fun(MigrationalType::Dyn(), MigrationalType::Dyn())
+            )
+        );
+    }
+
+    #[test]
     pub fn subst_merge() {
         let mut ti = TypeInference::new();
         let a = ti.fresh_variable();

@@ -90,10 +90,10 @@ pub enum Expr<T> {
     Const(Constant),
     Var(Variable),
     Lam(Variable, T, Box<Expr<T>>),
+    Ann(Box<Expr<T>>, T),
     App(Box<Expr<T>>, Box<Expr<T>>),
     If(Box<Expr<T>>, Box<Expr<T>>, Box<Expr<T>>),
     // TODO operations on constants
-    // TODO explicitly typed lambdas
     // TODO ascriptions
 }
 
@@ -110,6 +110,10 @@ impl<T> Expr<T> {
 
     pub fn lam(v: Variable, t: T, e: Expr<T>) -> Expr<T> {
         Expr::Lam(v, t, Box::new(e))
+    }
+
+    pub fn ann(e: Expr<T>, t: T) -> Expr<T> {
+        Expr::Ann(Box::new(e), t)
     }
 
     pub fn app(e1: Expr<T>, e2: Expr<T>) -> Expr<T> {

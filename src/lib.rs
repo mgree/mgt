@@ -84,6 +84,23 @@ impl TypeInference {
                     }
                 }
             }
+            Expr::Ann(e, t) => {
+                let m = self.generate_constraints(ctx, e)?;
+
+                match t {
+                    Some(GradualType::Dyn()) => {
+                        let d = self.fresh_variation();
+                        
+                        Some(MigrationalType::choice(d, MigrationalType::Dyn(), m))
+                    }
+                    Some(t) => {
+                        self.add_constraint(Constraint::Consistent(Pattern::Top(), m, t.clone().into()));
+
+                        Some(t.clone().into())
+                    }
+                    None => Some(m)
+                }
+            }
             Expr::App(e_fun, e_arg) => {
                 let m_fun = self.generate_constraints(ctx.clone(), e_fun)?;
                 let m_arg = self.generate_constraints(ctx, e_arg)?;
