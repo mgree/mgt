@@ -22,12 +22,35 @@ mod test {
     use super::*;
     use im_rc::HashSet;
 
+    fn identity() -> Expr {
+        let x = String::from("x");
+        Expr::lam(x.clone(), Expr::Var(x))
+    }
+
+    fn dyn_identity() -> Expr {
+        let x = String::from("x");
+        Expr::lam_dyn(x.clone(), Expr::Var(x))
+    }
+
+    fn neg() -> Expr {
+        let b = String::from("b");
+        Expr::lam(
+            b.clone(),
+            Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
+        )
+    }
+
+    fn dyn_neg() -> Expr {
+        let b = String::from("b");
+        Expr::lam_dyn(
+            b.clone(),
+            Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
+        )
+    }
+
     #[test]
     pub fn infer_identity() {
-        let x = String::from("x");
-        let id = Expr::lam(x.clone(), Expr::Var(x));
-
-        let (m, ves) = TypeInference::infer(&id).unwrap();
+        let (m, ves) = TypeInference::infer(&identity()).unwrap();
         match m {
             MigrationalType::Fun(dom, cod) => match (*dom, *cod) {
                 (MigrationalType::Var(a_dom), MigrationalType::Var(a_cod)) => {
@@ -42,10 +65,7 @@ mod test {
 
     #[test]
     pub fn infer_dyn_identity() {
-        let x = String::from("x");
-        let id = Expr::lam_dyn(x.clone(), Expr::Var(x));
-
-        let (m, ves) = TypeInference::infer(&id).unwrap();
+        let (m, ves) = TypeInference::infer(&dyn_identity()).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
@@ -97,13 +117,7 @@ mod test {
 
     #[test]
     pub fn infer_boolean_negation() {
-        let b = String::from("b");
-        let neg = Expr::lam(
-            b.clone(),
-            Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
-        );
-
-        let (m, ves) = TypeInference::infer(&neg).unwrap();
+        let (m, ves) = TypeInference::infer(&neg()).unwrap();
 
         assert_eq!(
             m,
@@ -117,13 +131,7 @@ mod test {
 
     #[test]
     pub fn infer_dyn_boolean_negation() {
-        let b = String::from("b");
-        let neg = Expr::lam_dyn(
-            b.clone(),
-            Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
-        );
-
-        let (m, ves) = TypeInference::infer(&neg).unwrap();
+        let (m, ves) = TypeInference::infer(&dyn_neg()).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
@@ -151,6 +159,61 @@ mod test {
     }
 
     #[test]
+    pub fn infer_neg_or_id() {
+        let e = Expr::if_(Expr::bool(true), dyn_neg(), dyn_identity());
+
+        let (m, ves) = TypeInference::infer(&e).unwrap();
+        // just one maximal eliminator
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        // assigns the static type (narrowing id!)
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Bool),
+                MigrationalType::Base(BaseType::Bool)
+            )
+        );
+    }
+
+    #[test]
+    pub fn infer_very_dynamic() {
+        let x = String::from("x");
+        let y = String::from("y");
+        let e = Expr::lam_dyn(
+            x.clone(),
+            Expr::lam_dyn(
+                y.clone(),
+                Expr::if_(
+                    Expr::Var(x.clone()),
+                    Expr::app(Expr::Var(y.clone()), Expr::Var(x)),
+                    Expr::app(neg(), Expr::Var(y)),
+                ),
+            ),
+        );
+
+        let (m, ves) = TypeInference::infer(&e).unwrap();
+
+        // just one maximal eliminator
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Bool),
+                MigrationalType::fun(
+                    MigrationalType::Dyn(),
+                    MigrationalType::Base(BaseType::Bool)
+                )
+            )
+        );
+    }
+
+    #[test]
     pub fn infer_little_omega() {
         let x = Expr::Var(String::from("x"));
         let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
@@ -166,7 +229,6 @@ mod test {
         let x = Expr::Var(String::from("x"));
         let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
         let big_omega = Expr::app(little_omega.clone(), little_omega.clone());
-    
         let (_m, ves) = TypeInference::infer(&big_omega).unwrap();
 
         // m will probably be a type variable, but who cares

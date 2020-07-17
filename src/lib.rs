@@ -1,3 +1,4 @@
+use std::hash::Hash;
 use im_rc::HashMap;
 use im_rc::HashSet;
 use std::iter::FromIterator;
@@ -415,11 +416,28 @@ impl From<&Constant> for MigrationalType {
 }
 
 impl Pattern {
+    pub fn select(self, d: Variation, side: Side) -> Pattern {
+        match self {
+            Pattern::Bot() => Pattern::Bot(),
+            Pattern::Top() => Pattern::Top(),
+            Pattern::Choice(d2, pat1, pat2) => {
+                if d == d2 {
+                    match side {
+                        Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once
+                        Side::Right() => *pat2,
+                    }
+                } else {
+                    Pattern::Choice(d2, Box::new(pat1.select(d, side)), Box::new(pat2.select(d, side)))
+                }
+            }
+        }
+    }
+
     pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
         if pat1 == pat2 {
             pat1
         } else {
-            Pattern::Choice(d, Box::new(pat1), Box::new(pat2))
+            Pattern::Choice(d, Box::new(pat1.select(d, Side::Left())), Box::new(pat2.select(d, Side::Right())))
         }
     }
 
