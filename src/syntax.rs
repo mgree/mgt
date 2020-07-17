@@ -94,7 +94,6 @@ pub enum Expr<T> {
     App(Box<Expr<T>>, Box<Expr<T>>),
     If(Box<Expr<T>>, Box<Expr<T>>, Box<Expr<T>>),
     // TODO operations on constants
-    // TODO ascriptions
 }
 
 pub type SourceExpr = Expr<Option<GradualType>>;
