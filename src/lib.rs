@@ -225,7 +225,29 @@ impl VariationalType {
     }
 
     pub fn choice(d: Variation, v1: VariationalType, v2: VariationalType) -> VariationalType {
-        VariationalType::Choice(d, Box::new(v1), Box::new(v2))
+        // reduced smart constructor, since case (b) of unification needs to generate choices with identical branches!
+        // we _do_ project the inner types to the appropriate side of that variation, though
+        VariationalType::Choice(d, Box::new(v1.select(d, Side::Left())), Box::new(v2.select(d, Side::Right())))
+    }
+
+    pub fn select(&self, d: Variation, side: Side) -> VariationalType {
+        match self {
+            VariationalType::Base(b) => VariationalType::Base(b.clone()),
+            VariationalType::Var(a) => VariationalType::Var(*a),
+            VariationalType::Fun(v1, v2) => {
+                VariationalType::fun(v1.select(d, side), v2.select(d, side))
+            }
+            VariationalType::Choice(d2, v1, v2) => {
+                if d == *d2 {
+                    match side {
+                        Side::Left() => v1.select(d, side),
+                        Side::Right() => v2.select(d, side),
+                    }
+                } else {
+                    VariationalType::choice(*d2, v1.select(d, side), v2.select(d, side))
+                }
+            }
+        }
     }
 
     pub fn apply(self, theta: &Subst) -> VariationalType {
