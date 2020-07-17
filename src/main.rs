@@ -272,7 +272,7 @@ mod test {
 
     #[test]
     pub fn ill_typed_ann() {
-        let (m, ves) = TypeInference::infer(&Expr::ann(
+        let (_m, ves) = TypeInference::infer(&Expr::ann(
             Expr::Const(Constant::Int(5)),
             Some(GradualType::Base(BaseType::Bool)),
         ))
