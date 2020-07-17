@@ -193,6 +193,15 @@ impl GradualType {
             }
         }
     }
+
+    pub fn has_dyn(&self) -> bool {
+        match self {
+            GradualType::Dyn() => true,
+            GradualType::Fun(g1, g2) => g1.has_dyn() || g2.has_dyn(),
+            GradualType::Base(_) => false,
+            GradualType::Var(_) => false,
+        }
+    }
 }
 
 impl From<&StaticType> for GradualType {
@@ -422,7 +431,7 @@ impl From<&Constant> for MigrationalType {
     fn from(c: &Constant) -> Self {
         match c {
             Constant::Bool(_) => MigrationalType::Base(BaseType::Bool),
-            Constant::Int(_) => MigrationalType::Base(BaseType::Bool),
+            Constant::Int(_) => MigrationalType::Base(BaseType::Int),
         }
     }
 }

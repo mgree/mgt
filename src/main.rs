@@ -271,6 +271,42 @@ mod test {
     }
 
     #[test]
+    pub fn ill_typed_ann() {
+        let (m, ves) = TypeInference::infer(&Expr::ann(
+            Expr::Const(Constant::Int(5)),
+            Some(GradualType::Base(BaseType::Bool)),
+        ))
+        .unwrap();
+
+        assert_eq!(ves.len(), 0);
+    }
+
+    #[test]
+    pub fn well_typed_ann() {
+        let (m, ves) = TypeInference::infer(&Expr::lam(
+            "x".into(),
+            Some(GradualType::Dyn()),
+            Expr::ann(
+                Expr::Var("x".into()),
+                Some(GradualType::Base(BaseType::Int)),
+            ),
+        ))
+        .unwrap();
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Int),
+                MigrationalType::Base(BaseType::Int)
+            )
+        );
+    }
+
+    #[test]
     pub fn eg_width() {
         let fixed: String = "fixed".into();
         let width_func: String = "width_func".into();
