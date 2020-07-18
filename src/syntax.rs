@@ -78,7 +78,7 @@ pub enum Pattern {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
     Bool(bool),
-    Int(usize),
+    Int(isize),
 }
 
 /// x
@@ -103,7 +103,7 @@ impl Expr {
         Expr::Const(Constant::Bool(b))
     }
 
-    pub fn int(n: usize) -> Expr {
+    pub fn int(n: isize) -> Expr {
         Expr::Const(Constant::Int(n))
     }
 
@@ -420,7 +420,7 @@ impl From<&Constant> for MigrationalType {
     fn from(c: &Constant) -> Self {
         match c {
             Constant::Bool(_) => MigrationalType::Base(BaseType::Bool),
-            Constant::Int(_) => MigrationalType::Base(BaseType::Bool),
+            Constant::Int(_) => MigrationalType::Base(BaseType::Int),
         }
     }
 }

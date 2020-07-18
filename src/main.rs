@@ -215,6 +215,25 @@ mod test {
     }
 
     #[test]
+    pub fn infer_constants() {
+        check_constant(Constant::Bool(true), BaseType::Bool);
+        check_constant(Constant::Bool(false), BaseType::Bool);
+        check_constant(Constant::Int(0), BaseType::Int);
+        check_constant(Constant::Int(6), BaseType::Int);
+        check_constant(Constant::Int(-47), BaseType::Int);
+    }
+
+    fn check_constant(c: Constant, b: BaseType) {
+        let (m, ves) = TypeInference::infer(&Expr::Const(c)).unwrap();
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        assert!(ve.is_empty());
+
+        assert_eq!(m, MigrationalType::Base(b));
+    }
+
+    #[test]
     pub fn infer_little_omega() {
         let x = Expr::Var(String::from("x"));
         let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
