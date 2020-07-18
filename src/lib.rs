@@ -8,20 +8,12 @@ use syntax::*;
 pub struct TypeInference {
     next_variable: usize,
     next_variation: usize,
-    pub pattern: Pattern,
-    pub constraints: Constraints,
+    pattern: Pattern,
+    constraints: Constraints,
 }
 
 impl TypeInference {
-    pub fn new() -> TypeInference {
-        /* TODO really, we need to associate these inferred types with bindings
-           in the term... which means that fresh variables might need to start
-           later (or we expand our variables have a notion of name)
-
-           one nice approach: allow type annotations on lambdas, but `generate_constraints`
-           mutates the expression as it goes, setting the annotations to fresh
-           type variables on unannotated binders
-        */
+    fn new() -> TypeInference {
         TypeInference {
             next_variable: 0,
             next_variation: 0,
@@ -30,13 +22,13 @@ impl TypeInference {
         }
     }
 
-    pub fn fresh_variable(&mut self) -> TypeVariable {
+    fn fresh_variable(&mut self) -> TypeVariable {
         let next = self.next_variable;
         self.next_variable += 1;
         TypeVariable(next)
     }
 
-    pub fn fresh_variation(&mut self) -> Variation {
+    fn fresh_variation(&mut self) -> Variation {
         let next = self.next_variation;
         self.next_variation += 1;
         Variation(next)
@@ -54,10 +46,13 @@ impl TypeInference {
         self.pattern = self.pattern.meet(p);
     }
 
-    pub fn generate_constraints(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<MigrationalType> {
+    fn generate_constraints(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<(TargetExpr, MigrationalType)> {
         match e {
-            Expr::Const(c) => Some(c.into()),
-            Expr::Var(x) => ctx.lookup(x).cloned(),
+            Expr::Const(c) => Some((Expr::Const(c.clone()), c.into())),
+            Expr::Var(x) => {
+                let m = ctx.lookup(x).cloned()?;
+                Some((Expr::Var(x.clone()), m))
+            }
             Expr::Lam(x, t, e) => match t {
                 Some(GradualType::Dyn()) => {
                     let d = self.fresh_variation();
@@ -66,27 +61,28 @@ impl TypeInference {
                         MigrationalType::Dyn(),
                         MigrationalType::Var(self.fresh_variable()),
                     );
-                    let m_cod =
+                    let (e, m_cod) =
                         self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-                    Some(MigrationalType::fun(m_dom, m_cod))
+                    Some((Expr::lam(x.clone(), m_dom.clone(), e), MigrationalType::fun(m_dom, m_cod)))
                 }
                 Some(m_dom) => {
-                    let m_cod =
+                    let (e, m_cod) =
                         self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
 
-                    Some(MigrationalType::fun(m_dom.clone().into(), m_cod))
+                    let m_dom: MigrationalType = m_dom.clone().into();
+                    Some((Expr::lam(x.clone(), m_dom.clone(), e), MigrationalType::fun(m_dom, m_cod)))
                 }
                 None => {
                     let m_dom = MigrationalType::Var(self.fresh_variable());
-                    let m_cod =
+                    let (e, m_cod) =
                         self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-                    Some(MigrationalType::fun(m_dom, m_cod))
+                    Some((Expr::lam(x.clone(), m_dom.clone(), e), MigrationalType::fun(m_dom, m_cod)))
                 }
             },
             Expr::Ann(e, t) => {
-                let m = self.generate_constraints(ctx, e)?;
+                let (e, m) = self.generate_constraints(ctx, e)?;
 
                 match t {
                     Some(t) => {
@@ -101,18 +97,18 @@ impl TypeInference {
 
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
-                            m,
+                            m.clone(),
                             m_ann.clone(),
                         ));
 
-                        Some(m_ann)
+                        Some((Expr::ann(e, m), m_ann))
                     }
-                    None => Some(m),
+                    None => Some((e, m)),
                 }
             }
             Expr::App(e_fun, e_arg) => {
-                let m_fun = self.generate_constraints(ctx.clone(), e_fun)?;
-                let m_arg = self.generate_constraints(ctx, e_arg)?;
+                let (e_fun, m_fun) = self.generate_constraints(ctx.clone(), e_fun)?;
+                let (e_arg, m_arg) = self.generate_constraints(ctx, e_arg)?;
 
                 let (m_res, cs_res, pat_res) = self.cod(&m_fun);
                 self.add_constraints(cs_res);
@@ -121,13 +117,13 @@ impl TypeInference {
                 self.add_constraints(cs_arg);
                 self.add_pattern(pat_arg);
 
-                Some(m_res)
+                Some((Expr::app(e_fun, e_arg), m_res))
             }
             Expr::If(e_cond, e_then, e_else) => {
                 // ??? MMG this rule isn't in the paper... but annotations are? :(
-                let m_cond = self.generate_constraints(ctx.clone(), e_cond)?;
-                let m_then = self.generate_constraints(ctx.clone(), e_then)?;
-                let m_else = self.generate_constraints(ctx, e_else)?;
+                let (e_cond, m_cond) = self.generate_constraints(ctx.clone(), e_cond)?;
+                let (e_then, m_then) = self.generate_constraints(ctx.clone(), e_then)?;
+                let (e_else, m_else) = self.generate_constraints(ctx, e_else)?;
 
                 self.add_constraint(Constraint::Consistent(
                     Pattern::Top(),
@@ -143,7 +139,7 @@ impl TypeInference {
                 );
                 self.add_constraints(c_res);
 
-                Some(m_res)
+                Some((Expr::if_(e_cond, e_then, e_else), m_res))
             }
         }
     }
@@ -238,7 +234,7 @@ impl TypeInference {
         }
     }
 
-    pub fn meet(
+    fn meet(
         &mut self,
         m1: &MigrationalType,
         m2: &MigrationalType,
@@ -285,7 +281,7 @@ impl TypeInference {
         }
     }
 
-    pub fn merge(&mut self, d: Variation, theta1: Subst, theta2: Subst) -> Subst {
+    fn merge(&mut self, d: Variation, theta1: Subst, theta2: Subst) -> Subst {
         let dom1: HashSet<&TypeVariable> = HashSet::from_iter(theta1.0.keys());
         let dom2: HashSet<&TypeVariable> = HashSet::from_iter(theta2.0.keys());
 
@@ -305,7 +301,7 @@ impl TypeInference {
         Subst(map)
     }
 
-    pub fn unify(&mut self, constraints: Constraints) -> (Subst, Pattern) {
+    fn unify(&mut self, constraints: Constraints) -> (Subst, Pattern) {
         // (g)
         let mut theta = Subst::empty();
         let mut pi = Pattern::Top();
@@ -427,12 +423,13 @@ impl TypeInference {
         }
     }
 
-    pub fn infer(e: &SourceExpr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
+    pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<HashSet<Eliminator>>)> {
         let mut ti = TypeInference::new();
 
-        let m = ti.generate_constraints(Ctx::empty(), e)?;
+        let (e, m) = ti.generate_constraints(Ctx::empty(), e)?;
 
         eprintln!("Generated constraints:");
+        eprintln!("  e = {:?}", e);
         eprintln!("  m = {:?}", m);
         eprintln!("  constraints = {:?}", ti.constraints);
 
@@ -442,8 +439,10 @@ impl TypeInference {
         }
 
         let (theta, pi) = ti.unify(ti.constraints.clone());
+        let e = e.apply(&theta);
         let m = m.clone().apply(&theta);
         eprintln!("Unified constraints:");
+        eprintln!("  e = {:?}", e);
         eprintln!("  theta = {:?}", theta);
         eprintln!("  pi = {:?}", pi);
         eprintln!("  m = {:?}", m);
@@ -459,6 +458,71 @@ impl TypeInference {
         eprintln!("Maximal valid eliminators:");
         eprintln!("  ves = {:?}", ves);
 
-        Some((m, ves))
+        Some((e, m, ves))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn subst_merge() {
+        let mut ti = TypeInference::new();
+        let a = ti.fresh_variable();
+        let b = ti.fresh_variable();
+        let c = ti.fresh_variable();
+        let e = ti.fresh_variable();
+
+        let theta1 = Subst::empty()
+            .extend(a, VariationalType::Base(BaseType::Bool))
+            .extend(b, VariationalType::Base(BaseType::Int));
+        let theta2 = Subst::empty()
+            .extend(
+                a,
+                VariationalType::fun(
+                    VariationalType::Base(BaseType::Int),
+                    VariationalType::Base(BaseType::Int),
+                ),
+            )
+            .extend(c, VariationalType::Base(BaseType::Bool));
+
+        let d = ti.fresh_variation();
+        let theta = ti.merge(d, theta1.clone(), theta2.clone());
+
+        assert_eq!(
+            theta.lookup(&a).unwrap(),
+            &VariationalType::choice(
+                d,
+                theta1.lookup(&a).unwrap().clone(),
+                theta2.lookup(&a).unwrap().clone()
+            )
+        );
+
+        match theta.lookup(&b).unwrap() {
+            VariationalType::Choice(d2, v1, v2) => {
+                assert_eq!(*d2, d);
+                assert_eq!(**v1, theta1.lookup(&b).unwrap().clone());
+                match **v2 {
+                    VariationalType::Var(_) => (),
+                    _ => panic!("expected type variable, got {:?}", v2),
+                }
+            }
+            v => panic!("expected variational choice, got {:?}", v),
+        }
+
+        match theta.lookup(&c).unwrap() {
+            VariationalType::Choice(d2, v1, v2) => {
+                assert_eq!(*d2, d);
+                match **v1 {
+                    VariationalType::Var(_) => (),
+                    _ => panic!("expected type variable, got {:?}", v2),
+                }
+                assert_eq!(**v2, theta2.lookup(&c).unwrap().clone());
+            }
+            v => panic!("expected variational choice, got {:?}", v),
+        }
+
+        assert_eq!(theta.lookup(&e), None);
     }
 }
