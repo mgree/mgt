@@ -4,6 +4,8 @@ use std::hash::Hash;
 use im_rc::HashMap;
 use im_rc::HashSet;
 
+lalrpop_mod!(pub parser);
+
 /// gamma
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseType {
@@ -657,5 +659,18 @@ impl Subst {
             .collect();
 
         Subst(composed.union(self.0)) // prioritizes mappings in composed over self
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn const_int() {
+        assert!(parser::TermParser::new().parse("22").is_ok());
+        assert!(parser::TermParser::new().parse("(22)").is_ok());
+        assert!(parser::TermParser::new().parse("((((22))))").is_ok());
+        assert!(parser::TermParser::new().parse("((22)").is_err());
     }
 }

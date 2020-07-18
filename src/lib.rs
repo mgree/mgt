@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lalrpop_util;
+
 use im_rc::HashMap;
 use im_rc::HashSet;
 use std::iter::FromIterator;
