@@ -81,18 +81,41 @@ mod test {
 
     #[test]
     pub fn infer_dyn_identity() {
-        let (_e, m, ves) = TypeInference::infer(&dyn_identity()).unwrap();
+        let (e, m, ves) = TypeInference::infer(&dyn_identity()).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
+
+        let (d, a) = match e {
+            Expr::Lam(x, MigrationalType::Choice(d, m1, m2), e) => {
+                assert_eq!(*m1, MigrationalType::Dyn());
+                let y = match *e {
+                    Expr::Var(y) => y,
+                    _ => panic!("expected variable as lambda body"),
+                };
+
+                assert_eq!(x, y);
+                let a = match *m2 {
+                    MigrationalType::Var(a) => a,
+                    _ => panic!("expected type variable in right choice"),
+                };
+
+                (d, a)
+            }
+            _ => panic!("expected id function at dyn or a -> a"),
+        };
+
+        assert_eq!(ve, &HashSet::unit(Eliminator(d, Side::Right())));
+
         let m = m.eliminate(ve);
 
         // should be given the true identity type
         match m {
             MigrationalType::Fun(dom, cod) => match (*dom, *cod) {
                 (MigrationalType::Var(a_dom), MigrationalType::Var(a_cod)) => {
-                    assert_eq!(a_dom, a_cod)
+                    assert_eq!(a_dom, a);
+                    assert_eq!(a_cod, a);
                 }
                 _ => panic!("expected identical variables in domain and codomain"),
             },
@@ -330,7 +353,8 @@ mod test {
             TypeInference::infer(&Expr::app(
                 Expr::Const(Constant::Bool(true)),
                 Expr::Const(Constant::Bool(false)),
-            )).is_none(),
+            ))
+            .is_none(),
             "type inference should fail"
         );
     }
