@@ -14,8 +14,7 @@ fn main() {
 }
 
 fn debug_inferred_type(e: &SourceExpr) {
-    let (_m, _ves) = TypeInference::infer(e).expect("constraint generation failed");
-    eprintln!("");
+    let (_e, _m, _ves) = TypeInference::infer(e).expect("constraint generation failed");
 }
 
 #[cfg(test)]
@@ -67,7 +66,7 @@ mod test {
 
     #[test]
     pub fn infer_identity() {
-        let (m, ves) = TypeInference::infer(&identity()).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&identity()).unwrap();
         match m {
             MigrationalType::Fun(dom, cod) => match (*dom, *cod) {
                 (MigrationalType::Var(a_dom), MigrationalType::Var(a_cod)) => {
@@ -82,18 +81,41 @@ mod test {
 
     #[test]
     pub fn infer_dyn_identity() {
-        let (m, ves) = TypeInference::infer(&dyn_identity()).unwrap();
+        let (e, m, ves) = TypeInference::infer(&dyn_identity()).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
+
+        let (d, a) = match e {
+            Expr::Lam(x, MigrationalType::Choice(d, m1, m2), e) => {
+                assert_eq!(*m1, MigrationalType::Dyn());
+                let y = match *e {
+                    Expr::Var(y) => y,
+                    _ => panic!("expected variable as lambda body"),
+                };
+
+                assert_eq!(x, y);
+                let a = match *m2 {
+                    MigrationalType::Var(a) => a,
+                    _ => panic!("expected type variable in right choice"),
+                };
+
+                (d, a)
+            }
+            _ => panic!("expected id function at dyn or a -> a"),
+        };
+
+        assert_eq!(ve, &HashSet::unit(Eliminator(d, Side::Right())));
+
         let m = m.eliminate(ve);
 
         // should be given the true identity type
         match m {
             MigrationalType::Fun(dom, cod) => match (*dom, *cod) {
                 (MigrationalType::Var(a_dom), MigrationalType::Var(a_cod)) => {
-                    assert_eq!(a_dom, a_cod)
+                    assert_eq!(a_dom, a);
+                    assert_eq!(a_cod, a);
                 }
                 _ => panic!("expected identical variables in domain and codomain"),
             },
@@ -111,11 +133,11 @@ mod test {
             Expr::lam(y, Some(GradualType::Dyn()), Expr::Var(x)),
         );
 
-        let (m, ves) = TypeInference::infer(&k).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&k).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
         // should be given the type a -> b -> a
@@ -138,7 +160,7 @@ mod test {
 
     #[test]
     pub fn infer_boolean_negation() {
-        let (m, ves) = TypeInference::infer(&neg()).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&neg()).unwrap();
 
         assert_eq!(
             m,
@@ -152,11 +174,11 @@ mod test {
 
     #[test]
     pub fn infer_dyn_boolean_negation() {
-        let (m, ves) = TypeInference::infer(&dyn_neg()).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&dyn_neg()).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
         // assigns the static type
@@ -173,7 +195,7 @@ mod test {
     pub fn infer_conditional() {
         let e = Expr::if_(Expr::bool(true), Expr::bool(false), Expr::bool(true));
 
-        let (m, ves) = TypeInference::infer(&e).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&e).unwrap();
 
         assert_eq!(m, MigrationalType::Base(BaseType::Bool));
         assert_eq!(ves, HashSet::unit(HashSet::new()));
@@ -183,10 +205,10 @@ mod test {
     pub fn infer_neg_or_id() {
         let e = Expr::if_(Expr::bool(true), dyn_neg(), dyn_identity());
 
-        let (m, ves) = TypeInference::infer(&e).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&e).unwrap();
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
         // assigns the static type (narrowing id!)
@@ -217,11 +239,11 @@ mod test {
             ),
         );
 
-        let (m, ves) = TypeInference::infer(&e).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&e).unwrap();
 
         // just one maximal eliminator
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
         assert_eq!(
@@ -246,10 +268,10 @@ mod test {
     }
 
     fn check_constant(c: Constant, b: BaseType) {
-        let (m, ves) = TypeInference::infer(&Expr::Const(c)).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&Expr::Const(c)).unwrap();
 
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         assert!(ve.is_empty());
 
         assert_eq!(m, MigrationalType::Base(b));
@@ -257,7 +279,7 @@ mod test {
 
     #[test]
     pub fn infer_little_omega() {
-        let (m, ves) = TypeInference::infer(&little_omega()).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&little_omega()).unwrap();
 
         assert!(m.is_fun());
         assert!(ves.is_empty());
@@ -266,7 +288,7 @@ mod test {
     #[test]
     pub fn infer_big_omega() {
         let big_omega = Expr::app(little_omega(), little_omega());
-        let (_m, ves) = TypeInference::infer(&big_omega).unwrap();
+        let (_e, _m, ves) = TypeInference::infer(&big_omega).unwrap();
 
         // m will probably be a type variable, but who cares
         assert!(ves.is_empty());
@@ -274,10 +296,10 @@ mod test {
 
     #[test]
     pub fn infer_bool_id() {
-        let (m, ves) = TypeInference::infer(&bool_identity()).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&bool_identity()).unwrap();
 
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         assert!(ve.is_empty());
 
         assert_eq!(
@@ -291,7 +313,7 @@ mod test {
 
     #[test]
     pub fn ill_typed_ann() {
-        let (_m, ves) = TypeInference::infer(&Expr::ann(
+        let (_e, _m, ves) = TypeInference::infer(&Expr::ann(
             Expr::Const(Constant::Int(5)),
             Some(GradualType::Base(BaseType::Bool)),
         ))
@@ -302,7 +324,7 @@ mod test {
 
     #[test]
     pub fn well_typed_ann() {
-        let (m, ves) = TypeInference::infer(&Expr::lam(
+        let (_e, m, ves) = TypeInference::infer(&Expr::lam(
             "x".into(),
             Some(GradualType::Dyn()),
             Expr::ann(
@@ -313,7 +335,7 @@ mod test {
         .unwrap();
 
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
         assert_eq!(
@@ -327,10 +349,14 @@ mod test {
 
     #[test]
     pub fn infer_bad_constraints() {
-        assert_eq!(None, TypeInference::infer(&Expr::app(
-            Expr::Const(Constant::Bool(true)),
-            Expr::Const(Constant::Bool(false)),
-        )), "type inference should fail");
+        assert!(
+            TypeInference::infer(&Expr::app(
+                Expr::Const(Constant::Bool(true)),
+                Expr::Const(Constant::Bool(false)),
+            ))
+            .is_none(),
+            "type inference should fail"
+        );
     }
 
     #[test]
@@ -352,9 +378,9 @@ mod test {
             ),
         );
 
-        let (m, ves) = TypeInference::infer(&width).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&width).unwrap();
         assert_eq!(ves.len(), 1);
-        let ve = ves.into_iter().next().unwrap();
+        let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
         assert_eq!(
@@ -364,65 +390,5 @@ mod test {
                 MigrationalType::fun(MigrationalType::Dyn(), MigrationalType::Dyn())
             )
         );
-    }
-
-    #[test]
-    pub fn subst_merge() {
-        let mut ti = TypeInference::new();
-        let a = ti.fresh_variable();
-        let b = ti.fresh_variable();
-        let c = ti.fresh_variable();
-        let e = ti.fresh_variable();
-
-        let theta1 = Subst::empty()
-            .extend(a, VariationalType::Base(BaseType::Bool))
-            .extend(b, VariationalType::Base(BaseType::Int));
-        let theta2 = Subst::empty()
-            .extend(
-                a,
-                VariationalType::fun(
-                    VariationalType::Base(BaseType::Int),
-                    VariationalType::Base(BaseType::Int),
-                ),
-            )
-            .extend(c, VariationalType::Base(BaseType::Bool));
-
-        let d = ti.fresh_variation();
-        let theta = ti.merge(d, theta1.clone(), theta2.clone());
-
-        assert_eq!(
-            theta.lookup(&a).unwrap(),
-            &VariationalType::choice(
-                d,
-                theta1.lookup(&a).unwrap().clone(),
-                theta2.lookup(&a).unwrap().clone()
-            )
-        );
-
-        match theta.lookup(&b).unwrap() {
-            VariationalType::Choice(d2, v1, v2) => {
-                assert_eq!(*d2, d);
-                assert_eq!(**v1, theta1.lookup(&b).unwrap().clone());
-                match **v2 {
-                    VariationalType::Var(_) => (),
-                    _ => panic!("expected type variable, got {:?}", v2),
-                }
-            }
-            v => panic!("expected variational choice, got {:?}", v),
-        }
-
-        match theta.lookup(&c).unwrap() {
-            VariationalType::Choice(d2, v1, v2) => {
-                assert_eq!(*d2, d);
-                match **v1 {
-                    VariationalType::Var(_) => (),
-                    _ => panic!("expected type variable, got {:?}", v2),
-                }
-                assert_eq!(**v2, theta2.lookup(&c).unwrap().clone());
-            }
-            v => panic!("expected variational choice, got {:?}", v),
-        }
-
-        assert_eq!(theta.lookup(&e), None);
     }
 }

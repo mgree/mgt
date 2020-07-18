@@ -63,7 +63,7 @@ pub enum MigrationalType {
     Var(TypeVariable),
     Fun(Box<MigrationalType>, Box<MigrationalType>),
     Dyn(),
-    Choice(Variation, Box<MigrationalType>, Box<MigrationalType>), // TODO first one is really always Dyn()...
+    Choice(Variation, Box<MigrationalType>, Box<MigrationalType>),
 }
 
 /// pi
@@ -97,6 +97,7 @@ pub enum Expr<T> {
 }
 
 pub type SourceExpr = Expr<Option<GradualType>>;
+pub type TargetExpr = Expr<MigrationalType>;
 
 impl<T> Expr<T> {
     pub fn bool(b: bool) -> Expr<T> {
@@ -121,6 +122,32 @@ impl<T> Expr<T> {
 
     pub fn if_(e1: Expr<T>, e2: Expr<T>, e3: Expr<T>) -> Expr<T> {
         Expr::If(Box::new(e1), Box::new(e2), Box::new(e3))
+    }
+
+    pub fn map_types<F, U>(self, f: &F) -> Expr<U>
+    where
+        F: Fn(T) -> U,
+    {
+        match self {
+            Expr::Const(c) => Expr::Const(c),
+            Expr::Var(x) => Expr::Var(x),
+            Expr::Lam(x, t, e) => Expr::lam(x, f(t), e.map_types(f)),
+            Expr::App(e1, e2) => Expr::app(e1.map_types(f), e2.map_types(f)),
+            Expr::Ann(e, t) => Expr::ann(e.map_types(f), f(t)),
+            Expr::If(e1, e2, e3) => {
+                Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f))
+            }
+        }
+    }
+}
+
+impl TargetExpr {
+    pub fn apply(self, theta: &Subst) -> TargetExpr {
+        self.map_types(&|m: MigrationalType| m.apply(theta))
+    }
+
+    pub fn eliminate(self, elim: &HashSet<Eliminator>) -> TargetExpr {
+        self.map_types(&|m: MigrationalType| m.eliminate(elim))
     }
 }
 
@@ -224,7 +251,11 @@ impl VariationalType {
     pub fn choice(d: Variation, v1: VariationalType, v2: VariationalType) -> VariationalType {
         // reduced smart constructor, since case (b) of unification needs to generate choices with identical branches!
         // we _do_ project the inner types to the appropriate side of that variation, though
-        VariationalType::Choice(d, Box::new(v1.select(d, Side::Left())), Box::new(v2.select(d, Side::Right())))
+        VariationalType::Choice(
+            d,
+            Box::new(v1.select(d, Side::Left())),
+            Box::new(v2.select(d, Side::Right())),
+        )
     }
 
     pub fn select(&self, d: Variation, side: Side) -> VariationalType {
@@ -270,7 +301,11 @@ impl MigrationalType {
     pub fn choice(d: Variation, m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
         // reduced smart constructor, since case (b) of unification needs to generate choices with identical branches!
         // we _do_ project the inner types to the appropriate side of that variation, though
-        MigrationalType::Choice(d, Box::new(m1.select(d, Side::Left())), Box::new(m2.select(d, Side::Right())))
+        MigrationalType::Choice(
+            d,
+            Box::new(m1.select(d, Side::Left())),
+            Box::new(m2.select(d, Side::Right())),
+        )
     }
 
     pub fn select(&self, d: Variation, side: Side) -> MigrationalType {
@@ -294,9 +329,9 @@ impl MigrationalType {
         }
     }
 
-    pub fn eliminate(mut self, elim: HashSet<Eliminator>) -> MigrationalType {
-        for Eliminator(d, side) in elim.into_iter() {
-            self = self.select(d, side);
+    pub fn eliminate(mut self, elim: &HashSet<Eliminator>) -> MigrationalType {
+        for Eliminator(d, side) in elim.iter() {
+            self = self.select(*d, *side);
         }
         self
     }
@@ -443,11 +478,15 @@ impl Pattern {
             Pattern::Choice(d2, pat1, pat2) => {
                 if d == d2 {
                     match side {
-                        Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once
+                        Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once (invariant maintained in Pattern::choice)
                         Side::Right() => *pat2,
                     }
                 } else {
-                    Pattern::Choice(d2, Box::new(pat1.select(d, side)), Box::new(pat2.select(d, side)))
+                    Pattern::Choice(
+                        d2,
+                        Box::new(pat1.select(d, side)),
+                        Box::new(pat2.select(d, side)),
+                    )
                 }
             }
         }
@@ -457,7 +496,11 @@ impl Pattern {
         if pat1 == pat2 {
             pat1
         } else {
-            Pattern::Choice(d, Box::new(pat1.select(d, Side::Left())), Box::new(pat2.select(d, Side::Right())))
+            Pattern::Choice(
+                d,
+                Box::new(pat1.select(d, Side::Left())),
+                Box::new(pat2.select(d, Side::Right())),
+            )
         }
     }
 
@@ -520,7 +563,7 @@ impl From<bool> for Pattern {
 
 /// C
 ///
-/// we treat /\ and epsilon by just using vectors
+/// we treat /\ and epsilon by just using vectors in `Constraints`, below
 #[derive(Clone, Debug)]
 pub enum Constraint {
     Consistent(Pattern, MigrationalType, MigrationalType),
