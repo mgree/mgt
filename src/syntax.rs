@@ -86,39 +86,40 @@ pub type Variable = String;
 
 /// e (ITGL)
 #[derive(Clone, Debug)]
-pub enum Expr {
+pub enum Expr<T> {
     Const(Constant),
     Var(Variable),
-    Lam(Variable, Box<Expr>),
-    LamDyn(Variable, Box<Expr>),
-    App(Box<Expr>, Box<Expr>),
-    If(Box<Expr>, Box<Expr>, Box<Expr>),
+    Lam(Variable, T, Box<Expr<T>>),
+    Ann(Box<Expr<T>>, T),
+    App(Box<Expr<T>>, Box<Expr<T>>),
+    If(Box<Expr<T>>, Box<Expr<T>>, Box<Expr<T>>),
     // TODO operations on constants
-    // TODO explicitly typed lambdas
-    // TODO ascriptions
 }
 
-impl Expr {
-    pub fn bool(b: bool) -> Expr {
+pub type SourceExpr = Expr<Option<GradualType>>;
+
+impl<T> Expr<T> {
+    pub fn bool(b: bool) -> Expr<T> {
         Expr::Const(Constant::Bool(b))
     }
 
-    pub fn int(n: isize) -> Expr {
+    pub fn int(n: isize) -> Expr<T> {
         Expr::Const(Constant::Int(n))
     }
 
-    pub fn lam(v: Variable, e: Expr) -> Expr {
-        Expr::Lam(v, Box::new(e))
+    pub fn lam(v: Variable, t: T, e: Expr<T>) -> Expr<T> {
+        Expr::Lam(v, t, Box::new(e))
     }
 
-    pub fn lam_dyn(v: Variable, e: Expr) -> Expr {
-        Expr::LamDyn(v, Box::new(e))
+    pub fn ann(e: Expr<T>, t: T) -> Expr<T> {
+        Expr::Ann(Box::new(e), t)
     }
-    pub fn app(e1: Expr, e2: Expr) -> Expr {
+
+    pub fn app(e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         Expr::App(Box::new(e1), Box::new(e2))
     }
 
-    pub fn if_(e1: Expr, e2: Expr, e3: Expr) -> Expr {
+    pub fn if_(e1: Expr<T>, e2: Expr<T>, e3: Expr<T>) -> Expr<T> {
         Expr::If(Box::new(e1), Box::new(e2), Box::new(e3))
     }
 }
@@ -189,6 +190,15 @@ impl GradualType {
                     None
                 }
             }
+        }
+    }
+
+    pub fn has_dyn(&self) -> bool {
+        match self {
+            GradualType::Dyn() => true,
+            GradualType::Fun(g1, g2) => g1.has_dyn() || g2.has_dyn(),
+            GradualType::Base(_) => false,
+            GradualType::Var(_) => false,
         }
     }
 }

@@ -54,26 +54,61 @@ impl TypeInference {
         self.pattern = self.pattern.meet(p);
     }
 
-    pub fn generate_constraints(&mut self, ctx: Ctx, e: &Expr) -> Option<MigrationalType> {
+    pub fn generate_constraints(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<MigrationalType> {
         match e {
             Expr::Const(c) => Some(c.into()),
             Expr::Var(x) => ctx.lookup(x).cloned(),
-            Expr::Lam(x, e) => {
-                let m_dom = MigrationalType::Var(self.fresh_variable());
-                let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
+            Expr::Lam(x, t, e) => match t {
+                Some(GradualType::Dyn()) => {
+                    let d = self.fresh_variation();
+                    let m_dom = MigrationalType::choice(
+                        d,
+                        MigrationalType::Dyn(),
+                        MigrationalType::Var(self.fresh_variable()),
+                    );
+                    let m_cod =
+                        self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-                Some(MigrationalType::fun(m_dom, m_cod))
-            }
-            Expr::LamDyn(x, e) => {
-                let d = self.fresh_variation();
-                let m_dom = MigrationalType::choice(
-                    d,
-                    MigrationalType::Dyn(),
-                    MigrationalType::Var(self.fresh_variable()),
-                );
-                let m_cod = self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
+                    Some(MigrationalType::fun(m_dom, m_cod))
+                }
+                Some(m_dom) => {
+                    let m_cod =
+                        self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
 
-                Some(MigrationalType::fun(m_dom, m_cod))
+                    Some(MigrationalType::fun(m_dom.clone().into(), m_cod))
+                }
+                None => {
+                    let m_dom = MigrationalType::Var(self.fresh_variable());
+                    let m_cod =
+                        self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
+
+                    Some(MigrationalType::fun(m_dom, m_cod))
+                }
+            },
+            Expr::Ann(e, t) => {
+                let m = self.generate_constraints(ctx, e)?;
+
+                match t {
+                    Some(t) => {
+                        let mut m_ann: MigrationalType = t.clone().into();
+
+                        if m_ann.has_dyn() {
+                            let d = self.fresh_variation();
+                            let m_var = self.dyn_to_var(&m);
+
+                            m_ann = MigrationalType::choice(d, m_ann, m_var);
+                        }
+
+                        self.add_constraint(Constraint::Consistent(
+                            Pattern::Top(),
+                            m,
+                            m_ann.clone(),
+                        ));
+
+                        Some(m_ann)
+                    }
+                    None => Some(m),
+                }
             }
             Expr::App(e_fun, e_arg) => {
                 let m_fun = self.generate_constraints(ctx.clone(), e_fun)?;
@@ -109,6 +144,20 @@ impl TypeInference {
                 self.add_constraints(c_res);
 
                 Some(m_res)
+            }
+        }
+    }
+
+    fn dyn_to_var(&mut self, m: &MigrationalType) -> MigrationalType {
+        match m {
+            MigrationalType::Dyn() => MigrationalType::Var(self.fresh_variable()),
+            MigrationalType::Base(b) => MigrationalType::Base(b.clone()),
+            MigrationalType::Var(a) => MigrationalType::Var(*a),
+            MigrationalType::Choice(d, m1, m2) => {
+                MigrationalType::choice(*d, self.dyn_to_var(m1), self.dyn_to_var(m2))
+            }
+            MigrationalType::Fun(m1, m2) => {
+                MigrationalType::fun(self.dyn_to_var(m1), self.dyn_to_var(m2))
             }
         }
     }
@@ -225,7 +274,9 @@ impl TypeInference {
 
                 (MigrationalType::fun(m1, m2), cs1, pat1.meet(pat2))
             }
-            (MigrationalType::Base(b1), MigrationalType::Base(b2)) if b1 == b2 => (m1.clone(), Constraints::epsilon(), Pattern::Top()),
+            (MigrationalType::Base(b1), MigrationalType::Base(b2)) if b1 == b2 => {
+                (m1.clone(), Constraints::epsilon(), Pattern::Top())
+            }
             _ => (
                 MigrationalType::Var(self.fresh_variable()),
                 Constraints::epsilon(),
@@ -376,7 +427,7 @@ impl TypeInference {
         }
     }
 
-    pub fn infer(e: &Expr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
+    pub fn infer(e: &SourceExpr) -> Option<(MigrationalType, HashSet<HashSet<Eliminator>>)> {
         let mut ti = TypeInference::new();
 
         let m = ti.generate_constraints(Ctx::empty(), e)?;

@@ -1,11 +1,11 @@
 extern crate mgt;
 
-use mgt::*;
 use mgt::syntax::*;
+use mgt::*;
 
 fn main() {
     let x = Expr::Var(String::from("x"));
-    let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
+    let little_omega: SourceExpr = Expr::lam(String::from("x"), None, Expr::app(x.clone(), x));
     let _big_omega = Expr::app(little_omega.clone(), little_omega.clone());
 
     debug_inferred_type(&little_omega);
@@ -13,7 +13,7 @@ fn main() {
     // debug_inferred_type(&big_omega);
 }
 
-fn debug_inferred_type(e: &Expr) {
+fn debug_inferred_type(e: &SourceExpr) {
     let (_m, _ves) = TypeInference::infer(e).expect("constraint generation failed");
     eprintln!("");
 }
@@ -23,30 +23,46 @@ mod test {
     use super::*;
     use im_rc::HashSet;
 
-    fn identity() -> Expr {
+    fn identity() -> SourceExpr {
         let x = String::from("x");
-        Expr::lam(x.clone(), Expr::Var(x))
+        Expr::lam(x.clone(), None, Expr::Var(x))
     }
 
-    fn dyn_identity() -> Expr {
+    fn bool_identity() -> SourceExpr {
         let x = String::from("x");
-        Expr::lam_dyn(x.clone(), Expr::Var(x))
+        Expr::lam(
+            x.clone(),
+            Some(GradualType::Base(BaseType::Bool)),
+            Expr::Var(x),
+        )
     }
 
-    fn neg() -> Expr {
+    fn dyn_identity() -> SourceExpr {
+        let x = String::from("x");
+        Expr::lam(x.clone(), Some(GradualType::Dyn()), Expr::Var(x))
+    }
+
+    fn neg() -> SourceExpr {
         let b = String::from("b");
         Expr::lam(
             b.clone(),
+            None,
             Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
         )
     }
 
-    fn dyn_neg() -> Expr {
+    fn dyn_neg() -> SourceExpr {
         let b = String::from("b");
-        Expr::lam_dyn(
+        Expr::lam(
             b.clone(),
+            Some(GradualType::Dyn()),
             Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
         )
+    }
+
+    fn little_omega() -> SourceExpr {
+        let x = Expr::Var(String::from("x"));
+        Expr::lam(String::from("x"), None, Expr::app(x.clone(), x))
     }
 
     #[test]
@@ -89,7 +105,11 @@ mod test {
     pub fn infer_dyn_const() {
         let x = String::from("x");
         let y = String::from("y");
-        let k = Expr::lam_dyn(x.clone(), Expr::lam_dyn(y, Expr::Var(x)));
+        let k = Expr::lam(
+            x.clone(),
+            Some(GradualType::Dyn()),
+            Expr::lam(y, Some(GradualType::Dyn()), Expr::Var(x)),
+        );
 
         let (m, ves) = TypeInference::infer(&k).unwrap();
 
@@ -183,10 +203,12 @@ mod test {
     pub fn infer_very_dynamic() {
         let x = String::from("x");
         let y = String::from("y");
-        let e = Expr::lam_dyn(
+        let e = Expr::lam(
             x.clone(),
-            Expr::lam_dyn(
+            Some(GradualType::Dyn()),
+            Expr::lam(
                 y.clone(),
+                Some(GradualType::Dyn()),
                 Expr::if_(
                     Expr::Var(x.clone()),
                     Expr::app(Expr::Var(y.clone()), Expr::Var(x)),
@@ -235,10 +257,7 @@ mod test {
 
     #[test]
     pub fn infer_little_omega() {
-        let x = Expr::Var(String::from("x"));
-        let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
-
-        let (m, ves) = TypeInference::infer(&little_omega).unwrap();
+        let (m, ves) = TypeInference::infer(&little_omega()).unwrap();
 
         assert!(m.is_fun());
         assert!(ves.is_empty());
@@ -246,13 +265,97 @@ mod test {
 
     #[test]
     pub fn infer_big_omega() {
-        let x = Expr::Var(String::from("x"));
-        let little_omega = Expr::lam(String::from("x"), Expr::app(x.clone(), x));
-        let big_omega = Expr::app(little_omega.clone(), little_omega.clone());
+        let big_omega = Expr::app(little_omega(), little_omega());
         let (_m, ves) = TypeInference::infer(&big_omega).unwrap();
 
         // m will probably be a type variable, but who cares
         assert!(ves.is_empty());
+    }
+
+    #[test]
+    pub fn infer_bool_id() {
+        let (m, ves) = TypeInference::infer(&bool_identity()).unwrap();
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        assert!(ve.is_empty());
+
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Bool),
+                MigrationalType::Base(BaseType::Bool)
+            )
+        );
+    }
+
+    #[test]
+    pub fn ill_typed_ann() {
+        let (_m, ves) = TypeInference::infer(&Expr::ann(
+            Expr::Const(Constant::Int(5)),
+            Some(GradualType::Base(BaseType::Bool)),
+        ))
+        .unwrap();
+
+        assert_eq!(ves.len(), 0);
+    }
+
+    #[test]
+    pub fn well_typed_ann() {
+        let (m, ves) = TypeInference::infer(&Expr::lam(
+            "x".into(),
+            Some(GradualType::Dyn()),
+            Expr::ann(
+                Expr::Var("x".into()),
+                Some(GradualType::Base(BaseType::Int)),
+            ),
+        ))
+        .unwrap();
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Int),
+                MigrationalType::Base(BaseType::Int)
+            )
+        );
+    }
+
+    #[test]
+    pub fn eg_width() {
+        let fixed: String = "fixed".into();
+        let width_func: String = "width_func".into();
+
+        let width: SourceExpr = Expr::lam(
+            fixed.clone(),
+            Some(GradualType::Dyn()),
+            Expr::lam(
+                width_func.clone(),
+                Some(GradualType::Dyn()),
+                Expr::if_(
+                    Expr::Var(fixed.clone()),
+                    Expr::app(Expr::Var(width_func.clone()), Expr::Var(fixed.clone())),
+                    Expr::app(Expr::Var(width_func.clone()), Expr::Const(Constant::Int(5))),
+                ),
+            ),
+        );
+
+        let (m, ves) = TypeInference::infer(&width).unwrap();
+        assert_eq!(ves.len(), 1);
+        let ve = ves.into_iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(
+            m,
+            MigrationalType::fun(
+                MigrationalType::Base(BaseType::Bool),
+                MigrationalType::fun(MigrationalType::Dyn(), MigrationalType::Dyn())
+            )
+        );
     }
 
     #[test]
