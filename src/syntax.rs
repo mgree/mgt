@@ -4,7 +4,7 @@ use std::hash::Hash;
 use im_rc::HashMap;
 use im_rc::HashSet;
 
-lalrpop_mod!(pub parser);
+lalrpop_mod!(parser);
 
 /// gamma
 #[derive(Clone, Debug, PartialEq)]
@@ -672,5 +672,6 @@ mod test {
         assert!(parser::TermParser::new().parse("(22)").is_ok());
         assert!(parser::TermParser::new().parse("((((22))))").is_ok());
         assert!(parser::TermParser::new().parse("((22)").is_err());
+        assert!(parser::TermParser::new().parse("-47").is_ok());
     }
 }
