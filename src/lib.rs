@@ -436,6 +436,11 @@ impl TypeInference {
         eprintln!("  m = {:?}", m);
         eprintln!("  constraints = {:?}", ti.constraints);
 
+        if ti.pattern == Pattern::Bot() {
+            eprintln!("ERROR: constraint generation produced false pattern");
+            return None;
+        }
+
         let (theta, pi) = ti.unify(ti.constraints.clone());
         let m = m.clone().apply(&theta);
         eprintln!("Unified constraints:");

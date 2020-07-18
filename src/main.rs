@@ -326,6 +326,14 @@ mod test {
     }
 
     #[test]
+    pub fn infer_bad_constraints() {
+        assert_eq!(None, TypeInference::infer(&Expr::app(
+            Expr::Const(Constant::Bool(true)),
+            Expr::Const(Constant::Bool(false)),
+        )), "type inference should fail");
+    }
+
+    #[test]
     pub fn eg_width() {
         let fixed: String = "fixed".into();
         let width_func: String = "width_func".into();
