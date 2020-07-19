@@ -5,11 +5,11 @@ use crate::syntax::*;
 grammar;
 
 pub Type: GradualType = {
-    <dom:AtomicType> "->" <cod:Type> => GradualType::fun(dom, cod),
-    <AtomicType>,
+    <dom:TypeAtomic> "->" <cod:Type> => GradualType::fun(dom, cod),
+    <TypeAtomic>,
 };
 
-pub AtomicType: GradualType = {
+pub TypeAtomic: GradualType = {
     "dyn" => GradualType::Dyn(),
     "?" => GradualType::Dyn(),
     "bool" => GradualType::Base(BaseType::Bool),
@@ -17,14 +17,33 @@ pub AtomicType: GradualType = {
     "(" <Type> ")",
 };
 
+pub TypeAnnot: Option<GradualType> = {
+    ":" <Type> => Some(<>),
+    => None,
+}
+
 pub Expr: SourceExpr = {
-    <Atom>,
-    "(" <Expr> ")",
+    "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
+    "\\" <x:Id> <t:TypeAnnot> "." <e:Expr> => Expr::lam(x, t, e), // TODO multi-argument functions
+    "fun" <x:Id> <t:TypeAnnot> "." <e:Expr> => Expr::lam(x, t, e),
+    "let" <x:Id> <t:TypeAnnot> "=" <e1:Expr> "in" <e2:Expr> => Expr::app(Expr::lam(x,t,e2), e1),
+    <ExprAnn>,
 };
 
-pub Atom: SourceExpr = {
+pub ExprAnn: SourceExpr = {
+    <e:ExprApp> ":" <t:Type> => Expr::ann(e, Some(t)),
+    <ExprApp>,
+}
+
+pub ExprApp: SourceExpr = {
+    <e1:ExprApp> <e2:ExprAtom> => Expr::app(e1, e2),
+    <ExprAtom>,
+};
+
+pub ExprAtom: SourceExpr = {
     <Const>,
-    r"[[:alpha:]][[:alnum:]_']*" => Expr::Var(<>.to_string()),
+    <Id> => Expr::Var(<>),
+    "(" <Expr> ")",
 };
 
 pub Const: SourceExpr = {
@@ -33,21 +52,35 @@ pub Const: SourceExpr = {
 };
 
 Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
+
 Bool: bool = {
     "true" => true,
     "false" => false,
 };
 
+Id: String = <r"[[:alpha:]][[:alnum:]_']*"> => <>.to_string();
+
 match {
-    "dyn",
     "?",
-    "bool",
     "->",
-    "int",
-    "true",
-    "false",
     "(",
     ")",
+    "\\",
+    ".",
+    ":",
+    "=",
+} else {
+    "dyn",
+    "bool",
+    "int",
+    "fun",
+    "if",
+    "then",
+    "else",
+    "let",
+    "in",
+    "true",
+    "false",
 } else {
     r"-?[0-9]+",
     r"[[:alpha:]][[:alnum:]_']*"

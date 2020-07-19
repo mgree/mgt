@@ -695,6 +695,87 @@ mod test {
     use super::*;
 
     #[test]
+    fn expr_id() {
+        assert_eq!(
+            parser::ExprParser::new().parse("fun x. x").unwrap(),
+            Expr::lam("x".into(), None, Expr::Var("x".into()))
+        );
+
+        assert_eq!(
+            parser::ExprParser::new().parse("fun x:?. x").unwrap(),
+            Expr::lam("x".into(), Some(GradualType::Dyn()), Expr::Var("x".into()))
+        );
+
+        assert_eq!(
+            parser::ExprParser::new().parse("fun x:bool. x").unwrap(),
+            Expr::lam(
+                "x".into(),
+                Some(GradualType::Base(BaseType::Bool)),
+                Expr::Var("x".into())
+            )
+        );
+    }
+
+    #[test]
+    fn expr_app() {
+        assert_eq!(
+            parser::ExprParser::new().parse("true false 5").unwrap(),
+            Expr::app(
+                Expr::app(
+                    Expr::Const(Constant::Bool(true)),
+                    Expr::Const(Constant::Bool(false))
+                ),
+                Expr::Const(Constant::Int(5))
+            )
+        );
+
+        assert_eq!(
+            parser::ExprParser::new().parse("true (false 5)").unwrap(),
+            Expr::app(
+                Expr::Const(Constant::Bool(true)),
+                Expr::app(
+                    Expr::Const(Constant::Bool(false)),
+                    Expr::Const(Constant::Int(5))
+                ),
+            )
+        );
+    }
+
+    #[test]
+    fn expr_let() {
+        assert!(parser::ExprParser::new().parse("let x = 5 in x").is_ok());
+        assert!(parser::ExprParser::new().parse("let x = 5 in y").is_ok());
+        assert!(parser::ExprParser::new().parse("let x = 5 in").is_err());
+        assert!(parser::ExprParser::new().parse("let x = in x").is_err());
+
+        assert!(parser::ExprParser::new()
+            .parse("let x : bool = 5 in x")
+            .is_ok());
+        assert!(parser::ExprParser::new()
+            .parse("let x : int = 5 in x")
+            .is_ok());
+        assert!(parser::ExprParser::new().parse("let x : = 5 in x").is_err());
+    }
+
+    #[test]
+    fn expr_neg() {
+        assert_eq!(
+            parser::ExprParser::new()
+                .parse("fun b:bool. if b then false else true")
+                .unwrap(),
+            Expr::lam(
+                "b".into(),
+                Some(GradualType::Base(BaseType::Bool)),
+                Expr::if_(
+                    Expr::Var("b".into()),
+                    Expr::Const(Constant::Bool(false)),
+                    Expr::Const(Constant::Bool(true))
+                )
+            )
+        );
+    }
+
+    #[test]
     fn const_int() {
         assert!(parser::ExprParser::new().parse("22").is_ok());
         assert_eq!(
@@ -781,10 +862,7 @@ mod test {
                 .parse("(bool -> ?) -> bool")
                 .unwrap(),
             GradualType::fun(
-                GradualType::fun(
-                    GradualType::Base(BaseType::Bool),
-                    GradualType::Dyn()
-                ),
+                GradualType::fun(GradualType::Base(BaseType::Bool), GradualType::Dyn()),
                 GradualType::Base(BaseType::Bool)
             )
         );
