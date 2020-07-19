@@ -76,7 +76,7 @@ mod test {
             },
             _ => panic!("expected function type"),
         }
-        assert_eq!(ves, HashSet::unit(HashSet::new()));
+        assert_eq!(ves, HashSet::unit(Eliminator::new()));
     }
 
     #[test]
@@ -106,7 +106,7 @@ mod test {
             _ => panic!("expected id function at dyn or a -> a"),
         };
 
-        assert_eq!(ve, &HashSet::unit(Eliminator(d, Side::Right())));
+        assert_eq!(ve, &Eliminator::new().update(d, Side::Right()));
 
         let m = m.eliminate(ve);
 
@@ -169,7 +169,7 @@ mod test {
                 MigrationalType::Base(BaseType::Bool)
             )
         );
-        assert_eq!(ves, HashSet::unit(HashSet::new()));
+        assert_eq!(ves, HashSet::unit(Eliminator::new()));
     }
 
     #[test]
@@ -198,7 +198,7 @@ mod test {
         let (_e, m, ves) = TypeInference::infer(&e).unwrap();
 
         assert_eq!(m, MigrationalType::Base(BaseType::Bool));
-        assert_eq!(ves, HashSet::unit(HashSet::new()));
+        assert_eq!(ves, HashSet::unit(Eliminator::new()));
     }
 
     #[test]

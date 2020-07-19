@@ -426,7 +426,7 @@ impl TypeInference {
         }
     }
 
-    pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<HashSet<Eliminator>>)> {
+    pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
         let mut ti = TypeInference::new();
 
         let (e, m) = ti.generate_constraints(Ctx::empty(), e)?;
