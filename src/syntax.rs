@@ -141,6 +141,14 @@ impl<T> Expr<T> {
     }
 }
 
+impl SourceExpr {
+    pub fn parse<'a>(
+        s: &'a str,
+    ) -> Result<Self, lalrpop_util::ParseError<usize, parser::Token<'a>, &'static str>> {
+        parser::ExprParser::new().parse(s)
+    }
+}
+
 impl TargetExpr {
     pub fn apply(self, theta: &Subst) -> TargetExpr {
         self.map_types(&|m: MigrationalType| m.apply(theta))
@@ -158,6 +166,12 @@ impl StaticType {
 }
 
 impl GradualType {
+    pub fn parse<'a>(
+        s: &'a str,
+    ) -> Result<Self, lalrpop_util::ParseError<usize, parser::Token<'a>, &'static str>> {
+        parser::TypeParser::new().parse(s)
+    }
+
     pub fn fun(g1: GradualType, g2: GradualType) -> GradualType {
         GradualType::Fun(Box::new(g1), Box::new(g2))
     }
@@ -697,17 +711,17 @@ mod test {
     #[test]
     fn expr_id() {
         assert_eq!(
-            parser::ExprParser::new().parse("fun x. x").unwrap(),
+            SourceExpr::parse("fun x. x").unwrap(),
             Expr::lam("x".into(), None, Expr::Var("x".into()))
         );
 
         assert_eq!(
-            parser::ExprParser::new().parse("fun x:?. x").unwrap(),
+            SourceExpr::parse("fun x:?. x").unwrap(),
             Expr::lam("x".into(), Some(GradualType::Dyn()), Expr::Var("x".into()))
         );
 
         assert_eq!(
-            parser::ExprParser::new().parse("fun x:bool. x").unwrap(),
+            SourceExpr::parse("fun x:bool. x").unwrap(),
             Expr::lam(
                 "x".into(),
                 Some(GradualType::Base(BaseType::Bool)),
@@ -719,7 +733,7 @@ mod test {
     #[test]
     fn expr_app() {
         assert_eq!(
-            parser::ExprParser::new().parse("true false 5").unwrap(),
+            SourceExpr::parse("true false 5").unwrap(),
             Expr::app(
                 Expr::app(
                     Expr::Const(Constant::Bool(true)),
@@ -730,7 +744,7 @@ mod test {
         );
 
         assert_eq!(
-            parser::ExprParser::new().parse("true (false 5)").unwrap(),
+            SourceExpr::parse("true (false 5)").unwrap(),
             Expr::app(
                 Expr::Const(Constant::Bool(true)),
                 Expr::app(
@@ -743,26 +757,20 @@ mod test {
 
     #[test]
     fn expr_let() {
-        assert!(parser::ExprParser::new().parse("let x = 5 in x").is_ok());
-        assert!(parser::ExprParser::new().parse("let x = 5 in y").is_ok());
-        assert!(parser::ExprParser::new().parse("let x = 5 in").is_err());
-        assert!(parser::ExprParser::new().parse("let x = in x").is_err());
+        assert!(SourceExpr::parse("let x = 5 in x").is_ok());
+        assert!(SourceExpr::parse("let x = 5 in y").is_ok());
+        assert!(SourceExpr::parse("let x = 5 in").is_err());
+        assert!(SourceExpr::parse("let x = in x").is_err());
 
-        assert!(parser::ExprParser::new()
-            .parse("let x : bool = 5 in x")
-            .is_ok());
-        assert!(parser::ExprParser::new()
-            .parse("let x : int = 5 in x")
-            .is_ok());
-        assert!(parser::ExprParser::new().parse("let x : = 5 in x").is_err());
+        assert!(SourceExpr::parse("let x : bool = 5 in x").is_ok());
+        assert!(SourceExpr::parse("let x : int = 5 in x").is_ok());
+        assert!(SourceExpr::parse("let x : = 5 in x").is_err());
     }
 
     #[test]
     fn expr_neg() {
         assert_eq!(
-            parser::ExprParser::new()
-                .parse("fun b:bool. if b then false else true")
-                .unwrap(),
+            SourceExpr::parse("fun b:bool. if b then false else true").unwrap(),
             Expr::lam(
                 "b".into(),
                 Some(GradualType::Base(BaseType::Bool)),
@@ -777,29 +785,29 @@ mod test {
 
     #[test]
     fn const_int() {
-        assert!(parser::ExprParser::new().parse("22").is_ok());
+        assert!(SourceExpr::parse("22").is_ok());
         assert_eq!(
-            parser::ExprParser::new().parse("47").unwrap(),
+            SourceExpr::parse("47").unwrap(),
             Expr::Const(Constant::Int(47))
         );
-        assert!(parser::ExprParser::new().parse("(22)").is_ok());
-        assert!(parser::ExprParser::new().parse("((((22))))").is_ok());
-        assert!(parser::ExprParser::new().parse("((22)").is_err());
-        assert!(parser::ExprParser::new().parse("-47").is_ok());
+        assert!(SourceExpr::parse("(22)").is_ok());
+        assert!(SourceExpr::parse("((((22))))").is_ok());
+        assert!(SourceExpr::parse("((22)").is_err());
+        assert!(SourceExpr::parse("-47").is_ok());
     }
 
     #[test]
     fn const_bool() {
         assert_eq!(
-            parser::ExprParser::new().parse("true").unwrap(),
+            SourceExpr::parse("true").unwrap(),
             Expr::Const(Constant::Bool(true))
         );
         assert_eq!(
-            parser::ExprParser::new().parse("false").unwrap(),
+            SourceExpr::parse("false").unwrap(),
             Expr::Const(Constant::Bool(false))
         );
         assert_eq!(
-            parser::ExprParser::new().parse("FALSE").unwrap(),
+            SourceExpr::parse("FALSE").unwrap(),
             Expr::Var("FALSE".to_string())
         );
     }
@@ -807,34 +815,28 @@ mod test {
     #[test]
     fn types_atomic() {
         assert_eq!(
-            parser::TypeParser::new().parse("bool").unwrap(),
+            GradualType::parse("bool").unwrap(),
             GradualType::Base(BaseType::Bool)
         );
         assert_eq!(
-            parser::TypeParser::new().parse("int").unwrap(),
+            GradualType::parse("int").unwrap(),
             GradualType::Base(BaseType::Int)
         );
-        assert_eq!(
-            parser::TypeParser::new().parse("?").unwrap(),
-            GradualType::Dyn()
-        );
-        assert_eq!(
-            parser::TypeParser::new().parse("dyn").unwrap(),
-            GradualType::Dyn()
-        );
+        assert_eq!(GradualType::parse("?").unwrap(), GradualType::Dyn());
+        assert_eq!(GradualType::parse("dyn").unwrap(), GradualType::Dyn());
     }
 
     #[test]
     fn types() {
         assert_eq!(
-            parser::TypeParser::new().parse("bool->bool").unwrap(),
+            GradualType::parse("bool->bool").unwrap(),
             GradualType::fun(
                 GradualType::Base(BaseType::Bool),
                 GradualType::Base(BaseType::Bool)
             )
         );
         assert_eq!(
-            parser::TypeParser::new().parse("bool->bool->bool").unwrap(),
+            GradualType::parse("bool->bool->bool").unwrap(),
             GradualType::fun(
                 GradualType::Base(BaseType::Bool),
                 GradualType::fun(
@@ -845,9 +847,7 @@ mod test {
         );
 
         assert_eq!(
-            parser::TypeParser::new()
-                .parse("(bool->bool)->bool")
-                .unwrap(),
+            GradualType::parse("(bool->bool)->bool").unwrap(),
             GradualType::fun(
                 GradualType::fun(
                     GradualType::Base(BaseType::Bool),
@@ -858,9 +858,7 @@ mod test {
         );
 
         assert_eq!(
-            parser::TypeParser::new()
-                .parse("(bool -> ?) -> bool")
-                .unwrap(),
+            GradualType::parse("(bool -> ?) -> bool").unwrap(),
             GradualType::fun(
                 GradualType::fun(GradualType::Base(BaseType::Bool), GradualType::Dyn()),
                 GradualType::Base(BaseType::Bool)
