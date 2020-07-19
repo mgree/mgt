@@ -44,8 +44,8 @@ pub enum Side {
 }
 
 /// d.1 or d.2
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Eliminator(pub Variation, pub Side);
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Eliminator(HashMap<Variation, Side>);
 
 /// V
 #[derive(Clone, Debug, PartialEq)]
@@ -134,9 +134,7 @@ impl<T> Expr<T> {
             Expr::Lam(x, t, e) => Expr::lam(x, f(t), e.map_types(f)),
             Expr::App(e1, e2) => Expr::app(e1.map_types(f), e2.map_types(f)),
             Expr::Ann(e, t) => Expr::ann(e.map_types(f), f(t)),
-            Expr::If(e1, e2, e3) => {
-                Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f))
-            }
+            Expr::If(e1, e2, e3) => Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
         }
     }
 }
@@ -146,7 +144,7 @@ impl TargetExpr {
         self.map_types(&|m: MigrationalType| m.apply(theta))
     }
 
-    pub fn eliminate(self, elim: &HashSet<Eliminator>) -> TargetExpr {
+    pub fn eliminate(self, elim: &Eliminator) -> TargetExpr {
         self.map_types(&|m: MigrationalType| m.eliminate(elim))
     }
 }
@@ -329,11 +327,19 @@ impl MigrationalType {
         }
     }
 
-    pub fn eliminate(mut self, elim: &HashSet<Eliminator>) -> MigrationalType {
-        for Eliminator(d, side) in elim.iter() {
-            self = self.select(*d, *side);
+    pub fn eliminate(self, elim: &Eliminator) -> MigrationalType {
+        match self {
+            MigrationalType::Dyn() | MigrationalType::Base(_) | MigrationalType::Var(_) => self,
+            MigrationalType::Fun(m1, m2) => {
+                MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
+            }
+            MigrationalType::Choice(d, m1, m2) => {
+                match elim.0.get(&d).expect("valid eliminators should be defined for every chocie") {
+                    Side::Left() => m1.eliminate(elim),
+                    Side::Right() => m2.eliminate(elim),
+                }
+            }
         }
-        self
     }
 
     pub fn is_fun(&self) -> bool {
@@ -517,20 +523,20 @@ impl Pattern {
         }
     }
 
-    pub fn valid_eliminators(self) -> HashSet<HashSet<Eliminator>> {
+    pub fn valid_eliminators(self) -> HashSet<Eliminator> {
         match self {
-            Pattern::Top() => HashSet::unit(HashSet::new()),
+            Pattern::Top() => HashSet::unit(Eliminator::new()),
             Pattern::Bot() => HashSet::new(),
             Pattern::Choice(d, pi1, pi2) => {
-                let ves1: HashSet<HashSet<Eliminator>> = pi1
+                let ves1: HashSet<Eliminator> = pi1
                     .valid_eliminators()
                     .into_iter()
-                    .map(|ve| ve.update(Eliminator(d, Side::Left())))
+                    .map(|ve| ve.update(d, Side::Left()))
                     .collect();
-                let ves2: HashSet<HashSet<Eliminator>> = pi2
+                let ves2: HashSet<Eliminator> = pi2
                     .valid_eliminators()
                     .into_iter()
-                    .map(|ve| ve.update(Eliminator(d, Side::Right())))
+                    .map(|ve| ve.update(d, Side::Right()))
                     .collect();
 
                 ves1.union(ves2)
@@ -539,12 +545,30 @@ impl Pattern {
     }
 }
 
-pub fn expand(elim: HashSet<Eliminator>, ds: &HashSet<&Variation>) -> HashSet<Eliminator> {
+impl Eliminator {
+    pub fn new() -> Self {
+        Eliminator(HashMap::new())
+    }
+
+    pub fn get(&self, d: &Variation) -> Option<&Side> {
+        self.0.get(d)
+    }
+
+    pub fn update(self, d: Variation, side: Side) -> Self {
+        Eliminator(self.0.update(d, side))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+pub fn expand(elim: Eliminator, ds: &HashSet<&Variation>) -> Eliminator {
     let mut elim = elim;
 
     for d in ds.iter() {
-        if !elim.contains(&Eliminator(**d, Side::Left())) {
-            elim.insert(Eliminator(**d, Side::Right()));
+        if elim.get(d) != Some(&Side::Left()) {
+            elim = elim.update(**d, Side::Right());
         }
     }
 
