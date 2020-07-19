@@ -13,4 +13,7 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 
 - [ ] Parser and pretty printer
 - [ ] Debug/logging of constraint generation and unification
-- [ ] Other language features (e.g., operations on constants, overloading resolution, let polymorphism and type schemes)
+- Other language features
+  + [ ] Operations on constants
+  + [ ] Overloading resolution
+  + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables)
