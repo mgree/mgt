@@ -4,6 +4,19 @@ use crate::syntax::*;
 
 grammar;
 
+pub Type: GradualType = {
+    <dom:AtomicType> "->" <cod:Type> => GradualType::fun(dom, cod),
+    <AtomicType>,
+};
+
+pub AtomicType: GradualType = {
+    "dyn" => GradualType::Dyn(),
+    "?" => GradualType::Dyn(),
+    "bool" => GradualType::Base(BaseType::Bool),
+    "int" => GradualType::Base(BaseType::Int),
+    "(" <Type> ")",
+};
+
 pub Expr: SourceExpr = {
     <Atom>,
     "(" <Expr> ")",
@@ -26,6 +39,11 @@ Bool: bool = {
 };
 
 match {
+    "dyn",
+    "?",
+    "bool",
+    "->",
+    "int",
     "true",
     "false",
     "(",

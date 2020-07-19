@@ -336,7 +336,11 @@ impl MigrationalType {
                 MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
             }
             MigrationalType::Choice(d, m1, m2) => {
-                match elim.0.get(&d).expect("valid eliminators should be defined for every chocie") {
+                match elim
+                    .0
+                    .get(&d)
+                    .expect("valid eliminators should be defined for every chocie")
+                {
                     Side::Left() => m1.eliminate(elim),
                     Side::Right() => m2.eliminate(elim),
                 }
@@ -693,7 +697,10 @@ mod test {
     #[test]
     fn const_int() {
         assert!(parser::ExprParser::new().parse("22").is_ok());
-        assert_eq!(parser::ExprParser::new().parse("47").unwrap(), Expr::Const(Constant::Int(47)));
+        assert_eq!(
+            parser::ExprParser::new().parse("47").unwrap(),
+            Expr::Const(Constant::Int(47))
+        );
         assert!(parser::ExprParser::new().parse("(22)").is_ok());
         assert!(parser::ExprParser::new().parse("((((22))))").is_ok());
         assert!(parser::ExprParser::new().parse("((22)").is_err());
@@ -702,8 +709,84 @@ mod test {
 
     #[test]
     fn const_bool() {
-        assert_eq!(parser::ExprParser::new().parse("true").unwrap(), Expr::Const(Constant::Bool(true)));
-        assert_eq!(parser::ExprParser::new().parse("false").unwrap(), Expr::Const(Constant::Bool(false)));
-        assert_eq!(parser::ExprParser::new().parse("FALSE").unwrap(), Expr::Var("FALSE".to_string()));
+        assert_eq!(
+            parser::ExprParser::new().parse("true").unwrap(),
+            Expr::Const(Constant::Bool(true))
+        );
+        assert_eq!(
+            parser::ExprParser::new().parse("false").unwrap(),
+            Expr::Const(Constant::Bool(false))
+        );
+        assert_eq!(
+            parser::ExprParser::new().parse("FALSE").unwrap(),
+            Expr::Var("FALSE".to_string())
+        );
+    }
+
+    #[test]
+    fn types_atomic() {
+        assert_eq!(
+            parser::TypeParser::new().parse("bool").unwrap(),
+            GradualType::Base(BaseType::Bool)
+        );
+        assert_eq!(
+            parser::TypeParser::new().parse("int").unwrap(),
+            GradualType::Base(BaseType::Int)
+        );
+        assert_eq!(
+            parser::TypeParser::new().parse("?").unwrap(),
+            GradualType::Dyn()
+        );
+        assert_eq!(
+            parser::TypeParser::new().parse("dyn").unwrap(),
+            GradualType::Dyn()
+        );
+    }
+
+    #[test]
+    fn types() {
+        assert_eq!(
+            parser::TypeParser::new().parse("bool->bool").unwrap(),
+            GradualType::fun(
+                GradualType::Base(BaseType::Bool),
+                GradualType::Base(BaseType::Bool)
+            )
+        );
+        assert_eq!(
+            parser::TypeParser::new().parse("bool->bool->bool").unwrap(),
+            GradualType::fun(
+                GradualType::Base(BaseType::Bool),
+                GradualType::fun(
+                    GradualType::Base(BaseType::Bool),
+                    GradualType::Base(BaseType::Bool)
+                )
+            )
+        );
+
+        assert_eq!(
+            parser::TypeParser::new()
+                .parse("(bool->bool)->bool")
+                .unwrap(),
+            GradualType::fun(
+                GradualType::fun(
+                    GradualType::Base(BaseType::Bool),
+                    GradualType::Base(BaseType::Bool)
+                ),
+                GradualType::Base(BaseType::Bool)
+            )
+        );
+
+        assert_eq!(
+            parser::TypeParser::new()
+                .parse("(bool -> ?) -> bool")
+                .unwrap(),
+            GradualType::fun(
+                GradualType::fun(
+                    GradualType::Base(BaseType::Bool),
+                    GradualType::Dyn()
+                ),
+                GradualType::Base(BaseType::Bool)
+            )
+        );
     }
 }
