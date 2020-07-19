@@ -13,6 +13,8 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 
 - [ ] Parser and pretty printer
 - [ ] Debug/logging of constraint generation and unification
+- Improvements
+  + [ ] Eliminators mutate in place
 - Other language features
   + [ ] Operations on constants
   + [ ] Overloading resolution
