@@ -87,7 +87,7 @@ pub enum Constant {
 pub type Variable = String;
 
 /// e (ITGL)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr<T> {
     Const(Constant),
     Var(Variable),
@@ -668,10 +668,18 @@ mod test {
 
     #[test]
     fn const_int() {
-        assert!(parser::TermParser::new().parse("22").is_ok());
-        assert!(parser::TermParser::new().parse("(22)").is_ok());
-        assert!(parser::TermParser::new().parse("((((22))))").is_ok());
-        assert!(parser::TermParser::new().parse("((22)").is_err());
-        assert!(parser::TermParser::new().parse("-47").is_ok());
+        assert!(parser::ExprParser::new().parse("22").is_ok());
+        assert_eq!(parser::ExprParser::new().parse("47").unwrap(), Expr::Const(Constant::Int(47)));
+        assert!(parser::ExprParser::new().parse("(22)").is_ok());
+        assert!(parser::ExprParser::new().parse("((((22))))").is_ok());
+        assert!(parser::ExprParser::new().parse("((22)").is_err());
+        assert!(parser::ExprParser::new().parse("-47").is_ok());
+    }
+
+    #[test]
+    fn const_bool() {
+        assert_eq!(parser::ExprParser::new().parse("true").unwrap(), Expr::Const(Constant::Bool(true)));
+        assert_eq!(parser::ExprParser::new().parse("false").unwrap(), Expr::Const(Constant::Bool(false)));
+        assert_eq!(parser::ExprParser::new().parse("FALSE").unwrap(), Expr::Var("FALSE".to_string()));
     }
 }

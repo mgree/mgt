@@ -1,11 +1,36 @@
 use std::str::FromStr;
 
+use crate::syntax::*;
+
 grammar;
 
-pub Term: i32 = {
-    Num,
-    "(" <Term> ")",
+pub Expr: SourceExpr = {
+    <Atom>,
+    "(" <Expr> ")",
 };
 
-Num: i32 = r"-?[0-9]+" => i32::from_str(<>).unwrap();
+pub Atom: SourceExpr = {
+    <Const>,
+    r"[[:alpha:]][[:alnum:]_']*" => Expr::Var(<>.to_string()),
+};
 
+pub Const: SourceExpr = {
+    Num => Expr::Const(Constant::Int(<>)),
+    Bool => Expr::Const(Constant::Bool(<>)),
+};
+
+Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
+Bool: bool = {
+    "true" => true,
+    "false" => false,
+};
+
+match {
+    "true",
+    "false",
+    "(",
+    ")",
+} else {
+    r"-?[0-9]+",
+    r"[[:alpha:]][[:alnum:]_']*"
+}
