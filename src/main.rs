@@ -65,7 +65,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_identity() {
+    fn infer_identity() {
         let (_e, m, ves) = TypeInference::infer(&identity()).unwrap();
         match m {
             MigrationalType::Fun(dom, cod) => match (*dom, *cod) {
@@ -80,7 +80,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_dyn_identity() {
+    fn infer_dyn_identity() {
         let (e, m, ves) = TypeInference::infer(&dyn_identity()).unwrap();
 
         // just one maximal eliminator
@@ -124,7 +124,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_dyn_const() {
+    fn infer_dyn_const() {
         let x = String::from("x");
         let y = String::from("y");
         let k = Expr::lam(
@@ -159,7 +159,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_boolean_negation() {
+    fn infer_boolean_negation() {
         let (_e, m, ves) = TypeInference::infer(&neg()).unwrap();
 
         assert_eq!(
@@ -173,7 +173,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_dyn_boolean_negation() {
+    fn infer_dyn_boolean_negation() {
         let (_e, m, ves) = TypeInference::infer(&dyn_neg()).unwrap();
 
         // just one maximal eliminator
@@ -192,7 +192,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_conditional() {
+    fn infer_conditional() {
         let e = Expr::if_(Expr::bool(true), Expr::bool(false), Expr::bool(true));
 
         let (_e, m, ves) = TypeInference::infer(&e).unwrap();
@@ -202,7 +202,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_neg_or_id() {
+    fn infer_neg_or_id() {
         let e = Expr::if_(Expr::bool(true), dyn_neg(), dyn_identity());
 
         let (_e, m, ves) = TypeInference::infer(&e).unwrap();
@@ -222,7 +222,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_very_dynamic() {
+    fn infer_very_dynamic() {
         let x = String::from("x");
         let y = String::from("y");
         let e = Expr::lam(
@@ -259,7 +259,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_constants() {
+    fn infer_constants() {
         check_constant(Constant::Bool(true), BaseType::Bool);
         check_constant(Constant::Bool(false), BaseType::Bool);
         check_constant(Constant::Int(0), BaseType::Int);
@@ -278,7 +278,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_little_omega() {
+    fn infer_little_omega() {
         let (_e, m, ves) = TypeInference::infer(&little_omega()).unwrap();
 
         assert!(m.is_fun());
@@ -286,7 +286,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_big_omega() {
+    fn infer_big_omega() {
         let big_omega = Expr::app(little_omega(), little_omega());
         let (_e, _m, ves) = TypeInference::infer(&big_omega).unwrap();
 
@@ -295,7 +295,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_bool_id() {
+    fn infer_bool_id() {
         let (_e, m, ves) = TypeInference::infer(&bool_identity()).unwrap();
 
         assert_eq!(ves.len(), 1);
@@ -312,7 +312,7 @@ mod test {
     }
 
     #[test]
-    pub fn ill_typed_ann() {
+    fn ill_typed_ann() {
         let (_e, _m, ves) = TypeInference::infer(&Expr::ann(
             Expr::Const(Constant::Int(5)),
             Some(GradualType::Base(BaseType::Bool)),
@@ -323,7 +323,7 @@ mod test {
     }
 
     #[test]
-    pub fn well_typed_ann() {
+    fn well_typed_ann() {
         let (_e, m, ves) = TypeInference::infer(&Expr::lam(
             "x".into(),
             Some(GradualType::Dyn()),
@@ -348,7 +348,7 @@ mod test {
     }
 
     #[test]
-    pub fn infer_bad_constraints() {
+    fn infer_bad_constraints() {
         assert!(
             TypeInference::infer(&Expr::app(
                 Expr::Const(Constant::Bool(true)),
@@ -360,7 +360,7 @@ mod test {
     }
 
     #[test]
-    pub fn eg_width() {
+    fn eg_width() {
         let fixed: String = "fixed".into();
         let width_func: String = "width_func".into();
 

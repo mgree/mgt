@@ -1,0 +1,87 @@
+use std::str::FromStr;
+
+use crate::syntax::*;
+
+grammar;
+
+pub Type: GradualType = {
+    <dom:TypeAtomic> "->" <cod:Type> => GradualType::fun(dom, cod),
+    <TypeAtomic>,
+};
+
+pub TypeAtomic: GradualType = {
+    "dyn" => GradualType::Dyn(),
+    "?" => GradualType::Dyn(),
+    "bool" => GradualType::Base(BaseType::Bool),
+    "int" => GradualType::Base(BaseType::Int),
+    "(" <Type> ")",
+};
+
+pub TypeAnnot: Option<GradualType> = {
+    ":" <Type> => Some(<>),
+    => None,
+}
+
+pub Expr: SourceExpr = {
+    "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
+    "\\" <x:Id> <t:TypeAnnot> "." <e:Expr> => Expr::lam(x, t, e), // TODO multi-argument functions
+    "fun" <x:Id> <t:TypeAnnot> "." <e:Expr> => Expr::lam(x, t, e),
+    "let" <x:Id> <t:TypeAnnot> "=" <e1:Expr> "in" <e2:Expr> => Expr::app(Expr::lam(x,t,e2), e1),
+    <ExprAnn>,
+};
+
+pub ExprAnn: SourceExpr = {
+    <e:ExprApp> ":" <t:Type> => Expr::ann(e, Some(t)),
+    <ExprApp>,
+}
+
+pub ExprApp: SourceExpr = {
+    <e1:ExprApp> <e2:ExprAtom> => Expr::app(e1, e2),
+    <ExprAtom>,
+};
+
+pub ExprAtom: SourceExpr = {
+    <Const>,
+    <Id> => Expr::Var(<>),
+    "(" <Expr> ")",
+};
+
+pub Const: SourceExpr = {
+    Num => Expr::Const(Constant::Int(<>)),
+    Bool => Expr::Const(Constant::Bool(<>)),
+};
+
+Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
+
+Bool: bool = {
+    "true" => true,
+    "false" => false,
+};
+
+Id: String = <r"[[:alpha:]][[:alnum:]_']*"> => <>.to_string();
+
+match {
+    "?",
+    "->",
+    "(",
+    ")",
+    "\\",
+    ".",
+    ":",
+    "=",
+} else {
+    "dyn",
+    "bool",
+    "int",
+    "fun",
+    "if",
+    "then",
+    "else",
+    "let",
+    "in",
+    "true",
+    "false",
+} else {
+    r"-?[0-9]+",
+    r"[[:alpha:]][[:alnum:]_']*"
+}

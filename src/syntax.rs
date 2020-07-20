@@ -4,6 +4,8 @@ use std::hash::Hash;
 use im_rc::HashMap;
 use im_rc::HashSet;
 
+lalrpop_mod!(parser);
+
 /// gamma
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseType {
@@ -85,7 +87,7 @@ pub enum Constant {
 pub type Variable = String;
 
 /// e (ITGL)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr<T> {
     Const(Constant),
     Var(Variable),
@@ -139,6 +141,14 @@ impl<T> Expr<T> {
     }
 }
 
+impl SourceExpr {
+    pub fn parse<'a>(
+        s: &'a str,
+    ) -> Result<Self, lalrpop_util::ParseError<usize, parser::Token<'a>, &'static str>> {
+        parser::ExprParser::new().parse(s)
+    }
+}
+
 impl TargetExpr {
     pub fn apply(self, theta: &Subst) -> TargetExpr {
         self.map_types(&|m: MigrationalType| m.apply(theta))
@@ -156,6 +166,12 @@ impl StaticType {
 }
 
 impl GradualType {
+    pub fn parse<'a>(
+        s: &'a str,
+    ) -> Result<Self, lalrpop_util::ParseError<usize, parser::Token<'a>, &'static str>> {
+        parser::TypeParser::new().parse(s)
+    }
+
     pub fn fun(g1: GradualType, g2: GradualType) -> GradualType {
         GradualType::Fun(Box::new(g1), Box::new(g2))
     }
@@ -334,7 +350,11 @@ impl MigrationalType {
                 MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
             }
             MigrationalType::Choice(d, m1, m2) => {
-                match elim.0.get(&d).expect("valid eliminators should be defined for every chocie") {
+                match elim
+                    .0
+                    .get(&d)
+                    .expect("valid eliminators should be defined for every chocie")
+                {
                     Side::Left() => m1.eliminate(elim),
                     Side::Right() => m2.eliminate(elim),
                 }
@@ -681,5 +701,168 @@ impl Subst {
             .collect();
 
         Subst(composed.union(self.0)) // prioritizes mappings in composed over self
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn expr_id() {
+        assert_eq!(
+            SourceExpr::parse("fun x. x").unwrap(),
+            Expr::lam("x".into(), None, Expr::Var("x".into()))
+        );
+
+        assert_eq!(
+            SourceExpr::parse("fun x:?. x").unwrap(),
+            Expr::lam("x".into(), Some(GradualType::Dyn()), Expr::Var("x".into()))
+        );
+
+        assert_eq!(
+            SourceExpr::parse("fun x:bool. x").unwrap(),
+            Expr::lam(
+                "x".into(),
+                Some(GradualType::Base(BaseType::Bool)),
+                Expr::Var("x".into())
+            )
+        );
+    }
+
+    #[test]
+    fn expr_app() {
+        assert_eq!(
+            SourceExpr::parse("true false 5").unwrap(),
+            Expr::app(
+                Expr::app(
+                    Expr::Const(Constant::Bool(true)),
+                    Expr::Const(Constant::Bool(false))
+                ),
+                Expr::Const(Constant::Int(5))
+            )
+        );
+
+        assert_eq!(
+            SourceExpr::parse("true (false 5)").unwrap(),
+            Expr::app(
+                Expr::Const(Constant::Bool(true)),
+                Expr::app(
+                    Expr::Const(Constant::Bool(false)),
+                    Expr::Const(Constant::Int(5))
+                ),
+            )
+        );
+    }
+
+    #[test]
+    fn expr_let() {
+        assert!(SourceExpr::parse("let x = 5 in x").is_ok());
+        assert!(SourceExpr::parse("let x = 5 in y").is_ok());
+        assert!(SourceExpr::parse("let x = 5 in").is_err());
+        assert!(SourceExpr::parse("let x = in x").is_err());
+
+        assert!(SourceExpr::parse("let x : bool = 5 in x").is_ok());
+        assert!(SourceExpr::parse("let x : int = 5 in x").is_ok());
+        assert!(SourceExpr::parse("let x : = 5 in x").is_err());
+    }
+
+    #[test]
+    fn expr_neg() {
+        assert_eq!(
+            SourceExpr::parse("fun b:bool. if b then false else true").unwrap(),
+            Expr::lam(
+                "b".into(),
+                Some(GradualType::Base(BaseType::Bool)),
+                Expr::if_(
+                    Expr::Var("b".into()),
+                    Expr::Const(Constant::Bool(false)),
+                    Expr::Const(Constant::Bool(true))
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn const_int() {
+        assert!(SourceExpr::parse("22").is_ok());
+        assert_eq!(
+            SourceExpr::parse("47").unwrap(),
+            Expr::Const(Constant::Int(47))
+        );
+        assert!(SourceExpr::parse("(22)").is_ok());
+        assert!(SourceExpr::parse("((((22))))").is_ok());
+        assert!(SourceExpr::parse("((22)").is_err());
+        assert!(SourceExpr::parse("-47").is_ok());
+    }
+
+    #[test]
+    fn const_bool() {
+        assert_eq!(
+            SourceExpr::parse("true").unwrap(),
+            Expr::Const(Constant::Bool(true))
+        );
+        assert_eq!(
+            SourceExpr::parse("false").unwrap(),
+            Expr::Const(Constant::Bool(false))
+        );
+        assert_eq!(
+            SourceExpr::parse("FALSE").unwrap(),
+            Expr::Var("FALSE".to_string())
+        );
+    }
+
+    #[test]
+    fn types_atomic() {
+        assert_eq!(
+            GradualType::parse("bool").unwrap(),
+            GradualType::Base(BaseType::Bool)
+        );
+        assert_eq!(
+            GradualType::parse("int").unwrap(),
+            GradualType::Base(BaseType::Int)
+        );
+        assert_eq!(GradualType::parse("?").unwrap(), GradualType::Dyn());
+        assert_eq!(GradualType::parse("dyn").unwrap(), GradualType::Dyn());
+    }
+
+    #[test]
+    fn types() {
+        assert_eq!(
+            GradualType::parse("bool->bool").unwrap(),
+            GradualType::fun(
+                GradualType::Base(BaseType::Bool),
+                GradualType::Base(BaseType::Bool)
+            )
+        );
+        assert_eq!(
+            GradualType::parse("bool->bool->bool").unwrap(),
+            GradualType::fun(
+                GradualType::Base(BaseType::Bool),
+                GradualType::fun(
+                    GradualType::Base(BaseType::Bool),
+                    GradualType::Base(BaseType::Bool)
+                )
+            )
+        );
+
+        assert_eq!(
+            GradualType::parse("(bool->bool)->bool").unwrap(),
+            GradualType::fun(
+                GradualType::fun(
+                    GradualType::Base(BaseType::Bool),
+                    GradualType::Base(BaseType::Bool)
+                ),
+                GradualType::Base(BaseType::Bool)
+            )
+        );
+
+        assert_eq!(
+            GradualType::parse("(bool -> ?) -> bool").unwrap(),
+            GradualType::fun(
+                GradualType::fun(GradualType::Base(BaseType::Bool), GradualType::Dyn()),
+                GradualType::Base(BaseType::Bool)
+            )
+        );
     }
 }
