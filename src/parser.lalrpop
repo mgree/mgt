@@ -17,16 +17,15 @@ pub TypeAtomic: GradualType = {
     "(" <Type> ")",
 };
 
-pub TypeAnnot: Option<GradualType> = {
-    ":" <Type> => Some(<>),
-    => None,
+pub TypeAnnot: GradualType = {
+    ":" <Type> => <>,
 }
 
 pub Expr: SourceExpr = {
     "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
-    "\\" <x:Id> <t:TypeAnnot> "." <e:Expr> => Expr::lam(x, t, e), // TODO multi-argument functions
-    "fun" <x:Id> <t:TypeAnnot> "." <e:Expr> => Expr::lam(x, t, e),
-    "let" <x:Id> <t:TypeAnnot> "=" <e1:Expr> "in" <e2:Expr> => Expr::app(Expr::lam(x,t,e2), e1),
+    "\\" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e), // TODO multi-argument functions
+    "fun" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e),
+    "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::app(Expr::lam(x,t,e2), e1),
     <ExprAnn>,
 };
 
