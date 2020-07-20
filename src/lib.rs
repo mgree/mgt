@@ -176,7 +176,7 @@ impl TypeInference {
                         .and(Constraint::Consistent(
                             Pattern::Top(),
                             MigrationalType::Var(k1),
-                            m_arg.clone(),
+                            m_arg.clone(), // ??? MMG paper says M2, but that's not well scoped
                         )),
                     Pattern::Top(), // ??? MMG paper just says pi here
                 )
@@ -399,7 +399,7 @@ impl TypeInference {
             ) => {
                 // (e), (f)
                 let (theta1, pi1) = self.unify1(Constraint::Consistent(p.clone(), *m11, *m21));
-                let (theta2, pi2) = self.unify1(Constraint::Consistent(p, *m12, *m22));
+                let (theta2, pi2) = self.unify1(Constraint::Consistent(p, m12.apply(&theta1), m22.apply(&theta1)));
 
                 (theta2.compose(theta1), pi2.meet(pi1))
             }
