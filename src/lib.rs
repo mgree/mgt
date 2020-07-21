@@ -5,6 +5,8 @@ use im_rc::HashMap;
 use im_rc::HashSet;
 use std::iter::FromIterator;
 
+use log::{debug, error, trace};
+
 pub mod syntax;
 use syntax::*;
 
@@ -49,7 +51,11 @@ impl TypeInference {
         self.pattern = self.pattern.meet(p);
     }
 
-    fn generate_constraints(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<(TargetExpr, MigrationalType)> {
+    fn generate_constraints(
+        &mut self,
+        ctx: Ctx,
+        e: &SourceExpr,
+    ) -> Option<(TargetExpr, MigrationalType)> {
         match e {
             Expr::Const(c) => Some((Expr::Const(c.clone()), c.into())),
             Expr::Var(x) => {
@@ -67,21 +73,30 @@ impl TypeInference {
                     let (e, m_cod) =
                         self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-                    Some((Expr::lam(x.clone(), m_dom.clone(), e), MigrationalType::fun(m_dom, m_cod)))
+                    Some((
+                        Expr::lam(x.clone(), m_dom.clone(), e),
+                        MigrationalType::fun(m_dom, m_cod),
+                    ))
                 }
                 Some(m_dom) => {
                     let (e, m_cod) =
                         self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
 
                     let m_dom: MigrationalType = m_dom.clone().into();
-                    Some((Expr::lam(x.clone(), m_dom.clone(), e), MigrationalType::fun(m_dom, m_cod)))
+                    Some((
+                        Expr::lam(x.clone(), m_dom.clone(), e),
+                        MigrationalType::fun(m_dom, m_cod),
+                    ))
                 }
                 None => {
                     let m_dom = MigrationalType::Var(self.fresh_variable());
                     let (e, m_cod) =
                         self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-                    Some((Expr::lam(x.clone(), m_dom.clone(), e), MigrationalType::fun(m_dom, m_cod)))
+                    Some((
+                        Expr::lam(x.clone(), m_dom.clone(), e),
+                        MigrationalType::fun(m_dom, m_cod),
+                    ))
                 }
             },
             Expr::Ann(e, t) => {
@@ -134,15 +149,36 @@ impl TypeInference {
                     MigrationalType::Base(BaseType::Bool),
                 ));
 
-                let (m_res, c_res, _pat_res) = self.meet(&m_then, &m_else);
-
-                eprintln!(
-                    "if constraints on {:?} and {:?}: {:?}",
-                    m_then, m_else, c_res
+                let (m_res, c_res, pi_res) = self.meet(&m_then, &m_else);
+                debug!(
+                    "if constraints on {:?} and {:?}: {:?} (pi={:?}",
+                    m_then, m_else, c_res, pi_res
                 );
+                self.add_pattern(pi_res);
                 self.add_constraints(c_res);
 
                 Some((Expr::if_(e_cond, e_then, e_else), m_res))
+            }
+            Expr::Let(x, t, e_def, e_body) => {
+                let (e_def, m_def) = self.generate_constraints(ctx.clone(), e_def)?;
+
+                let m_def = match t {
+                    Some(t) => {
+                        let m: MigrationalType = t.clone().into();
+                        self.add_constraint(Constraint::Consistent(
+                            Pattern::Top(),
+                            m.clone(),
+                            m_def.clone(),
+                        ));
+                        m
+                    }
+                    None => m_def,
+                };
+
+                let (e_body, m_body) =
+                    self.generate_constraints(ctx.extend(x.clone(), m_def.clone()), e_body)?;
+
+                Some((Expr::let_(x.clone(), m_def, e_def, e_body), m_body))
             }
         }
     }
@@ -242,6 +278,7 @@ impl TypeInference {
         m1: &MigrationalType,
         m2: &MigrationalType,
     ) -> (MigrationalType, Constraints, Pattern) {
+        trace!("meet({:?}, {:?})", m1, m2);
         match (m1, m2) {
             (MigrationalType::Var(a), m) | (m, MigrationalType::Var(a)) => {
                 let alpha = MigrationalType::Var(*a);
@@ -277,6 +314,7 @@ impl TypeInference {
                 (m1.clone(), Constraints::epsilon(), Pattern::Top())
             }
             _ => (
+                // MMG could turn this into a join, will type more programs (but with lots of leftover dynamic)
                 MigrationalType::Var(self.fresh_variable()),
                 Constraints::epsilon(),
                 Pattern::Bot(),
@@ -321,6 +359,8 @@ impl TypeInference {
     }
 
     fn unify1(&mut self, c: Constraint) -> (Subst, Pattern) {
+        trace!("unify1({:?})", c);
+
         match c {
             Constraint::Consistent(_p, MigrationalType::Dyn(), _)
             | Constraint::Consistent(_p, _, MigrationalType::Dyn()) => {
@@ -402,7 +442,11 @@ impl TypeInference {
             ) => {
                 // (e), (f)
                 let (theta1, pi1) = self.unify1(Constraint::Consistent(p.clone(), *m11, *m21));
-                let (theta2, pi2) = self.unify1(Constraint::Consistent(p, m12.apply(&theta1), m22.apply(&theta1)));
+                let (theta2, pi2) = self.unify1(Constraint::Consistent(
+                    p,
+                    m12.apply(&theta1),
+                    m22.apply(&theta1),
+                ));
 
                 (theta2.compose(theta1), pi2.meet(pi1))
             }
@@ -431,24 +475,26 @@ impl TypeInference {
 
         let (e, m) = ti.generate_constraints(Ctx::empty(), e)?;
 
-        eprintln!("Generated constraints:");
-        eprintln!("  e = {:?}", e);
-        eprintln!("  m = {:?}", m);
-        eprintln!("  constraints = {:?}", ti.constraints);
+        debug!("Generated constraints:");
+        debug!("  e = {:?}", e);
+        debug!("  m = {:?}", m);
+        debug!("  constraints = {:?}", ti.constraints);
+        debug!("  pi = {:?}", ti.pattern);
 
         if ti.pattern == Pattern::Bot() {
-            eprintln!("ERROR: constraint generation produced false pattern");
+            error!("constraint generation produced false pattern (i.e., statically untypable");
             return None;
         }
 
-        let (theta, pi) = ti.unify(ti.constraints.clone());
+        let (theta, mut pi) = ti.unify(ti.constraints.clone());
+        pi = pi.meet(ti.pattern);
         let e = e.apply(&theta);
         let m = m.clone().apply(&theta);
-        eprintln!("Unified constraints:");
-        eprintln!("  e = {:?}", e);
-        eprintln!("  theta = {:?}", theta);
-        eprintln!("  pi = {:?}", pi);
-        eprintln!("  m = {:?}", m);
+        debug!("Unified constraints:");
+        debug!("  e = {:?}", e);
+        debug!("  theta = {:?}", theta);
+        debug!("  pi = {:?}", pi);
+        debug!("  m = {:?}", m);
 
         let ds = m.choices().clone();
         let ves = pi
@@ -458,8 +504,8 @@ impl TypeInference {
             .map(move |ve| expand(ve, &ds))
             .collect();
 
-        eprintln!("Maximal valid eliminators:");
-        eprintln!("  ves = {:?}", ves);
+        debug!("Maximal valid eliminators:");
+        debug!("  ves = {:?}", ves);
 
         Some((e, m, ves))
     }
@@ -469,6 +515,10 @@ impl TypeInference {
 mod test {
     use super::*;
     use im_rc::HashSet;
+
+    fn infer(s: &str) -> (TargetExpr, MigrationalType, HashSet<Eliminator>) {
+        TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap()
+    }
 
     fn identity() -> SourceExpr {
         let x = String::from("x");
@@ -771,6 +821,26 @@ mod test {
     }
 
     #[test]
+    fn if_meet_not_join() {
+        assert!(TypeInference::infer(
+            &Expr::parse("\\x:?. if x then \\y:?. x else false").unwrap()
+        )
+        .is_none());
+        assert!(
+            TypeInference::infer(&Expr::parse("\\x:?. if x then \\y. x else false").unwrap())
+                .is_none()
+        );
+        assert!(
+            TypeInference::infer(&Expr::parse("\\x. if x then \\y:?. x else false").unwrap())
+                .is_none()
+        );
+        assert!(
+            TypeInference::infer(&Expr::parse("\\x. if x then \\y. x else false").unwrap())
+                .is_none()
+        );
+    }
+
+    #[test]
     fn well_typed_ann() {
         let (_e, m, ves) = TypeInference::infer(&Expr::lam(
             "x".into(),
@@ -793,6 +863,62 @@ mod test {
                 MigrationalType::Base(BaseType::Int)
             )
         );
+    }
+
+    #[test]
+    fn let_plain() {
+        let (_e, m, ves) = infer("let id = \\x. x in if id true then id true else id false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Base(BaseType::Bool));
+    }
+
+    #[test]
+    fn let_dynfun() {
+        let (_e, m, ves) = infer("let id = \\x:?. x in if id true then id true else id false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Base(BaseType::Bool));
+    }
+
+    #[test]
+    fn let_dyn_poly_error() {
+        let (_e, _m, ves) = infer("let id = \\x. x in if id true then id 5 else id 1");
+
+        assert_eq!(ves.len(), 0);
+
+        let (_e, m, ves) = infer("let id = \\x:?. x in if id true then id 5 else id 1");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Dyn());
+
+        let (_e, m, ves) = infer("let id:? = \\x. x in if id true then id 5 else id 1");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Dyn());
+    }
+
+    #[test]
+    fn let_const() {
+        let (_e, m, ves) = infer("let x = 5 in x");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Base(BaseType::Int));
     }
 
     #[test]
