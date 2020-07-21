@@ -149,12 +149,12 @@ impl TypeInference {
                     MigrationalType::Base(BaseType::Bool),
                 ));
 
-                let (m_res, c_res, _pat_res) = self.meet(&m_then, &m_else);
-
+                let (m_res, c_res, pi_res) = self.meet(&m_then, &m_else);
                 debug!(
-                    "if constraints on {:?} and {:?}: {:?}",
-                    m_then, m_else, c_res
+                    "if constraints on {:?} and {:?}: {:?} (pi={:?}",
+                    m_then, m_else, c_res, pi_res
                 );
+                self.add_pattern(pi_res);
                 self.add_constraints(c_res);
 
                 Some((Expr::if_(e_cond, e_then, e_else), m_res))
@@ -257,6 +257,7 @@ impl TypeInference {
         m1: &MigrationalType,
         m2: &MigrationalType,
     ) -> (MigrationalType, Constraints, Pattern) {
+        trace!("meet({:?}, {:?})", m1, m2);
         match (m1, m2) {
             (MigrationalType::Var(a), m) | (m, MigrationalType::Var(a)) => {
                 let alpha = MigrationalType::Var(*a);
@@ -291,10 +292,10 @@ impl TypeInference {
             (MigrationalType::Base(b1), MigrationalType::Base(b2)) if b1 == b2 => {
                 (m1.clone(), Constraints::epsilon(), Pattern::Top())
             }
-            _ => (
-                MigrationalType::Dyn(), //MigrationalType::Var(self.fresh_variable()),
+            _ => ( // MMG could turn this into a join, will type more programs (but with lots of leftover dynamic)
+                MigrationalType::Var(self.fresh_variable()),
                 Constraints::epsilon(),
-                Pattern::Top(), // Pattern::Bot(),
+                Pattern::Bot(),
             ),
         }
     }
@@ -791,6 +792,14 @@ mod test {
         .unwrap();
 
         assert_eq!(ves.len(), 0);
+    }
+
+    #[test]
+    fn if_meet_not_join() {
+        assert!(TypeInference::infer(&Expr::parse("\\x:?. if x then \\y:?. x else false").unwrap()).is_none());
+        assert!(TypeInference::infer(&Expr::parse("\\x:?. if x then \\y. x else false").unwrap()).is_none());
+        assert!(TypeInference::infer(&Expr::parse("\\x. if x then \\y:?. x else false").unwrap()).is_none());
+        assert!(TypeInference::infer(&Expr::parse("\\x. if x then \\y. x else false").unwrap()).is_none());
     }
 
     #[test]
