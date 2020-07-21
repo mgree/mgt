@@ -4,6 +4,8 @@ use std::hash::Hash;
 use im_rc::HashMap;
 use im_rc::HashSet;
 
+use log::warn;
+
 lalrpop_mod!(parser);
 
 /// gamma
@@ -353,10 +355,13 @@ impl MigrationalType {
                 match elim
                     .0
                     .get(&d)
-                    .expect("valid eliminators should be defined for every choice")
                 {
-                    Side::Left() => m1.eliminate(elim),
-                    Side::Right() => m2.eliminate(elim),
+                    Some(Side::Right()) => m2.eliminate(elim),
+                    Some(Side::Left()) => m1.eliminate(elim),
+                    None => {
+                        warn!("No choice for variation {:?}; choosing {:?} obver {:?}", d, m1, m2);
+                        m1.eliminate(elim)
+                    }
                 }
             }
         }
