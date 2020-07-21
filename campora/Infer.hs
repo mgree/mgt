@@ -10,6 +10,11 @@ import Control.Monad.State
 import System.IO.Unsafe
 import Data.Foldable (foldlM)
 
+import Data.Functor.Identity
+
+instance MonadFail Identity where
+  fail s = error s
+
 -- Returns substitution, result type, typing patterns
 infer :: Env -> Term -> State IState (Sub,Vtype,Vtype)
 

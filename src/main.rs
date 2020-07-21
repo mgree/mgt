@@ -5,6 +5,8 @@ use clap::{App, Arg};
 use std::fs::File;
 use std::io::Read;
 
+use log::{error, warn, info};
+
 use mgt::syntax::*;
 use mgt::*;
 
@@ -18,7 +20,20 @@ fn main() {
                 .default_value("-")
                 .index(1),
         )
+        .arg(
+            Arg::with_name("v")
+                .short("v")
+                .multiple(true)
+                .help("Sets the level of verbosity"),
+        )
         .get_matches();
+
+    let verbosity = match config.occurrences_of("v") {
+        0 => log::LevelFilter::Info,
+        1 => log::LevelFilter::Debug,
+        2 | _ => log::LevelFilter::Trace,
+    };
+    env_logger::Builder::from_default_env().filter(None, verbosity).init();
 
     let input_source = config.value_of("INPUT").expect("input source");
 
@@ -30,42 +45,40 @@ fn main() {
     };
 
     if let Err(err) = res {
-        eprintln!("I/O error: {}", err);
+        error!("I/O error: {}", err);
         std::process::exit(47);
     }
 
     let e = SourceExpr::parse(&input).unwrap_or_else(|e| {
-        eprintln!("Parse error:\n{}", e);
+        error!("Parse error:\n{}", e);
         std::process::exit(2);
     });
 
     let (e, m, ves) = TypeInference::infer(&e).unwrap_or_else(|| {
-        eprintln!("Constraint generation failed");
+        error!("Constraint generation failed");
         std::process::exit(3);
     });
 
-    println!("Found {} maximal typings.", ves.len());
+    info!("Found {} maximal typings.", ves.len());
 
     if ves.len() == 0 {
-        println!();
-        println!("Untypable; unresolved type: {:?}.", m);
-        println!("{:?}", e);
+        warn!("Untypable; unresolved type: {:?}.", m);
+        warn!("{:?}", e);
         std::process::exit(1);
     }
 
     for (i, ve) in ves.iter().enumerate() {
+        if ves.len() > 1 {
+            info!("Eliminator #{}: #{:?}", i + 1, ve);
+        } else {
+            info!("Eliminator: #{:?}", ve);
+        }
+
         let e = e.clone().eliminate(&ve);
         let m = m.clone().eliminate(&ve);
 
-        println!();
-        if ves.len() > 1 {
-            println!("Eliminator #{}: #{:?}", i + 1, ve);
-        } else {
-            println!("Eliminator: #{:?}", ve);
-        }
-
-        println!("m = {:?}", m);
-        println!("{:?}", e);
+        info!("m = {:?}", m);
+        info!("{:?}", e);
     }
 
     std::process::exit(0);

@@ -353,7 +353,7 @@ impl MigrationalType {
                 match elim
                     .0
                     .get(&d)
-                    .expect("valid eliminators should be defined for every chocie")
+                    .expect("valid eliminators should be defined for every choice")
                 {
                     Side::Left() => m1.eliminate(elim),
                     Side::Right() => m2.eliminate(elim),
