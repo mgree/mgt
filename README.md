@@ -12,9 +12,9 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 ## TODO
 
 - [ ] Pretty printer
-- [ ] Debug/logging of constraint generation and unification
 - Other language features
   + [ ] Recursion; mutual recursion
+  + [ ] Parser improvements
   + [ ] Operations on constants
   + [ ] Overloading resolution
   + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables)
