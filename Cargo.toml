@@ -9,8 +9,12 @@ build = "build.rs" # LALRPOP preprocessing
 [build-dependencies]
 lalrpop = { version = "0.19.0", features = ["lexer"] }
 
+[dev-dependencies]
+assert_cli = "0.6.3"
+tempfile = "3.1.0"
+
 [dependencies]
 im-rc = "15.0.0"
 lalrpop-util = "0.19.0"
 regex = "1"
-clap = "~2.33"
+clap = "2.33"

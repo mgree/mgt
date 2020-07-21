@@ -70,3 +70,86 @@ fn main() {
 
     std::process::exit(0);
 }
+
+#[cfg(test)]
+mod test {
+    extern crate assert_cli;
+
+    use assert_cli::Assert;
+    use std::io::Write;
+    use std::path::Path;
+
+    #[test]
+    fn no_args_id() {
+        Assert::main_binary().stdin("\\x. x").succeeds().unwrap();
+    }
+
+    #[test]
+    fn no_args_parse_error() {
+        Assert::main_binary().stdin("\\x.").fails().unwrap();
+    }
+
+    #[test]
+    fn no_args_type_error() {
+        Assert::main_binary().stdin("true true").fails().unwrap();
+    }
+
+    #[test]
+    fn explicit_stdin_id() {
+        Assert::main_binary()
+            .with_args(&["-"])
+            .stdin("\\x. x")
+            .succeeds()
+            .unwrap();
+    }
+
+    #[test]
+    fn explicit_stdin_parse_error() {
+        Assert::main_binary()
+            .with_args(&["-"])
+            .stdin("\\x.")
+            .fails()
+            .unwrap();
+    }
+
+    #[test]
+    fn explicit_stdin_type_error() {
+        Assert::main_binary()
+            .with_args(&["-"])
+            .stdin("true true")
+            .fails()
+            .unwrap();
+    }
+
+    fn with_tempfile<F>(s: &str, f: F)
+    where
+        F: Fn(&Path) -> (),
+    {
+        let mut file = tempfile::NamedTempFile::new().expect("make temporary file");
+
+        file.write_all(s.as_bytes()).expect("couldn't write to temporary file");
+
+        f(file.path());
+    }
+
+    #[test]
+    fn file_id() {
+        with_tempfile("\\x. x", |f| {
+            Assert::main_binary().with_args(&[f]).succeeds().unwrap()
+        });
+    }
+
+    #[test]
+    fn file_parse_error() {
+        with_tempfile("\\x: . x", |f| {
+            Assert::main_binary().with_args(&[f]).fails().unwrap()
+        });
+    }
+
+    #[test]
+    fn file_fails_type_error() {
+        with_tempfile("bool (\\x. x)", |f| {
+            Assert::main_binary().with_args(&[f]).fails().unwrap()
+        });
+    }
+}

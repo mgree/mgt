@@ -11,7 +11,7 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
   
 ## TODO
 
-- [ ] Parser and pretty printer
+- [ ] Pretty printer
 - [ ] Debug/logging of constraint generation and unification
 - Other language features
   + [ ] Recursion; mutual recursion
