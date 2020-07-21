@@ -142,10 +142,10 @@ impl<T> Expr<T> {
 }
 
 impl SourceExpr {
-    pub fn parse<'a>(
-        s: &'a str,
-    ) -> Result<Self, lalrpop_util::ParseError<usize, parser::Token<'a>, &'static str>> {
-        parser::ExprParser::new().parse(s)
+    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
+        parser::ExprParser::new()
+            .parse(s)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -166,10 +166,10 @@ impl StaticType {
 }
 
 impl GradualType {
-    pub fn parse<'a>(
-        s: &'a str,
-    ) -> Result<Self, lalrpop_util::ParseError<usize, parser::Token<'a>, &'static str>> {
-        parser::TypeParser::new().parse(s)
+    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
+        parser::TypeParser::new()
+            .parse(s)
+            .map_err(|e| e.to_string())
     }
 
     pub fn fun(g1: GradualType, g2: GradualType) -> GradualType {
