@@ -159,6 +159,27 @@ impl TypeInference {
 
                 Some((Expr::if_(e_cond, e_then, e_else), m_res))
             }
+            Expr::Let(x, t, e_def, e_body) => {
+                let (e_def, m_def) = self.generate_constraints(ctx.clone(), e_def)?;
+
+                let m_def = match t {
+                    Some(t) => {
+                        let m: MigrationalType = t.clone().into();
+                        self.add_constraint(Constraint::Consistent(
+                            Pattern::Top(),
+                            m.clone(),
+                            m_def.clone(),
+                        ));
+                        m
+                    }
+                    None => m_def,
+                };
+
+                let (e_body, m_body) =
+                    self.generate_constraints(ctx.extend(x.clone(), m_def.clone()), e_body)?;
+
+                Some((Expr::let_(x.clone(), m_def, e_def, e_body), m_body))
+            }
         }
     }
 
@@ -292,7 +313,8 @@ impl TypeInference {
             (MigrationalType::Base(b1), MigrationalType::Base(b2)) if b1 == b2 => {
                 (m1.clone(), Constraints::epsilon(), Pattern::Top())
             }
-            _ => ( // MMG could turn this into a join, will type more programs (but with lots of leftover dynamic)
+            _ => (
+                // MMG could turn this into a join, will type more programs (but with lots of leftover dynamic)
                 MigrationalType::Var(self.fresh_variable()),
                 Constraints::epsilon(),
                 Pattern::Bot(),
@@ -493,6 +515,10 @@ impl TypeInference {
 mod test {
     use super::*;
     use im_rc::HashSet;
+
+    fn infer(s: &str) -> (TargetExpr, MigrationalType, HashSet<Eliminator>) {
+        TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap()
+    }
 
     fn identity() -> SourceExpr {
         let x = String::from("x");
@@ -796,10 +822,22 @@ mod test {
 
     #[test]
     fn if_meet_not_join() {
-        assert!(TypeInference::infer(&Expr::parse("\\x:?. if x then \\y:?. x else false").unwrap()).is_none());
-        assert!(TypeInference::infer(&Expr::parse("\\x:?. if x then \\y. x else false").unwrap()).is_none());
-        assert!(TypeInference::infer(&Expr::parse("\\x. if x then \\y:?. x else false").unwrap()).is_none());
-        assert!(TypeInference::infer(&Expr::parse("\\x. if x then \\y. x else false").unwrap()).is_none());
+        assert!(TypeInference::infer(
+            &Expr::parse("\\x:?. if x then \\y:?. x else false").unwrap()
+        )
+        .is_none());
+        assert!(
+            TypeInference::infer(&Expr::parse("\\x:?. if x then \\y. x else false").unwrap())
+                .is_none()
+        );
+        assert!(
+            TypeInference::infer(&Expr::parse("\\x. if x then \\y:?. x else false").unwrap())
+                .is_none()
+        );
+        assert!(
+            TypeInference::infer(&Expr::parse("\\x. if x then \\y. x else false").unwrap())
+                .is_none()
+        );
     }
 
     #[test]
@@ -825,6 +863,62 @@ mod test {
                 MigrationalType::Base(BaseType::Int)
             )
         );
+    }
+
+    #[test]
+    fn let_plain() {
+        let (_e, m, ves) = infer("let id = \\x. x in if id true then id true else id false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Base(BaseType::Bool));
+    }
+
+    #[test]
+    fn let_dynfun() {
+        let (_e, m, ves) = infer("let id = \\x:?. x in if id true then id true else id false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Base(BaseType::Bool));
+    }
+
+    #[test]
+    fn let_dyn_poly_error() {
+        let (_e, _m, ves) = infer("let id = \\x. x in if id true then id 5 else id 1");
+
+        assert_eq!(ves.len(), 0);
+
+        let (_e, m, ves) = infer("let id = \\x:?. x in if id true then id 5 else id 1");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Dyn());
+
+        let (_e, m, ves) = infer("let id:? = \\x. x in if id true then id 5 else id 1");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Dyn());
+    }
+
+    #[test]
+    fn let_const() {
+        let (_e, m, ves) = infer("let x = 5 in x");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        assert_eq!(m, MigrationalType::Base(BaseType::Int));
     }
 
     #[test]

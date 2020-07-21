@@ -97,6 +97,7 @@ pub enum Expr<T> {
     Ann(Box<Expr<T>>, T),
     App(Box<Expr<T>>, Box<Expr<T>>),
     If(Box<Expr<T>>, Box<Expr<T>>, Box<Expr<T>>),
+    Let(Variable, T, Box<Expr<T>>, Box<Expr<T>>),
     // TODO operations on constants
 }
 
@@ -128,6 +129,10 @@ impl<T> Expr<T> {
         Expr::If(Box::new(e1), Box::new(e2), Box::new(e3))
     }
 
+    pub fn let_(x: Variable, t:T, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+        Expr::Let(x, t, Box::new(e1), Box::new(e2))
+    }
+
     pub fn map_types<F, U>(self, f: &F) -> Expr<U>
     where
         F: Fn(T) -> U,
@@ -139,6 +144,7 @@ impl<T> Expr<T> {
             Expr::App(e1, e2) => Expr::app(e1.map_types(f), e2.map_types(f)),
             Expr::Ann(e, t) => Expr::ann(e.map_types(f), f(t)),
             Expr::If(e1, e2, e3) => Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
+            Expr::Let(x, t, e1, e2) => Expr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
         }
     }
 }
@@ -359,7 +365,7 @@ impl MigrationalType {
                     Some(Side::Right()) => m2.eliminate(elim),
                     Some(Side::Left()) => m1.eliminate(elim),
                     None => {
-                        warn!("No choice for variation {:?}; choosing {:?} obver {:?}", d, m1, m2);
+                        warn!("No choice for variation {:?}; choosing {:?} over {:?}", d, m1, m2);
                         m1.eliminate(elim)
                     }
                 }

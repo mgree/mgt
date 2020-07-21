@@ -25,7 +25,7 @@ pub Expr: SourceExpr = {
     "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
     "\\" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e), // TODO multi-argument functions
     "fun" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e),
-    "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::app(Expr::lam(x,t,e2), e1),
+    "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(x, t, e1, e2),
     <ExprAnn>,
 };
 
