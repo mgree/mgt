@@ -151,7 +151,7 @@ impl TypeInference {
 
                 let (m_res, c_res, pi_res) = self.meet(&m_then, &m_else);
                 debug!(
-                    "if constraints on {:?} and {:?}: {:?} (pi={:?}",
+                    "if constraints on {} and {}: {:?} (pi={:?}",
                     m_then, m_else, c_res, pi_res
                 );
                 self.add_pattern(pi_res);
@@ -278,7 +278,7 @@ impl TypeInference {
         m1: &MigrationalType,
         m2: &MigrationalType,
     ) -> (MigrationalType, Constraints, Pattern) {
-        trace!("meet({:?}, {:?})", m1, m2);
+        trace!("meet({}, {})", m1, m2);
         match (m1, m2) {
             (MigrationalType::Var(a), m) | (m, MigrationalType::Var(a)) => {
                 let alpha = MigrationalType::Var(*a);
@@ -477,7 +477,7 @@ impl TypeInference {
 
         debug!("Generated constraints:");
         debug!("  e = {:?}", e);
-        debug!("  m = {:?}", m);
+        debug!("  m = {}", m);
         debug!("  constraints = {:?}", ti.constraints);
         debug!("  pi = {:?}", ti.pattern);
 
@@ -494,7 +494,7 @@ impl TypeInference {
         debug!("  e = {:?}", e);
         debug!("  theta = {:?}", theta);
         debug!("  pi = {:?}", pi);
-        debug!("  m = {:?}", m);
+        debug!("  m = {}", m);
 
         let ds = m.choices().clone();
         let ves = pi
