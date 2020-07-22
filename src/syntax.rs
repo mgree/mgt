@@ -160,6 +160,116 @@ impl SourceExpr {
             .parse(s)
             .map_err(|e| e.to_string())
     }
+
+    pub fn to_doc(&self) -> RcDoc<()> {
+        match self {
+            Expr::Var(x) => RcDoc::text(x),
+            Expr::Const(Constant::Bool(b)) => RcDoc::text(if *b { "true" } else { "false" }),
+            Expr::Const(Constant::Int(n)) => RcDoc::text(n.to_string()),
+            Expr::Lam(x, t, e) => {
+                let mut lam = RcDoc::text("\\").append(RcDoc::text(x));
+
+                if let Some(t) = t {
+                    lam = lam
+                        .append(RcDoc::space())
+                        .append(RcDoc::text(":"))
+                        .append(RcDoc::space())
+                        .append(t.to_doc());
+                }
+
+                lam.append(RcDoc::text("."))
+                    .append(RcDoc::line())
+                    .append(e.to_doc().nest(1))
+                    .group()
+            }
+            Expr::Ann(e, None) => e.to_doc(),
+            Expr::Ann(e, Some(t)) => e
+                .to_doc()
+                .append(RcDoc::space())
+                .append(RcDoc::text("::"))
+                .append(RcDoc::space())
+                .append(t.to_doc())
+                .group(),
+            Expr::If(e1, e2, e3) => RcDoc::intersperse(
+                vec![
+                    RcDoc::text("if"),
+                    e1.to_doc().nest(1).append(RcDoc::line_()),
+                    RcDoc::text("then"),
+                    e2.to_doc().nest(1).append(RcDoc::line_()),
+                    RcDoc::text("else"),
+                    e3.to_doc().nest(1),
+                ],
+                RcDoc::space(),
+            )
+            .group(),
+            Expr::App(e1, e2) => {
+                let mut d1 = e1.to_doc();
+                let mut d2 = e2.to_doc();
+
+                if e1.is_compound() && !e1.is_app() {
+                    d1 = RcDoc::text("(").append(d1).append(RcDoc::text(")"));
+                }
+
+                if e2.is_compound() {
+                    d2 = RcDoc::text("(").append(d2).append(RcDoc::text(")"));
+                }
+
+                d1.append(RcDoc::space()).append(d2).group()
+            }
+            Expr::Let(x, t, e1, e2) => {
+                let annot = match t {
+                    None => RcDoc::nil(),
+                    Some(t) => RcDoc::space()
+                        .append(RcDoc::text(":"))
+                        .append(RcDoc::space())
+                        .append(t.to_doc()),
+                };
+
+                RcDoc::intersperse(
+                    vec![
+                        RcDoc::text("let")
+                            .append(RcDoc::space())
+                            .append(RcDoc::text(x))
+                            .append(annot)
+                            .append(RcDoc::space())
+                            .append(RcDoc::text("=")),
+                        e1.to_doc().nest(4).group(),
+                        RcDoc::text("in"),
+                        e2.to_doc(),
+                    ],
+                    RcDoc::line(),
+                )
+                .group()
+            }
+        }
+    }
+
+    pub fn to_pretty(&self, width: usize) -> String {
+        let mut w = Vec::new();
+        self.to_doc().render(width, &mut w).unwrap();
+        String::from_utf8(w).unwrap()
+    }
+
+    pub fn is_compound(&self) -> bool {
+        match self {
+            Expr::Var(_) | Expr::Const(_) | Expr::Ann(_, None) => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_app(&self) -> bool {
+        match self {
+            Expr::App(_, _) => true,
+            Expr::Ann(e, None) => e.is_app(),
+            _ => false,
+        }
+    }
+}
+
+impl Display for SourceExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_pretty(DEFAULT_WIDTH))
+    }
 }
 
 impl TargetExpr {
@@ -187,10 +297,10 @@ impl GradualType {
 
     pub fn to_doc(&self) -> RcDoc<()> {
         match self {
-            GradualType::Dyn() => RcDoc::as_string("?"),
-            GradualType::Base(BaseType::Bool) => RcDoc::as_string("bool"),
-            GradualType::Base(BaseType::Int) => RcDoc::as_string("int"),
-            GradualType::Var(TypeVariable(n)) => RcDoc::as_string(format!("a{}", n)),
+            GradualType::Dyn() => RcDoc::text("?"),
+            GradualType::Base(BaseType::Bool) => RcDoc::text("bool"),
+            GradualType::Base(BaseType::Int) => RcDoc::text("int"),
+            GradualType::Var(TypeVariable(n)) => RcDoc::text(format!("a{}", n)),
             GradualType::Fun(g1, g2) => {
                 let mut dom: RcDoc<()> = g1.to_doc();
 
@@ -200,7 +310,12 @@ impl GradualType {
 
                 let cod = g2.to_doc().nest(1);
 
-                dom.nest(1).append(RcDoc::space()).append(RcDoc::text("->")).append(RcDoc::space()).append(cod)
+                dom.nest(1)
+                    .append(RcDoc::space())
+                    .append(RcDoc::text("->"))
+                    .append(RcDoc::space())
+                    .append(cod)
+                    .group()
             }
         }
     }
@@ -362,10 +477,10 @@ impl VariationalType {
 impl MigrationalType {
     pub fn to_doc(&self) -> RcDoc<()> {
         match self {
-            MigrationalType::Dyn() => RcDoc::as_string("?"),
-            MigrationalType::Base(BaseType::Bool) => RcDoc::as_string("bool"),
-            MigrationalType::Base(BaseType::Int) => RcDoc::as_string("int"),
-            MigrationalType::Var(TypeVariable(n)) => RcDoc::as_string(format!("a{}", n)),
+            MigrationalType::Dyn() => RcDoc::text("?"),
+            MigrationalType::Base(BaseType::Bool) => RcDoc::text("bool"),
+            MigrationalType::Base(BaseType::Int) => RcDoc::text("int"),
+            MigrationalType::Var(TypeVariable(n)) => RcDoc::text(format!("a{}", n)),
             MigrationalType::Fun(m1, m2) => {
                 let mut dom: RcDoc<()> = m1.to_doc();
 
@@ -380,6 +495,7 @@ impl MigrationalType {
                     .append(RcDoc::text("->"))
                     .append(RcDoc::space())
                     .append(cod)
+                    .group()
             }
             MigrationalType::Choice(Variation(d), m1, m2) => RcDoc::text(format!("d{}", d))
                 .append(RcDoc::text("<"))
@@ -387,7 +503,8 @@ impl MigrationalType {
                 .append(RcDoc::text(","))
                 .append(RcDoc::space())
                 .append(m2.to_doc().nest(2))
-                .append(RcDoc::text(">")),
+                .append(RcDoc::text(">"))
+                .group(),
         }
     }
 
@@ -987,5 +1104,44 @@ mod test {
         type_round_trip("(int->int)->int", "(int -> int) -> int");
         type_round_trip("(int -> bool) -> bool", "(int -> bool) -> bool");
         type_round_trip("int->int->int", "int -> int -> int");
+    }
+
+    fn se_round_trip(s: &str, pp: &str) {
+        let e = SourceExpr::parse(s).unwrap();
+        let e_pp = format!("{}", e);
+
+        assert_eq!(pp, e_pp);
+
+        let e2 = SourceExpr::parse(&e_pp).unwrap();
+        // may not be equal due to empty annotations... but shouldn't come up
+        assert_eq!(e, e2);
+        assert_eq!(format!("{}", e2), e_pp);
+    }
+
+    #[test]
+    fn pretty_sourceexpr() {
+        se_round_trip("true", "true");
+        se_round_trip("false", "false");
+        se_round_trip("5", "5");
+        se_round_trip("-20", "-20");
+        se_round_trip("4747", "4747");
+
+        se_round_trip("x", "x");
+        se_round_trip("\\x. x", "\\x. x");
+        se_round_trip("fun x. x", "\\x. x");
+        se_round_trip("\\x:bool. x", "\\x : bool. x");
+
+        se_round_trip(
+            "if true then false else \\x. x",
+            "if true then false else \\x. x",
+        );
+
+        se_round_trip("a    b \t c", "a b c");
+        se_round_trip("a (b c d)", "a (b c d)");
+        se_round_trip("let x = a in b", "let x = a in b");
+
+        // durrrrr
+        se_round_trip("let x = (\\x. x) (\\y. y) (\\z. z) (\\w. w) 5 in (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x", 
+                      "let x =\n(\\x. x) (\\y. y) (\\z. z) (\\w. w) 5\nin\n(\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x");
     }
 }
