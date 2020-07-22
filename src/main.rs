@@ -62,7 +62,7 @@ fn main() {
     info!("Found {} maximal typings.", ves.len());
 
     if ves.len() == 0 {
-        warn!("Untypable; unresolved type: {:?}.", m);
+        warn!("Untypable; unresolved type: {}.", m);
         warn!("{:?}", e);
         std::process::exit(1);
     }
@@ -77,7 +77,7 @@ fn main() {
         let e = e.clone().eliminate(&ve);
         let m = m.clone().eliminate(&ve);
 
-        info!("m = {:?}", m);
+        info!("m = {}", m);
         info!("{:?}", e);
     }
 

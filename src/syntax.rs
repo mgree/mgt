@@ -1,10 +1,15 @@
 use std::cmp::PartialEq;
+use std::fmt::Display;
 use std::hash::Hash;
 
 use im_rc::HashMap;
 use im_rc::HashSet;
 
 use log::warn;
+
+use pretty::RcDoc;
+
+const DEFAULT_WIDTH: usize = 80;
 
 lalrpop_mod!(parser);
 
@@ -129,7 +134,7 @@ impl<T> Expr<T> {
         Expr::If(Box::new(e1), Box::new(e2), Box::new(e3))
     }
 
-    pub fn let_(x: Variable, t:T, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    pub fn let_(x: Variable, t: T, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         Expr::Let(x, t, Box::new(e1), Box::new(e2))
     }
 
@@ -178,6 +183,32 @@ impl GradualType {
         parser::TypeParser::new()
             .parse(s)
             .map_err(|e| e.to_string())
+    }
+
+    pub fn to_doc(&self) -> RcDoc<()> {
+        match self {
+            GradualType::Dyn() => RcDoc::as_string("?"),
+            GradualType::Base(BaseType::Bool) => RcDoc::as_string("bool"),
+            GradualType::Base(BaseType::Int) => RcDoc::as_string("int"),
+            GradualType::Var(TypeVariable(n)) => RcDoc::as_string(format!("a{}", n)),
+            GradualType::Fun(g1, g2) => {
+                let mut dom: RcDoc<()> = g1.to_doc();
+
+                if g1.is_fun() {
+                    dom = RcDoc::text("(").append(dom).append(RcDoc::text(")"))
+                }
+
+                let cod = g2.to_doc().nest(1);
+
+                dom.nest(1).append(RcDoc::space()).append(RcDoc::text("->")).append(RcDoc::space()).append(cod)
+            }
+        }
+    }
+
+    pub fn to_pretty(&self, width: usize) -> String {
+        let mut w = Vec::new();
+        self.to_doc().render(width, &mut w).unwrap();
+        String::from_utf8(w).unwrap()
     }
 
     pub fn fun(g1: GradualType, g2: GradualType) -> GradualType {
@@ -250,6 +281,19 @@ impl GradualType {
             GradualType::Var(_) => false,
         }
     }
+
+    pub fn is_fun(&self) -> bool {
+        match self {
+            GradualType::Fun(_, _) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Display for GradualType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_pretty(DEFAULT_WIDTH))
+    }
 }
 
 impl From<&StaticType> for GradualType {
@@ -316,6 +360,43 @@ impl VariationalType {
 }
 
 impl MigrationalType {
+    pub fn to_doc(&self) -> RcDoc<()> {
+        match self {
+            MigrationalType::Dyn() => RcDoc::as_string("?"),
+            MigrationalType::Base(BaseType::Bool) => RcDoc::as_string("bool"),
+            MigrationalType::Base(BaseType::Int) => RcDoc::as_string("int"),
+            MigrationalType::Var(TypeVariable(n)) => RcDoc::as_string(format!("a{}", n)),
+            MigrationalType::Fun(m1, m2) => {
+                let mut dom: RcDoc<()> = m1.to_doc();
+
+                if m1.is_fun() {
+                    dom = RcDoc::text("(").append(dom).append(RcDoc::text(")"))
+                }
+
+                let cod = m2.to_doc().nest(1);
+
+                dom.nest(1)
+                    .append(RcDoc::space())
+                    .append(RcDoc::text("->"))
+                    .append(RcDoc::space())
+                    .append(cod)
+            }
+            MigrationalType::Choice(Variation(d), m1, m2) => RcDoc::text(format!("d{}", d))
+                .append(RcDoc::text("<"))
+                .append(m1.to_doc().nest(1))
+                .append(RcDoc::text(","))
+                .append(RcDoc::space())
+                .append(m2.to_doc().nest(2))
+                .append(RcDoc::text(">")),
+        }
+    }
+
+    pub fn to_pretty(&self, width: usize) -> String {
+        let mut w = Vec::new();
+        self.to_doc().render(width, &mut w).unwrap();
+        String::from_utf8(w).unwrap()
+    }
+
     pub fn fun(m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
         MigrationalType::Fun(Box::new(m1), Box::new(m2))
     }
@@ -357,19 +438,17 @@ impl MigrationalType {
             MigrationalType::Fun(m1, m2) => {
                 MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
             }
-            MigrationalType::Choice(d, m1, m2) => {
-                match elim
-                    .0
-                    .get(&d)
-                {
-                    Some(Side::Right()) => m2.eliminate(elim),
-                    Some(Side::Left()) => m1.eliminate(elim),
-                    None => {
-                        warn!("No choice for variation {:?}; choosing {:?} over {:?}", d, m1, m2);
-                        m1.eliminate(elim)
-                    }
+            MigrationalType::Choice(d, m1, m2) => match elim.0.get(&d) {
+                Some(Side::Right()) => m2.eliminate(elim),
+                Some(Side::Left()) => m1.eliminate(elim),
+                None => {
+                    warn!(
+                        "No choice for variation {:?}; choosing {} over {}",
+                        d, m1, m2
+                    );
+                    m1.eliminate(elim)
                 }
-            }
+            },
         }
     }
 
@@ -455,6 +534,12 @@ impl MigrationalType {
                 Some(VariationalType::fun(v1, v2))
             }
         }
+    }
+}
+
+impl Display for MigrationalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_pretty(DEFAULT_WIDTH))
     }
 }
 
