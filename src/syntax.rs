@@ -961,4 +961,31 @@ mod test {
             )
         );
     }
+
+    fn type_round_trip(s: &str, pp: &str) {
+        let g = GradualType::parse(s).unwrap();
+        let g_pp = format!("{}", g);
+        assert_eq!(pp, g_pp);
+
+        let g2 = GradualType::parse(&g_pp).unwrap();
+        assert_eq!(g2, g);
+        assert_eq!(format!("{}", g2), g_pp);
+
+        let m: MigrationalType = g.into();
+        let m2 = g2.into();
+        assert_eq!(m, m2);
+        assert_eq!(format!("{}", m), format!("{}", m2));
+    }
+
+    #[test]
+    fn pretty_types() {
+        type_round_trip("bool", "bool");
+        type_round_trip("int", "int");
+        type_round_trip("bool->bool", "bool -> bool");
+        type_round_trip("bool -> bool", "bool -> bool");
+        type_round_trip("\n\r\tbool\t-> bool", "bool -> bool");
+        type_round_trip("(int->int)->int", "(int -> int) -> int");
+        type_round_trip("(int -> bool) -> bool", "(int -> bool) -> bool");
+        type_round_trip("int->int->int", "int -> int -> int");
+    }
 }
