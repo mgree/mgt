@@ -310,7 +310,7 @@ impl TargetExpr {
                 .append(t.pretty(pp))
                 .append(pp.text("."))
                 .append(pp.line())
-                .append(e.pretty(pp).nest(1))
+                .append(e.pretty(pp).nest(2))
                 .group(),
             Expr::Ann(e, t) => e
                 .pretty(pp)
@@ -331,30 +331,27 @@ impl TargetExpr {
                     d2 = d2.parens();
                 }
 
-                d1.append(pp.line()).append(d2).group()
+                d1.append(pp.line()).append(d2.nest(2)).group()
             }
             Expr::If(e1, e2, e3) => {
                 let d_cond = pp
                     .text("if")
                     .append(pp.space())
                     .append(e1.pretty(pp).nest(2))
-                    .append(pp.line())
-                    .group();
+                    .append(pp.line());
 
                 let d_then = pp
                     .text("then")
                     .append(pp.line())
                     .append(e2.pretty(pp).nest(2))
-                    .append(pp.line())
-                    .group();
+                    .append(pp.line());
 
                 let d_else = pp
                     .text("else")
                     .append(pp.line())
-                    .append(e3.pretty(pp).nest(2))
-                    .group();
+                    .append(e3.pretty(pp).nest(2));
 
-                pp.concat(vec![d_cond, d_then, d_else])
+                pp.concat(vec![d_cond, d_then, d_else]).group()
             }
             Expr::Let(x, t, e1, e2) => {
                 let d_bind = pp
@@ -371,12 +368,11 @@ impl TargetExpr {
                     .group();
 
                 pp.intersperse(
-                    vec![d_bind, e1.pretty(pp).nest(2).group(), pp.text("in")],
+                    vec![d_bind, e1.pretty(pp).nest(2), pp.text("in")],
                     pp.line(),
                 )
                 .append(pp.hardline())
-                .append(e2.pretty(pp).group())
-                .group()
+                .append(e2.pretty(pp))
             }
         }
     }
