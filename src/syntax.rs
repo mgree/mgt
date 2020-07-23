@@ -2,12 +2,9 @@ use std::cmp::PartialEq;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use im_rc::HashMap;
 use im_rc::HashSet;
 
-use log::warn;
-
-const DEFAULT_WIDTH: usize = 80;
+pub const DEFAULT_WIDTH: usize = 80;
 
 lalrpop_mod!(parser);
 
@@ -21,14 +18,6 @@ pub enum BaseType {
 /// alpha
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct TypeVariable(pub(super) usize);
-
-/// T
-#[derive(Clone, Debug, PartialEq)]
-pub enum StaticType {
-    Base(BaseType),
-    Var(TypeVariable),
-    Fun(Box<StaticType>, Box<StaticType>),
-}
 
 /// G
 #[derive(Clone, Debug, PartialEq)]
@@ -50,10 +39,6 @@ pub enum Side {
     Right(),
 }
 
-/// d.1 or d.2
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Eliminator(HashMap<Variation, Side>);
-
 /// V
 #[derive(Clone, Debug, PartialEq)]
 pub enum VariationalType {
@@ -71,14 +56,6 @@ pub enum MigrationalType {
     Fun(Box<MigrationalType>, Box<MigrationalType>),
     Dyn(),
     Choice(Variation, Box<MigrationalType>, Box<MigrationalType>),
-}
-
-/// pi
-#[derive(Clone, Debug, PartialEq)]
-pub enum Pattern {
-    Bot(),
-    Top(),
-    Choice(Variation, Box<Pattern>, Box<Pattern>),
 }
 
 /// c
@@ -324,14 +301,6 @@ impl Display for SourceExpr {
 }
 
 impl TargetExpr {
-    pub fn apply(self, theta: &Subst) -> TargetExpr {
-        self.map_types(&|m: MigrationalType| m.apply(theta))
-    }
-
-    pub fn eliminate(self, elim: &Eliminator) -> TargetExpr {
-        self.map_types(&|m: MigrationalType| m.eliminate(elim))
-    }
-
     pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
@@ -454,12 +423,6 @@ impl Display for TargetExpr {
 impl Display for TypeVariable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "a{}", self.0)
-    }
-}
-
-impl StaticType {
-    pub fn fun(t1: StaticType, t2: StaticType) -> StaticType {
-        StaticType::Fun(Box::new(t1), Box::new(t2))
     }
 }
 
@@ -588,19 +551,6 @@ impl Display for GradualType {
     }
 }
 
-impl From<&StaticType> for GradualType {
-    fn from(t: &StaticType) -> Self {
-        match t {
-            StaticType::Base(b) => GradualType::Base(b.clone()),
-            StaticType::Var(a) => GradualType::Var(a.clone()),
-            StaticType::Fun(t1, t2) => GradualType::fun(
-                GradualType::from(t1.as_ref()),
-                GradualType::from(t2.as_ref()),
-            ),
-        }
-    }
-}
-
 impl VariationalType {
     pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
     where
@@ -669,20 +619,6 @@ impl VariationalType {
                     VariationalType::choice(*d2, v1.select(d, side), v2.select(d, side))
                 }
             }
-        }
-    }
-
-    pub fn apply(self, theta: &Subst) -> VariationalType {
-        match self {
-            VariationalType::Base(b) => VariationalType::Base(b),
-            VariationalType::Fun(v1, v2) => VariationalType::fun(v1.apply(theta), v2.apply(theta)),
-            VariationalType::Choice(d, v1, v2) => {
-                VariationalType::choice(d, v1.apply(theta), v2.apply(theta))
-            }
-            VariationalType::Var(a) => match theta.lookup(&a) {
-                None => VariationalType::Var(a),
-                Some(v) => v.clone().apply(theta),
-            },
         }
     }
 
@@ -774,42 +710,10 @@ impl MigrationalType {
         }
     }
 
-    pub fn eliminate(self, elim: &Eliminator) -> MigrationalType {
-        match self {
-            MigrationalType::Dyn() | MigrationalType::Base(_) | MigrationalType::Var(_) => self,
-            MigrationalType::Fun(m1, m2) => {
-                MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
-            }
-            MigrationalType::Choice(d, m1, m2) => match elim.0.get(&d) {
-                Some(Side::Right()) => m2.eliminate(elim),
-                Some(Side::Left()) => m1.eliminate(elim),
-                None => {
-                    warn!("No choice for variation {}; choosing {} over {}", d, m1, m2);
-                    m1.eliminate(elim)
-                }
-            },
-        }
-    }
-
     pub fn is_fun(&self) -> bool {
         match self {
             MigrationalType::Fun(_, _) => true,
             _ => false,
-        }
-    }
-
-    pub fn apply(self, theta: &Subst) -> MigrationalType {
-        match self {
-            MigrationalType::Dyn() => MigrationalType::Dyn(),
-            MigrationalType::Base(b) => MigrationalType::Base(b),
-            MigrationalType::Fun(m1, m2) => MigrationalType::fun(m1.apply(theta), m2.apply(theta)),
-            MigrationalType::Choice(d, m1, m2) => {
-                MigrationalType::choice(d, m1.apply(theta), m2.apply(theta))
-            }
-            MigrationalType::Var(a) => match theta.lookup(&a) {
-                None => MigrationalType::Var(a),
-                Some(v) => v.clone().apply(theta).into(),
-            },
         }
     }
 
@@ -842,20 +746,6 @@ impl MigrationalType {
         }
     }
 
-    pub fn try_static(&self) -> Option<StaticType> {
-        match self {
-            MigrationalType::Dyn() | MigrationalType::Choice(_, _, _) => None,
-            MigrationalType::Base(b) => Some(StaticType::Base(b.clone())),
-            MigrationalType::Var(a) => Some(StaticType::Var(*a)),
-            MigrationalType::Fun(m1, m2) => {
-                let t1 = m1.try_static()?;
-                let t2 = m2.try_static()?;
-
-                Some(StaticType::fun(t1, t2))
-            }
-        }
-    }
-
     pub fn try_variational(&self) -> Option<VariationalType> {
         match self {
             MigrationalType::Dyn() => None,
@@ -882,18 +772,6 @@ impl Display for MigrationalType {
         let pp = pretty::BoxAllocator;
         let doc = self.pretty::<_, ()>(&pp);
         doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl From<StaticType> for MigrationalType {
-    fn from(t: StaticType) -> Self {
-        match t {
-            StaticType::Base(b) => MigrationalType::Base(b),
-            StaticType::Var(a) => MigrationalType::Var(a),
-            StaticType::Fun(t1, t2) => {
-                MigrationalType::fun(MigrationalType::from(*t1), MigrationalType::from(*t2))
-            }
-        }
     }
 }
 
@@ -934,143 +812,6 @@ impl From<&Constant> for MigrationalType {
     }
 }
 
-impl Pattern {
-    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
-    where
-        D: pretty::DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        match self {
-            Pattern::Bot() => pp.text("⊥"),
-            Pattern::Top() => pp.text("⊤"),
-            Pattern::Choice(d, pat1, pat2) => pp.as_string(d).append(
-                pp.intersperse(
-                    vec![pat1.pretty(pp), pat2.pretty(pp).nest(1)],
-                    pp.text(",").append(pp.line()),
-                )
-                .angles()
-                .group(),
-            ),
-        }
-    }
-
-    pub fn select(self, d: Variation, side: Side) -> Pattern {
-        match self {
-            Pattern::Bot() => Pattern::Bot(),
-            Pattern::Top() => Pattern::Top(),
-            Pattern::Choice(d2, pat1, pat2) => {
-                if d == d2 {
-                    match side {
-                        Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once (invariant maintained in Pattern::choice)
-                        Side::Right() => *pat2,
-                    }
-                } else {
-                    Pattern::Choice(
-                        d2,
-                        Box::new(pat1.select(d, side)),
-                        Box::new(pat2.select(d, side)),
-                    )
-                }
-            }
-        }
-    }
-
-    pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
-        if pat1 == pat2 {
-            pat1
-        } else {
-            Pattern::Choice(
-                d,
-                Box::new(pat1.select(d, Side::Left())),
-                Box::new(pat2.select(d, Side::Right())),
-            )
-        }
-    }
-
-    pub fn meet(&self, other: Pattern) -> Pattern {
-        match self {
-            Pattern::Top() => other,
-            Pattern::Bot() => Pattern::Bot(),
-            Pattern::Choice(d1, pat11, pat12) => match other {
-                Pattern::Choice(d2, pat21, pat22) if *d1 == d2 => {
-                    Pattern::choice(*d1, pat11.meet(*pat21), pat12.meet(*pat22))
-                }
-                _ => Pattern::choice(*d1, pat11.meet(other.clone()), pat12.meet(other)),
-            },
-        }
-    }
-
-    pub fn valid_eliminators(self) -> HashSet<Eliminator> {
-        match self {
-            Pattern::Top() => HashSet::unit(Eliminator::new()),
-            Pattern::Bot() => HashSet::new(),
-            Pattern::Choice(d, pi1, pi2) => {
-                let ves1: HashSet<Eliminator> = pi1
-                    .valid_eliminators()
-                    .into_iter()
-                    .map(|ve| ve.update(d, Side::Left()))
-                    .collect();
-                let ves2: HashSet<Eliminator> = pi2
-                    .valid_eliminators()
-                    .into_iter()
-                    .map(|ve| ve.update(d, Side::Right()))
-                    .collect();
-
-                ves1.union(ves2)
-            }
-        }
-    }
-}
-
-impl Display for Pattern {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let pp = pretty::BoxAllocator;
-        let doc = self.pretty::<_, ()>(&pp);
-        doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl From<bool> for Pattern {
-    fn from(b: bool) -> Self {
-        if b {
-            Pattern::Top()
-        } else {
-            Pattern::Bot()
-        }
-    }
-}
-
-impl Eliminator {
-    pub fn new() -> Self {
-        Eliminator(HashMap::new())
-    }
-
-    pub fn get(&self, d: &Variation) -> Option<&Side> {
-        self.0.get(d)
-    }
-
-    pub fn update(self, d: Variation, side: Side) -> Self {
-        Eliminator(self.0.update(d, side))
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn expand(self, ds: &HashSet<&Variation>) -> Self {
-        let mut elim = self;
-
-        for d in ds.iter() {
-            if elim.get(d) != Some(&Side::Left()) {
-                elim = elim.update(**d, Side::Right());
-            }
-        }
-
-        elim
-    }
-}
-
 impl Display for Variation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "d{}", self.0)
@@ -1083,199 +824,6 @@ impl Display for Side {
             Side::Left() => write!(f, "L"),
             Side::Right() => write!(f, "R"),
         }
-    }
-}
-
-impl Display for Eliminator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{")?;
-
-        for (i, (d, side)) in self.0.iter().enumerate() {
-            write!(f, "{}.{}", *d, side)?;
-
-            if i != self.0.len() - 1 {
-                write!(f, ", ")?;
-            }
-        }
-        write!(f, "}}")
-    }
-}
-
-/// C
-///
-/// we treat /\ and epsilon by just using vectors in `Constraints`, below
-#[derive(Clone, Debug)]
-pub enum Constraint {
-    Consistent(Pattern, MigrationalType, MigrationalType),
-    Choice(Variation, Constraints, Constraints),
-}
-
-#[derive(Clone, Debug)]
-pub struct Constraints(pub(super) Vec<Constraint>);
-
-impl Constraint {
-    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
-    where
-        D: pretty::DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        match self {
-            Constraint::Consistent(pi, m1, m2) => pp
-                .intersperse(
-                    vec![
-                        m1.pretty(pp),
-                        pp.text("≈").append(pi.pretty(pp)),
-                        m2.pretty(pp),
-                    ],
-                    pp.line(),
-                )
-                .group(),
-
-            Constraint::Choice(d, cs1, cs2) => pp
-                .as_string(d)
-                .append(
-                    cs1.pretty(pp)
-                        .append(pp.text(","))
-                        .append(pp.line())
-                        .append(cs2.pretty(pp).nest(1))
-                        .angles(),
-                )
-                .group(),
-        }
-    }
-
-    pub fn and(self, other: Constraint) -> Constraints {
-        Constraints(vec![self, other])
-    }
-
-    pub fn apply(self, theta: &Subst) -> Constraint {
-        match self {
-            Constraint::Consistent(pi, m1, m2) => {
-                Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
-            }
-            Constraint::Choice(d, cs1, cs2) => {
-                Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta))
-            }
-        }
-    }
-}
-
-impl Constraints {
-    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
-    where
-        D: pretty::DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        if self.0.is_empty() {
-            pp.text("ε")
-        } else {
-            pp.intersperse(
-                self.0.iter().map(|c| c.pretty(pp)),
-                pp.text("⋀").enclose(pp.space(), pp.space()),
-            )
-        }
-    }
-
-    pub fn epsilon() -> Constraints {
-        Constraints(Vec::new())
-    }
-
-    pub fn and(&mut self, c: Constraint) {
-        self.0.push(c);
-    }
-
-    pub fn and_many(&mut self, mut other: Constraints) {
-        self.0.append(&mut other.0);
-    }
-
-    pub fn apply(self, theta: &Subst) -> Constraints {
-        Constraints(self.0.into_iter().map(|c| c.apply(theta)).collect())
-    }
-}
-
-impl Display for Constraint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let pp = pretty::BoxAllocator;
-        let doc = self.pretty::<_, ()>(&pp);
-        doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl Display for Constraints {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let pp = pretty::BoxAllocator;
-        let doc = self.pretty::<_, ()>(&pp);
-        doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl From<Constraint> for Constraints {
-    fn from(c: Constraint) -> Self {
-        Constraints(vec![c])
-    }
-}
-
-// Gamma
-#[derive(Clone, Debug)]
-pub struct Ctx(HashMap<Variable, MigrationalType>);
-
-impl Ctx {
-    pub fn empty() -> Self {
-        Ctx(HashMap::new())
-    }
-
-    pub fn extend(&self, x: Variable, m: MigrationalType) -> Self {
-        Ctx(self.0.update(x, m))
-    }
-
-    pub fn lookup(&self, x: &Variable) -> Option<&MigrationalType> {
-        self.0.get(x)
-    }
-}
-
-// theta
-#[derive(Clone, Debug)]
-pub struct Subst(pub(super) HashMap<TypeVariable, VariationalType>);
-
-impl Subst {
-    pub fn empty() -> Self {
-        Subst(HashMap::new())
-    }
-
-    pub fn extend(&self, a: TypeVariable, v: VariationalType) -> Self {
-        Subst(self.0.update(a, v))
-    }
-
-    pub fn lookup(&self, a: &TypeVariable) -> Option<&VariationalType> {
-        self.0.get(a)
-    }
-
-    pub fn compose(self, other: Subst) -> Subst {
-        let composed: HashMap<_, _> = other
-            .0
-            .into_iter()
-            .map(|(a, v)| (a, v.apply(&self)))
-            .collect();
-
-        Subst(composed.union(self.0)) // prioritizes mappings in composed over self
-    }
-}
-
-impl Display for Subst {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{")?;
-
-        for (i, (a, v)) in self.0.iter().enumerate() {
-            write!(f, "{}↦{}", a, v)?;
-
-            if i < self.0.len() - 1 {
-                write!(f, ", ")?;
-            }
-        }
-
-        write!(f, "}}")
     }
 }
 

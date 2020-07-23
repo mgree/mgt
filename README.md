@@ -11,7 +11,6 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
   
 ## TODO
 
-- [ ] Have _just_ syntax in syntax
 - Other language features
   + [ ] Parser improvements (multi-argument lambdas, arguments in lets and letrecs)
   + [ ] Operations on constants
