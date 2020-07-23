@@ -11,7 +11,6 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
   
 ## TODO
 
-- [ ] Pretty printer
 - Other language features
   + [ ] Recursion; mutual recursion
   + [ ] Parser improvements
