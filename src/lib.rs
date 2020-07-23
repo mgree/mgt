@@ -180,6 +180,7 @@ impl TypeInference {
 
                 Some((Expr::let_(x.clone(), m_def, e_def, e_body), m_body))
             }
+            Expr::LetRec(_defns, _e_body) => todo!("letrec"),
         }
     }
 
