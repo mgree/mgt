@@ -476,7 +476,7 @@ impl TypeInference {
         let (e, m) = ti.generate_constraints(Ctx::empty(), e)?;
 
         debug!("Generated constraints:");
-        debug!("  e = {:?}", e);
+        debug!("  e = {}", e);
         debug!("  m = {}", m);
         debug!("  constraints = {:?}", ti.constraints);
         debug!("  pi = {:?}", ti.pattern);
@@ -491,7 +491,7 @@ impl TypeInference {
         let e = e.apply(&theta);
         let m = m.clone().apply(&theta);
         debug!("Unified constraints:");
-        debug!("  e = {:?}", e);
+        debug!("  e = {}", e);
         debug!("  theta = {:?}", theta);
         debug!("  pi = {:?}", pi);
         debug!("  m = {}", m);

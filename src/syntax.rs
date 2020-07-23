@@ -152,6 +152,20 @@ impl<T> Expr<T> {
             Expr::Let(x, t, e1, e2) => Expr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
         }
     }
+
+    pub fn is_compound(&self) -> bool {
+        match self {
+            Expr::Var(_) | Expr::Const(_) => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_app(&self) -> bool {
+        match self {
+            Expr::App(_, _) => true,
+            _ => false,
+        }
+    }
 }
 
 impl SourceExpr {
@@ -249,21 +263,6 @@ impl SourceExpr {
         self.to_doc().render(width, &mut w).unwrap();
         String::from_utf8(w).unwrap()
     }
-
-    pub fn is_compound(&self) -> bool {
-        match self {
-            Expr::Var(_) | Expr::Const(_) | Expr::Ann(_, None) => false,
-            _ => true,
-        }
-    }
-
-    pub fn is_app(&self) -> bool {
-        match self {
-            Expr::App(_, _) => true,
-            Expr::Ann(e, None) => e.is_app(),
-            _ => false,
-        }
-    }
 }
 
 impl Display for SourceExpr {
@@ -279,6 +278,108 @@ impl TargetExpr {
 
     pub fn eliminate(self, elim: &Eliminator) -> TargetExpr {
         self.map_types(&|m: MigrationalType| m.eliminate(elim))
+    }
+
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            Expr::Var(x) => pp.text(x),
+            Expr::Const(Constant::Bool(true)) => pp.text("true"),
+            Expr::Const(Constant::Bool(false)) => pp.text("false"),
+            Expr::Const(Constant::Int(n)) => pp.text(n.to_string()),
+            Expr::Lam(x, t, e) => pp
+                .text("\\")
+                .append(pp.text(x))
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .append(pp.text("."))
+                .append(pp.line())
+                .append(e.pretty(pp).nest(1))
+                .group(),
+            Expr::Ann(e, t) => e
+                .pretty(pp)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .group(),
+            Expr::App(e1, e2) => {
+                let mut d1 = e1.pretty(pp);
+                let mut d2 = e2.pretty(pp);
+
+                if e1.is_compound() && !e1.is_app() {
+                    d1 = d1.parens();
+                }
+
+                if e2.is_compound() {
+                    d2 = d2.parens();
+                }
+
+                d1.append(pp.line()).append(d2).group()
+            }
+            Expr::If(e1, e2, e3) => {
+                let d_cond = pp
+                    .text("if")
+                    .append(pp.space())
+                    .append(e1.pretty(pp).nest(2))
+                    .append(pp.line())
+                    .group();
+
+                let d_then = pp
+                    .text("then")
+                    .append(pp.line())
+                    .append(e2.pretty(pp).nest(2))
+                    .append(pp.line())
+                    .group();
+
+                let d_else = pp
+                    .text("else")
+                    .append(pp.line())
+                    .append(e3.pretty(pp).nest(2))
+                    .group();
+
+                pp.concat(vec![d_cond, d_then, d_else])
+            }
+            Expr::Let(x, t, e1, e2) => {
+                let d_bind = pp
+                    .intersperse(
+                        vec![
+                            pp.text("let"),
+                            pp.text(x),
+                            pp.text(":"),
+                            t.pretty(pp),
+                            pp.text("="),
+                        ],
+                        pp.space(),
+                    )
+                    .group();
+
+                pp.intersperse(
+                    vec![
+                        d_bind,
+                        e1.pretty(pp).nest(2).group(),
+                        pp.text("in"),
+                        e2.pretty(pp).group(),
+                    ],
+                    pp.line(),
+                )
+                .group()
+            }
+        }
+    }
+}
+
+impl Display for TargetExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
     }
 }
 
@@ -504,6 +605,43 @@ impl MigrationalType {
                 .append(RcDoc::space())
                 .append(m2.to_doc().nest(2))
                 .append(RcDoc::text(">"))
+                .group(),
+        }
+    }
+
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            MigrationalType::Dyn() => pp.text("?"),
+            MigrationalType::Base(BaseType::Bool) => pp.text("bool"),
+            MigrationalType::Base(BaseType::Int) => pp.text("int"),
+            MigrationalType::Var(TypeVariable(n)) => pp.text(format!("a{}", n)),
+            MigrationalType::Fun(m1, m2) => {
+                let mut dom = m1.pretty(pp);
+
+                if m1.is_fun() {
+                    dom = dom.parens()
+                }
+
+                dom.append(pp.text(")"))
+                    .append(pp.space())
+                    .append(pp.text("->"))
+                    .append(pp.line())
+                    .append(m2.pretty(pp))
+                    .group()
+            }
+            MigrationalType::Choice(Variation(d), m1, m2) => pp
+                .text(format!("d{}", d))
+                .append(
+                    m1.pretty(pp)
+                        .append(pp.text(","))
+                        .append(m2.pretty(pp))
+                        .angles(),
+                )
                 .group(),
         }
     }

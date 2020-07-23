@@ -63,7 +63,7 @@ fn main() {
 
     if ves.len() == 0 {
         warn!("Untypable; unresolved type: {}.", m);
-        warn!("{:?}", e);
+        warn!("{}", e);
         std::process::exit(1);
     }
 
@@ -78,7 +78,7 @@ fn main() {
         let m = m.clone().eliminate(&ve);
 
         info!("m = {}", m);
-        info!("{:?}", e);
+        info!("{}", e);
     }
 
     std::process::exit(0);
