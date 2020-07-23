@@ -189,7 +189,7 @@ impl SourceExpr {
                 .append(pp.text(x))
                 .append(pp.text("."))
                 .append(pp.line())
-                .append(e.pretty(pp).nest(1))
+                .append(e.pretty(pp).nest(2))
                 .group(),
             Expr::Lam(x, Some(t), e) => pp
                 .text("\\")
@@ -200,7 +200,7 @@ impl SourceExpr {
                 .append(t.pretty(pp))
                 .append(pp.text("."))
                 .append(pp.line())
-                .append(e.pretty(pp).nest(1))
+                .append(e.pretty(pp).nest(2))
                 .group(),
             Expr::Ann(e, None) => e.pretty(pp),
             Expr::Ann(e, Some(t)) => e
