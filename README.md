@@ -13,8 +13,7 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 
 - [ ] Have _just_ syntax in syntax
 - Other language features
-  + [ ] Recursion; mutual recursion
-  + [ ] Parser improvements
+  + [ ] Parser improvements (multi-argument lambdas, arguments in lets and letrecs)
   + [ ] Operations on constants
   + [ ] Overloading resolution
   + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables)
