@@ -721,8 +721,7 @@ impl MigrationalType {
                     dom = dom.parens()
                 }
 
-                dom.append(pp.text(")"))
-                    .append(pp.space())
+                dom.append(pp.space())
                     .append(pp.text("->"))
                     .append(pp.line())
                     .append(m2.pretty(pp))

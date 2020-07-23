@@ -59,8 +59,9 @@ impl TypeInference {
         match e {
             Expr::Const(c) => Some((Expr::Const(c.clone()), c.into())),
             Expr::Var(x) => {
-                let m = ctx.lookup(x).cloned()?;
-                Some((Expr::Var(x.clone()), m))
+                debug!("looking up {} in {:?}", x, ctx);
+                let m = ctx.lookup(x)?;
+                Some((Expr::Var(x.clone()), m.clone()))
             }
             Expr::Lam(x, t, e) => match t {
                 Some(GradualType::Dyn()) => {
@@ -180,7 +181,40 @@ impl TypeInference {
 
                 Some((Expr::let_(x.clone(), m_def, e_def, e_body), m_body))
             }
-            Expr::LetRec(_defns, _e_body) => todo!("letrec {} ", e),
+            Expr::LetRec(defns, e_body) => {
+                // extend context, mapping each variable to either its annotation or a fresh variable
+                let mut ctx = ctx.clone();
+                for (x, t, _) in defns.iter() {
+                    let m = match t {
+                        Some(t) => {
+                            let m: MigrationalType = t.clone().into();
+                            m
+                        }
+                        None => MigrationalType::Var(self.fresh_variable()),
+                    };
+
+                    ctx = ctx.extend(x.clone(), m);
+                }
+
+                let mut e_defns: Vec<(Variable, MigrationalType, TargetExpr)> = Vec::new();
+                e_defns.reserve(defns.len());
+                for (x, _, e) in defns.iter() {
+                    // generate constraints for defn
+                    let (e, m) = self.generate_constraints(ctx.clone(), e)?;
+
+                    let m_annot = ctx.lookup(x).unwrap();
+
+                    // ensure annotation matches
+                    self.add_constraint(Constraint::Consistent(Pattern::Top(), m, m_annot.clone()));
+
+                    // use annotation in resulting term
+                    e_defns.push((x.clone(), m_annot.clone(), e));
+                }
+
+                let (e_body, m_body) = self.generate_constraints(ctx, e_body)?;
+
+                Some((Expr::letrec(e_defns, e_body), m_body))
+            }
         }
     }
 
@@ -936,6 +970,25 @@ mod test {
             .is_none(),
             "type inference should fail"
         );
+    }
+
+    #[test]
+    fn test_letrec() {
+        let (_e, m, ves) = infer("let rec f = \\x. if x then false else g x and g = \\y. if y then f y else false in f true");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert!(ve.is_empty());
+
+        assert_eq!(m, MigrationalType::Base(BaseType::Bool));
+
+        let (_e, m, ves) = infer("let rec f = \\x:?. if x then false else g x and g = \\y:?. if y then f y else false in f true");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+        
+        assert_eq!(m, MigrationalType::Base(BaseType::Bool));
     }
 
     #[test]
