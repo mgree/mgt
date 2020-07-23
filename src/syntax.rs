@@ -101,6 +101,7 @@ pub enum Expr<T> {
     App(Box<Expr<T>>, Box<Expr<T>>),
     If(Box<Expr<T>>, Box<Expr<T>>, Box<Expr<T>>),
     Let(Variable, T, Box<Expr<T>>, Box<Expr<T>>),
+    LetRec(Vec<(Variable, T, Expr<T>)>, Box<Expr<T>>),
     // TODO operations on constants
 }
 
@@ -136,6 +137,10 @@ impl<T> Expr<T> {
         Expr::Let(x, t, Box::new(e1), Box::new(e2))
     }
 
+    pub fn letrec(defns: Vec<(Variable, T, Expr<T>)>, e2: Expr<T>) -> Expr<T> {
+        Expr::LetRec(defns, Box::new(e2))
+    }
+
     pub fn map_types<F, U>(self, f: &F) -> Expr<U>
     where
         F: Fn(T) -> U,
@@ -148,6 +153,13 @@ impl<T> Expr<T> {
             Expr::Ann(e, t) => Expr::ann(e.map_types(f), f(t)),
             Expr::If(e1, e2, e3) => Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
             Expr::Let(x, t, e1, e2) => Expr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
+            Expr::LetRec(defns, e2) => Expr::letrec(
+                defns
+                    .into_iter()
+                    .map(|(v, t, e1)| (v, f(t), e1.map_types(f)))
+                    .collect(),
+                e2.map_types(f),
+            ),
         }
     }
 
@@ -269,6 +281,36 @@ impl SourceExpr {
                 )
                 .group()
             }
+            Expr::LetRec(defns, e2) => {
+                let letrec = pp.text("let rec").append(pp.space());
+
+                let bindings = pp.intersperse(
+                    defns.into_iter().map(|(x, t, e1)| {
+                        let d_annot = if let Some(t) = t {
+                            pp.intersperse(
+                                vec![pp.text(":"), t.pretty(pp), pp.text("=")],
+                                pp.space(),
+                            )
+                        } else {
+                            pp.text("=")
+                        };
+
+                        pp.text(x)
+                            .append(pp.space())
+                            .append(d_annot.group())
+                            .append(pp.line())
+                            .append(e1.pretty(pp).nest(2))
+                    }),
+                    pp.text("and").enclose(pp.hardline(), pp.hardline()),
+                );
+
+                letrec
+                    .append(bindings)
+                    .append(pp.hardline())
+                    .append(pp.text("in"))
+                    .append(pp.line())
+                    .append(e2.pretty(pp))
+            }
         }
     }
 }
@@ -373,6 +415,29 @@ impl TargetExpr {
                 )
                 .append(pp.hardline())
                 .append(e2.pretty(pp))
+            }
+            Expr::LetRec(defns, e2) => {
+                let letrec = pp.text("let rec").append(pp.space());
+
+                let bindings = pp.intersperse(
+                    defns.into_iter().map(|(x, t, e1)| {
+                        pp.intersperse(
+                            vec![pp.text(x), pp.text(":"), t.pretty(pp), pp.text("=")],
+                            pp.space(),
+                        )
+                        .group()
+                        .append(pp.line())
+                        .append(e1.pretty(pp).nest(2))
+                    }),
+                    pp.text("and").enclose(pp.hardline(), pp.hardline()),
+                );
+
+                letrec
+                    .append(bindings)
+                    .append(pp.hardline())
+                    .append(pp.text("in"))
+                    .append(pp.line())
+                    .append(e2.pretty(pp))
             }
         }
     }
@@ -656,8 +721,7 @@ impl MigrationalType {
                     dom = dom.parens()
                 }
 
-                dom.append(pp.text(")"))
-                    .append(pp.space())
+                dom.append(pp.space())
                     .append(pp.text("->"))
                     .append(pp.line())
                     .append(m2.pretty(pp))
