@@ -670,10 +670,7 @@ impl MigrationalType {
                 Some(Side::Right()) => m2.eliminate(elim),
                 Some(Side::Left()) => m1.eliminate(elim),
                 None => {
-                    warn!(
-                        "No choice for variation {:?}; choosing {} over {}",
-                        d, m1, m2
-                    );
+                    warn!("No choice for variation {}; choosing {} over {}", d, m1, m2);
                     m1.eliminate(elim)
                 }
             },
@@ -823,6 +820,26 @@ impl From<&Constant> for MigrationalType {
 }
 
 impl Pattern {
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            Pattern::Bot() => pp.text("⊥"),
+            Pattern::Top() => pp.text("⊤"),
+            Pattern::Choice(d, pat1, pat2) => pp.as_string(d).append(
+                pp.intersperse(
+                    vec![pat1.pretty(pp), pat2.pretty(pp).nest(1)],
+                    pp.text(",").append(pp.line()),
+                )
+                .angles()
+                .group(),
+            ),
+        }
+    }
+
     pub fn select(self, d: Variation, side: Side) -> Pattern {
         match self {
             Pattern::Bot() => Pattern::Bot(),
@@ -891,6 +908,24 @@ impl Pattern {
     }
 }
 
+impl Display for Pattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
+    }
+}
+
+impl From<bool> for Pattern {
+    fn from(b: bool) -> Self {
+        if b {
+            Pattern::Top()
+        } else {
+            Pattern::Bot()
+        }
+    }
+}
+
 impl Eliminator {
     pub fn new() -> Self {
         Eliminator(HashMap::new())
@@ -907,27 +942,47 @@ impl Eliminator {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    pub fn expand(self, ds: &HashSet<&Variation>) -> Self {
+        let mut elim = self;
+
+        for d in ds.iter() {
+            if elim.get(d) != Some(&Side::Left()) {
+                elim = elim.update(**d, Side::Right());
+            }
+        }
+
+        elim
+    }
 }
 
-pub fn expand(elim: Eliminator, ds: &HashSet<&Variation>) -> Eliminator {
-    let mut elim = elim;
+impl Display for Variation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "d{}", self.0)
+    }
+}
 
-    for d in ds.iter() {
-        if elim.get(d) != Some(&Side::Left()) {
-            elim = elim.update(**d, Side::Right());
+impl Display for Side {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Side::Left() => write!(f, "L"),
+            Side::Right() => write!(f, "R"),
         }
     }
-
-    elim
 }
 
-impl From<bool> for Pattern {
-    fn from(b: bool) -> Self {
-        if b {
-            Pattern::Top()
-        } else {
-            Pattern::Bot()
+impl Display for Eliminator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+
+        for (i, (d, side)) in self.0.iter().enumerate() {
+            write!(f, "{}.{}", *d, side)?;
+
+            if i != self.0.len() - 1 {
+                write!(f, ", ")?;
+            }
         }
+        write!(f, "}}")
     }
 }
 
@@ -944,6 +999,37 @@ pub enum Constraint {
 pub struct Constraints(pub(super) Vec<Constraint>);
 
 impl Constraint {
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            Constraint::Consistent(pi, m1, m2) => pp
+                .intersperse(
+                    vec![
+                        m1.pretty(pp),
+                        pp.text("≈").append(pi.pretty(pp)),
+                        m2.pretty(pp),
+                    ],
+                    pp.line(),
+                )
+                .group(),
+
+            Constraint::Choice(d, cs1, cs2) => pp
+                .as_string(d)
+                .append(
+                    cs1.pretty(pp)
+                        .append(pp.text(","))
+                        .append(pp.line())
+                        .append(cs2.pretty(pp).nest(1))
+                        .angles(),
+                )
+                .group(),
+        }
+    }
+
     pub fn and(self, other: Constraint) -> Constraints {
         Constraints(vec![self, other])
     }
@@ -961,6 +1047,22 @@ impl Constraint {
 }
 
 impl Constraints {
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        if self.0.is_empty() {
+            pp.text("ε")
+        } else {
+            pp.intersperse(
+                self.0.iter().map(|c| c.pretty(pp)),
+                pp.text("⋀").enclose(pp.space(), pp.space()),
+            )
+        }
+    }
+
     pub fn epsilon() -> Constraints {
         Constraints(Vec::new())
     }
@@ -975,6 +1077,22 @@ impl Constraints {
 
     pub fn apply(self, theta: &Subst) -> Constraints {
         Constraints(self.0.into_iter().map(|c| c.apply(theta)).collect())
+    }
+}
+
+impl Display for Constraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
+    }
+}
+
+impl Display for Constraints {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
     }
 }
 

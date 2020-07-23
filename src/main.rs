@@ -69,9 +69,9 @@ fn main() {
 
     for (i, ve) in ves.iter().enumerate() {
         if ves.len() > 1 {
-            info!("Eliminator #{}: #{:?}", i + 1, ve);
+            info!("Eliminator #{}: #{}", i + 1, ve);
         } else {
-            info!("Eliminator: #{:?}", ve);
+            info!("Eliminator: #{}", ve);
         }
 
         let e = e.clone().eliminate(&ve);

@@ -151,7 +151,7 @@ impl TypeInference {
 
                 let (m_res, c_res, pi_res) = self.meet(&m_then, &m_else);
                 debug!(
-                    "if constraints on {} and {}: {:?} (pi={:?}",
+                    "if constraints on {} and {}: {} (pi={})",
                     m_then, m_else, c_res, pi_res
                 );
                 self.add_pattern(pi_res);
@@ -359,7 +359,7 @@ impl TypeInference {
     }
 
     fn unify1(&mut self, c: Constraint) -> (Subst, Pattern) {
-        trace!("unify1({:?})", c);
+        trace!("unify1({})", c);
 
         match c {
             Constraint::Consistent(_p, MigrationalType::Dyn(), _)
@@ -478,8 +478,8 @@ impl TypeInference {
         debug!("Generated constraints:");
         debug!("  e = {}", e);
         debug!("  m = {}", m);
-        debug!("  constraints = {:?}", ti.constraints);
-        debug!("  pi = {:?}", ti.pattern);
+        debug!("  constraints = {}", ti.constraints);
+        debug!("  pi = {}", ti.pattern);
 
         if ti.pattern == Pattern::Bot() {
             error!("constraint generation produced false pattern (i.e., statically untypable");
@@ -493,7 +493,7 @@ impl TypeInference {
         debug!("Unified constraints:");
         debug!("  e = {}", e);
         debug!("  theta = {:?}", theta);
-        debug!("  pi = {:?}", pi);
+        debug!("  pi = {}", pi);
         debug!("  m = {}", m);
 
         let ds = m.choices().clone();
@@ -501,7 +501,7 @@ impl TypeInference {
             .clone()
             .valid_eliminators()
             .into_iter()
-            .map(move |ve| expand(ve, &ds))
+            .map(move |ve| ve.expand(&ds))
             .collect();
 
         debug!("Maximal valid eliminators:");
