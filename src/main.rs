@@ -77,8 +77,7 @@ fn main() {
         let e = e.clone().eliminate(&ve);
         let m = m.clone().eliminate(&ve);
 
-        info!("m = {}", m);
-        info!("{}", e);
+        println!("{}\n: {}", e, m);
     }
 
     std::process::exit(0);

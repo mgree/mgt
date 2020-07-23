@@ -492,12 +492,12 @@ impl TypeInference {
         let m = m.clone().apply(&theta);
         debug!("Unified constraints:");
         debug!("  e = {}", e);
-        debug!("  theta = {:?}", theta);
+        debug!("  theta = {}", theta);
         debug!("  pi = {}", pi);
         debug!("  m = {}", m);
 
         let ds = m.choices().clone();
-        let ves = pi
+        let ves: HashSet<Eliminator> = pi
             .clone()
             .valid_eliminators()
             .into_iter()
@@ -505,7 +505,11 @@ impl TypeInference {
             .collect();
 
         debug!("Maximal valid eliminators:");
-        debug!("  ves = {:?}", ves);
+        debug!("ves = [");
+        for ve in ves.iter() {
+            debug!("  {}", ve);
+        }
+        debug!("]");
 
         Some((e, m, ves))
     }
@@ -1005,10 +1009,10 @@ mod test {
                 assert_eq!(**v1, theta1.lookup(&b).unwrap().clone());
                 match **v2 {
                     VariationalType::Var(_) => (),
-                    _ => panic!("expected type variable, got {:?}", v2),
+                    _ => panic!("expected type variable, got {}", v2),
                 }
             }
-            v => panic!("expected variational choice, got {:?}", v),
+            v => panic!("expected variational choice, got {}", v),
         }
 
         match theta.lookup(&c).unwrap() {
@@ -1016,11 +1020,11 @@ mod test {
                 assert_eq!(*d2, d);
                 match **v1 {
                     VariationalType::Var(_) => (),
-                    _ => panic!("expected type variable, got {:?}", v2),
+                    _ => panic!("expected type variable, got {}", v2),
                 }
                 assert_eq!(**v2, theta2.lookup(&c).unwrap().clone());
             }
-            v => panic!("expected variational choice, got {:?}", v),
+            v => panic!("expected variational choice, got {}", v),
         }
 
         assert_eq!(theta.lookup(&e), None);

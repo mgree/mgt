@@ -371,14 +371,11 @@ impl TargetExpr {
                     .group();
 
                 pp.intersperse(
-                    vec![
-                        d_bind,
-                        e1.pretty(pp).nest(2).group(),
-                        pp.text("in"),
-                        e2.pretty(pp).group(),
-                    ],
+                    vec![d_bind, e1.pretty(pp).nest(2).group(), pp.text("in")],
                     pp.line(),
                 )
+                .append(pp.hardline())
+                .append(e2.pretty(pp).group())
                 .group()
             }
         }
@@ -390,6 +387,12 @@ impl Display for TargetExpr {
         let pp = pretty::BoxAllocator;
         let doc = self.pretty::<_, ()>(&pp);
         doc.1.render_fmt(DEFAULT_WIDTH, f)
+    }
+}
+
+impl Display for TypeVariable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "a{}", self.0)
     }
 }
 
@@ -416,7 +419,7 @@ impl GradualType {
             GradualType::Dyn() => pp.text("?"),
             GradualType::Base(BaseType::Bool) => pp.text("bool"),
             GradualType::Base(BaseType::Int) => pp.text("int"),
-            GradualType::Var(TypeVariable(n)) => pp.text(format!("a{}", n)),
+            GradualType::Var(a) => pp.as_string(a),
             GradualType::Fun(g1, g2) if g1.is_fun() => g1
                 .pretty(pp)
                 .parens()
@@ -538,6 +541,42 @@ impl From<&StaticType> for GradualType {
 }
 
 impl VariationalType {
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            VariationalType::Base(BaseType::Bool) => pp.text("bool"),
+            VariationalType::Base(BaseType::Int) => pp.text("int"),
+            VariationalType::Var(a) => pp.as_string(a),
+            VariationalType::Fun(v1, v2) => {
+                let mut dom = v1.pretty(pp);
+
+                if v1.is_fun() {
+                    dom = dom.parens()
+                }
+
+                dom.append(pp.text(")"))
+                    .append(pp.space())
+                    .append(pp.text("->"))
+                    .append(pp.line())
+                    .append(v2.pretty(pp))
+                    .group()
+            }
+            VariationalType::Choice(Variation(d), v1, v2) => pp
+                .text(format!("d{}", d))
+                .append(
+                    v1.pretty(pp)
+                        .append(pp.text(","))
+                        .append(v2.pretty(pp))
+                        .angles(),
+                )
+                .group(),
+        }
+    }
+
     pub fn fun(v1: VariationalType, v2: VariationalType) -> VariationalType {
         VariationalType::Fun(Box::new(v1), Box::new(v2))
     }
@@ -585,6 +624,21 @@ impl VariationalType {
             },
         }
     }
+
+    pub fn is_fun(&self) -> bool {
+        match self {
+            VariationalType::Fun(_, _) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Display for VariationalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
+    }
 }
 
 impl MigrationalType {
@@ -598,7 +652,7 @@ impl MigrationalType {
             MigrationalType::Dyn() => pp.text("?"),
             MigrationalType::Base(BaseType::Bool) => pp.text("bool"),
             MigrationalType::Base(BaseType::Int) => pp.text("int"),
-            MigrationalType::Var(TypeVariable(n)) => pp.text(format!("a{}", n)),
+            MigrationalType::Var(a) => pp.as_string(a),
             MigrationalType::Fun(m1, m2) => {
                 let mut dom = m1.pretty(pp);
 
@@ -683,6 +737,7 @@ impl MigrationalType {
             _ => false,
         }
     }
+
     pub fn apply(self, theta: &Subst) -> MigrationalType {
         match self {
             MigrationalType::Dyn() => MigrationalType::Dyn(),
@@ -1145,6 +1200,22 @@ impl Subst {
             .collect();
 
         Subst(composed.union(self.0)) // prioritizes mappings in composed over self
+    }
+}
+
+impl Display for Subst {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+
+        for (i, (a, v)) in self.0.iter().enumerate() {
+            write!(f, "{}↦{}", a, v)?;
+
+            if i < self.0.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+
+        write!(f, "}}")
     }
 }
 
