@@ -26,6 +26,7 @@ pub Expr: SourceExpr = {
     "\\" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e), // TODO multi-argument functions
     "fun" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e),
     "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(x, t, e1, e2),
+    "let" "rec" <defns:RecDefns> "in" <e2:Expr> => Expr::letrec(defns, e2),
     <ExprAnn>,
 };
 
@@ -44,6 +45,18 @@ ExprAtom: SourceExpr = {
     <Id> => Expr::Var(<>),
     "(" <Expr> ")",
 };
+
+RecDefns: Vec<(Variable, Option<GradualType>, SourceExpr)> = {
+    <v:(<RecDefn> "and")*> <last:RecDefn> => {
+        let mut v = v;
+        v.push(last);
+        v
+    }
+}
+
+RecDefn: (Variable, Option<GradualType>, SourceExpr) = {
+    <Id> <TypeAnnot?> "=" <Expr>
+}
 
 Const: SourceExpr = {
     Num => Expr::Const(Constant::Int(<>)),
@@ -77,6 +90,8 @@ match {
     "then",
     "else",
     "let",
+    "rec",
+    "and",
     "in",
     "true",
     "false",

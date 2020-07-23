@@ -296,6 +296,7 @@ impl SourceExpr {
                         };
 
                         pp.text(x)
+                            .append(pp.space())
                             .append(d_annot.group())
                             .append(pp.line())
                             .append(e1.pretty(pp).nest(2))
@@ -420,16 +421,13 @@ impl TargetExpr {
 
                 let bindings = pp.intersperse(
                     defns.into_iter().map(|(x, t, e1)| {
-                        pp.text(x)
-                            .append(
-                                pp.intersperse(
-                                    vec![pp.text(":"), t.pretty(pp), pp.text("=")],
-                                    pp.space(),
-                                )
-                                .group(),
-                            )
-                            .append(pp.line())
-                            .append(e1.pretty(pp).nest(2))
+                        pp.intersperse(
+                            vec![pp.text(x), pp.text(":"), t.pretty(pp), pp.text("=")],
+                            pp.space(),
+                        )
+                        .group()
+                        .append(pp.line())
+                        .append(e1.pretty(pp).nest(2))
                     }),
                     pp.text("and").enclose(pp.hardline(), pp.hardline()),
                 );
