@@ -301,6 +301,23 @@ impl Display for SourceExpr {
 }
 
 impl TargetExpr {
+    pub fn choices(&self) -> HashSet<&Variation> {
+        match self {
+            Expr::Const(_) | Expr::Var(_) => HashSet::new(),
+            Expr::Lam(_x, t, e) => t.choices().union(e.choices()),
+            Expr::Ann(e, t) => e.choices().union(t.choices()),
+            Expr::App(e1, e2) => e1.choices().union(e2.choices()),
+            Expr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
+            Expr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
+            Expr::LetRec(defns, e2) => {
+                let ds = defns
+                    .into_iter()
+                    .map(|(_x, t, e1)| t.choices().union(e1.choices()));
+                HashSet::unions(ds).union(e2.choices())
+            }
+        }
+    }
+
     pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,

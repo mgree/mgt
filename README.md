@@ -20,4 +20,3 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 ## QUESTIONS
 
 - Conditionals as LUB? Otherwise, which programs get rejected?
-- Left over choices, e.g., `\x:?. x : d0<?, 'a> -> d0<?, 'a>`

@@ -932,8 +932,8 @@ impl TypeInference {
         debug!("  theta = {}", theta);
         debug!("  pi = {}", pi);
         debug!("  m = {}", m);
-
-        let ds = m.choices().clone();
+        
+        let ds = e.choices().clone();
         let ves: HashSet<Eliminator> = pi
             .clone()
             .valid_eliminators()
