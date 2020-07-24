@@ -20,3 +20,9 @@ h' = Let "id" ("x" \> vv "x") (If (vv "id" <> tru) (vv "id" <> tru) (vv "id" <> 
 
 i = Let "id" ("x" @> vv "x") (If (vv "id" <> tru) (vv "id" <> i0) (vv "id" <> i1))
 i' = Let "id" ("x" @> vv "x") (If (vv "id" <> tru) (vv "id" <> tru) (vv "id" <> fls))
+
+-- NB they don't both instantiating things not found in the final pattern
+--
+-- >>> > go ("x" \\> vv "x")
+-- (fromList [],(AAA<?,Tv0>)->AAA<?,Tv0>,T)
+go e = fst $ runState (infer [] e) (0,0,initChg,initChg,[],initChg)
