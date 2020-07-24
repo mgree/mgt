@@ -5,4 +5,5 @@ pub mod syntax;
 
 pub mod infer;
 
+pub use infer::Ctx;
 pub use infer::TypeInference;

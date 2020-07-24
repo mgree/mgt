@@ -6,7 +6,7 @@ use std::iter::FromIterator;
 use im_rc::HashMap;
 use im_rc::HashSet;
 
-use log::{debug, error, warn, trace};
+use log::{debug, error, trace, warn};
 
 use crate::syntax::*;
 
@@ -412,7 +412,25 @@ impl Display for Subst {
     }
 }
 
+/// Configuration options for type inference
+pub struct Options {
+    /// How should conditional branches of different types be treated?
+    ///
+    /// Consider `if b then 5 else false`. Campora et al. would simply reject
+    /// this program, but it can reasonably be typed at `?`. With `strict_ifs`
+    /// set, we behave like Campora et al. Without it, the program will have
+    /// type `?`.
+    pub strict_ifs: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options { strict_ifs: true }
+    }
+}
+
 pub struct TypeInference {
+    options: Options,
     next_variable: usize,
     next_variation: usize,
     pattern: Pattern,
@@ -420,8 +438,9 @@ pub struct TypeInference {
 }
 
 impl TypeInference {
-    fn new() -> TypeInference {
+    pub fn new() -> TypeInference {
         TypeInference {
+            options: Options::default(),
             next_variable: 0,
             next_variation: 0,
             pattern: Pattern::Top(),
@@ -750,12 +769,21 @@ impl TypeInference {
             (MigrationalType::Base(b1), MigrationalType::Base(b2)) if b1 == b2 => {
                 (m1.clone(), Constraints::epsilon(), Pattern::Top())
             }
-            _ => (
-                // MMG could turn this into a join, will type more programs (but with lots of leftover dynamic)
-                MigrationalType::Var(self.fresh_variable()),
-                Constraints::epsilon(),
-                Pattern::Bot(),
-            ),
+            _ => {
+                if self.options.strict_ifs {
+                    (
+                        MigrationalType::Var(self.fresh_variable()),
+                        Constraints::epsilon(),
+                        Pattern::Bot(),
+                    )
+                } else {
+                    (
+                        MigrationalType::Dyn(),
+                        Constraints::epsilon(),
+                        Pattern::Top(),
+                    )
+                }
+            }
         }
     }
 
@@ -907,7 +935,11 @@ impl TypeInference {
         }
     }
 
-    pub fn run(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+    pub fn run(
+        &mut self,
+        ctx: Ctx,
+        e: &SourceExpr,
+    ) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
         let (e, m) = self.generate_constraints(ctx, e)?;
 
         debug!("Generated constraints:");
@@ -930,7 +962,6 @@ impl TypeInference {
         debug!("  theta = {}", theta);
         debug!("  pi = {}", pi);
         debug!("  m = {}", m);
-        
         let ds = e.choices().clone();
         let ves: HashSet<Eliminator> = pi
             .clone()
@@ -1393,7 +1424,6 @@ mod test {
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
-        
         assert_eq!(m, MigrationalType::Base(BaseType::Bool));
     }
 

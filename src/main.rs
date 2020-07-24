@@ -5,7 +5,7 @@ use clap::{App, Arg};
 use std::fs::File;
 use std::io::Read;
 
-use log::{error, warn, info};
+use log::{error, info, warn};
 
 use mgt::syntax::*;
 use mgt::*;
@@ -33,7 +33,9 @@ fn main() {
         1 => log::LevelFilter::Debug,
         2 | _ => log::LevelFilter::Trace,
     };
-    env_logger::Builder::from_default_env().filter(None, verbosity).init();
+    env_logger::Builder::from_default_env()
+        .filter(None, verbosity)
+        .init();
 
     let input_source = config.value_of("INPUT").expect("input source");
 
@@ -54,7 +56,8 @@ fn main() {
         std::process::exit(2);
     });
 
-    let (e, m, ves) = TypeInference::infer(&e).unwrap_or_else(|| {
+    let mut ti = TypeInference::new();
+    let (e, m, ves) = ti.run(Ctx::empty(), &e).unwrap_or_else(|| {
         error!("Constraint generation failed");
         std::process::exit(3);
     });
@@ -139,7 +142,8 @@ mod test {
     {
         let mut file = tempfile::NamedTempFile::new().expect("make temporary file");
 
-        file.write_all(s.as_bytes()).expect("couldn't write to temporary file");
+        file.write_all(s.as_bytes())
+            .expect("couldn't write to temporary file");
 
         f(file.path());
     }
