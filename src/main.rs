@@ -26,6 +26,9 @@ fn main() {
                 .multiple(true)
                 .help("Sets the level of verbosity"),
         )
+        .arg(Arg::with_name("STRICT_IFS")
+                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type dyn (defaults to off)")
+                 .long("strict-ifs"))
         .get_matches();
 
     let verbosity = match config.occurrences_of("v") {
@@ -36,6 +39,10 @@ fn main() {
     env_logger::Builder::from_default_env()
         .filter(None, verbosity)
         .init();
+
+    let mut options = Options::default();
+
+    options.strict_ifs = config.is_present("STRICT_IFS");
 
     let input_source = config.value_of("INPUT").expect("input source");
 
@@ -56,7 +63,7 @@ fn main() {
         std::process::exit(2);
     });
 
-    let mut ti = TypeInference::new();
+    let mut ti = TypeInference::new(options);
     let (e, m, ves) = ti.run(Ctx::empty(), &e).unwrap_or_else(|| {
         error!("Constraint generation failed");
         std::process::exit(3);
@@ -92,80 +99,60 @@ mod test {
 
     use assert_cli::Assert;
     use std::io::Write;
-    use std::path::Path;
 
-    #[test]
-    fn no_args_id() {
-        Assert::main_binary().stdin("\\x. x").succeeds().unwrap();
-    }
-
-    #[test]
-    fn no_args_parse_error() {
-        Assert::main_binary().stdin("\\x.").fails().unwrap();
-    }
-
-    #[test]
-    fn no_args_type_error() {
-        Assert::main_binary().stdin("true true").fails().unwrap();
-    }
-
-    #[test]
-    fn explicit_stdin_id() {
-        Assert::main_binary()
-            .with_args(&["-"])
-            .stdin("\\x. x")
-            .succeeds()
-            .unwrap();
-    }
-
-    #[test]
-    fn explicit_stdin_parse_error() {
-        Assert::main_binary()
-            .with_args(&["-"])
-            .stdin("\\x.")
-            .fails()
-            .unwrap();
-    }
-
-    #[test]
-    fn explicit_stdin_type_error() {
-        Assert::main_binary()
-            .with_args(&["-"])
-            .stdin("true true")
-            .fails()
-            .unwrap();
-    }
-
-    fn with_tempfile<F>(s: &str, f: F)
+    fn run<F>(args: Vec<&str>, s: &str, f: F)
     where
-        F: Fn(&Path) -> (),
+        F: Fn(Assert) -> (),
     {
-        let mut file = tempfile::NamedTempFile::new().expect("make temporary file");
+        let mut args = args;
 
+        // no args
+        f(Assert::main_binary().with_args(&args).stdin(s));
+
+        // explicit stdin
+        args.push("-");
+        f(Assert::main_binary().with_args(&args).stdin(s));
+
+        // file
+        args.pop();
+        let mut file = tempfile::NamedTempFile::new().expect("make temporary file");
         file.write_all(s.as_bytes())
             .expect("couldn't write to temporary file");
+        args.push(file.path().to_str().unwrap());
 
-        f(file.path());
+        f(Assert::main_binary().with_args(&args));
+    }
+
+    fn succeeds(args: Vec<&str>, s: &str) {
+        run(args, s, |a| a.succeeds().unwrap());
+    }
+
+    fn fails(args: Vec<&str>, s: &str) {
+        run(args, s, |a| a.fails().unwrap());
     }
 
     #[test]
-    fn file_id() {
-        with_tempfile("\\x. x", |f| {
-            Assert::main_binary().with_args(&[f]).succeeds().unwrap()
-        });
+    fn id() {
+        succeeds(vec![], "\\x. x");
     }
 
     #[test]
-    fn file_parse_error() {
-        with_tempfile("\\x: . x", |f| {
-            Assert::main_binary().with_args(&[f]).fails().unwrap()
-        });
+    fn lax_if() {
+        succeeds(vec![], "if true then false else 5");
     }
 
     #[test]
-    fn file_fails_type_error() {
-        with_tempfile("bool (\\x. x)", |f| {
-            Assert::main_binary().with_args(&[f]).fails().unwrap()
-        });
+    fn strict_if() {
+        fails(vec!["--strict-ifs"], "if true then false else 5");
+    }
+
+    #[test]
+    fn parse_error() {
+        fails(vec![], "\\x.");
+    }
+
+    #[test]
+    fn type_error() {
+        fails(vec![], "true true");
     }
 }

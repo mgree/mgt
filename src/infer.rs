@@ -425,12 +425,12 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Options { strict_ifs: true }
+        Options { strict_ifs: false }
     }
 }
 
 pub struct TypeInference {
-    options: Options,
+    pub options: Options,
     next_variable: usize,
     next_variation: usize,
     pattern: Pattern,
@@ -438,9 +438,9 @@ pub struct TypeInference {
 }
 
 impl TypeInference {
-    pub fn new() -> TypeInference {
+    pub fn new(options: Options) -> TypeInference {
         TypeInference {
-            options: Options::default(),
+            options,
             next_variable: 0,
             next_variation: 0,
             pattern: Pattern::Top(),
@@ -981,7 +981,7 @@ impl TypeInference {
     }
 
     pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
-        let mut ti = TypeInference::new();
+        let mut ti = TypeInference::new(Options::default());
 
         ti.run(Ctx::empty(), e)
     }
@@ -994,6 +994,17 @@ mod test {
 
     fn infer(s: &str) -> (TargetExpr, MigrationalType, HashSet<Eliminator>) {
         TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap()
+    }
+
+    fn infer_strict(
+        s: &str,
+    ) -> Option<(Expr<MigrationalType>, MigrationalType, HashSet<Eliminator>)> {
+        let mut options = Options::default();
+        options.strict_ifs = true;
+        
+        let mut ti = TypeInference::new(options);
+
+        ti.run(Ctx::empty(), &Expr::parse(s).unwrap())
     }
 
     fn identity() -> SourceExpr {
@@ -1297,24 +1308,21 @@ mod test {
     }
 
     #[test]
-    fn if_meet_not_join() {
-        assert!(TypeInference::infer(
-            &Expr::parse("\\x:?. if x then \\y:?. x else false").unwrap()
-        )
-        .is_none());
-        assert!(
-            TypeInference::infer(&Expr::parse("\\x:?. if x then \\y. x else false").unwrap())
-                .is_none()
-        );
-        assert!(
-            TypeInference::infer(&Expr::parse("\\x. if x then \\y:?. x else false").unwrap())
-                .is_none()
-        );
-        assert!(
-            TypeInference::infer(&Expr::parse("\\x. if x then \\y. x else false").unwrap())
-                .is_none()
-        );
+    fn strict_if_meet_not_join() {
+        assert!(infer_strict("\\x:?. if x then \\y:?. x else false").is_none());
+        assert!(infer_strict("\\x:?. if x then \\y. x else false").is_none());
+        assert!(infer_strict("\\x. if x then \\y:?. x else false").is_none());
+        assert!(infer_strict("\\x. if x then \\y. x else false").is_none());
     }
+
+    #[test]
+    fn lax_if_meet_not_join() {
+        let _ = infer("\\x:?. if x then \\y:?. x else false");
+        let _ = infer("\\x:?. if x then \\y. x else false");
+        let _ = infer("\\x. if x then \\y:?. x else false");
+        let _ = infer("\\x. if x then \\y. x else false");
+    }
+
 
     #[test]
     fn well_typed_ann() {
@@ -1462,7 +1470,7 @@ mod test {
 
     #[test]
     pub fn subst_merge() {
-        let mut ti = TypeInference::new();
+        let mut ti = TypeInference::new(Options::default());
         let a = ti.fresh_variable();
         let b = ti.fresh_variable();
         let c = ti.fresh_variable();
