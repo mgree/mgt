@@ -6,7 +6,7 @@ use std::iter::FromIterator;
 use im_rc::HashMap;
 use im_rc::HashSet;
 
-use log::{debug, error, warn, trace};
+use log::{debug, error, trace, warn};
 
 use crate::syntax::*;
 
@@ -412,7 +412,25 @@ impl Display for Subst {
     }
 }
 
+/// Configuration options for type inference
+pub struct Options {
+    /// How should conditional branches of different types be treated?
+    ///
+    /// Consider `if b then 5 else false`. Campora et al. would simply reject
+    /// this program, but it can reasonably be typed at `?`. With `strict_ifs`
+    /// set, we behave like Campora et al. Without it, the program will have
+    /// type `?`.
+    pub strict_ifs: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options { strict_ifs: false }
+    }
+}
+
 pub struct TypeInference {
+    pub options: Options,
     next_variable: usize,
     next_variation: usize,
     pattern: Pattern,
@@ -420,8 +438,9 @@ pub struct TypeInference {
 }
 
 impl TypeInference {
-    fn new() -> TypeInference {
+    pub fn new(options: Options) -> TypeInference {
         TypeInference {
+            options,
             next_variable: 0,
             next_variation: 0,
             pattern: Pattern::Top(),
@@ -750,12 +769,21 @@ impl TypeInference {
             (MigrationalType::Base(b1), MigrationalType::Base(b2)) if b1 == b2 => {
                 (m1.clone(), Constraints::epsilon(), Pattern::Top())
             }
-            _ => (
-                // MMG could turn this into a join, will type more programs (but with lots of leftover dynamic)
-                MigrationalType::Var(self.fresh_variable()),
-                Constraints::epsilon(),
-                Pattern::Bot(),
-            ),
+            _ => {
+                if self.options.strict_ifs {
+                    (
+                        MigrationalType::Var(self.fresh_variable()),
+                        Constraints::epsilon(),
+                        Pattern::Bot(),
+                    )
+                } else {
+                    (
+                        MigrationalType::Dyn(),
+                        Constraints::epsilon(),
+                        Pattern::Top(),
+                    )
+                }
+            }
         }
     }
 
@@ -907,7 +935,11 @@ impl TypeInference {
         }
     }
 
-    pub fn run(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+    pub fn run(
+        &mut self,
+        ctx: Ctx,
+        e: &SourceExpr,
+    ) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
         let (e, m) = self.generate_constraints(ctx, e)?;
 
         debug!("Generated constraints:");
@@ -930,7 +962,6 @@ impl TypeInference {
         debug!("  theta = {}", theta);
         debug!("  pi = {}", pi);
         debug!("  m = {}", m);
-        
         let ds = e.choices().clone();
         let ves: HashSet<Eliminator> = pi
             .clone()
@@ -950,7 +981,7 @@ impl TypeInference {
     }
 
     pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
-        let mut ti = TypeInference::new();
+        let mut ti = TypeInference::new(Options::default());
 
         ti.run(Ctx::empty(), e)
     }
@@ -963,6 +994,17 @@ mod test {
 
     fn infer(s: &str) -> (TargetExpr, MigrationalType, HashSet<Eliminator>) {
         TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap()
+    }
+
+    fn infer_strict(
+        s: &str,
+    ) -> Option<(Expr<MigrationalType>, MigrationalType, HashSet<Eliminator>)> {
+        let mut options = Options::default();
+        options.strict_ifs = true;
+        
+        let mut ti = TypeInference::new(options);
+
+        ti.run(Ctx::empty(), &Expr::parse(s).unwrap())
     }
 
     fn identity() -> SourceExpr {
@@ -1266,24 +1308,21 @@ mod test {
     }
 
     #[test]
-    fn if_meet_not_join() {
-        assert!(TypeInference::infer(
-            &Expr::parse("\\x:?. if x then \\y:?. x else false").unwrap()
-        )
-        .is_none());
-        assert!(
-            TypeInference::infer(&Expr::parse("\\x:?. if x then \\y. x else false").unwrap())
-                .is_none()
-        );
-        assert!(
-            TypeInference::infer(&Expr::parse("\\x. if x then \\y:?. x else false").unwrap())
-                .is_none()
-        );
-        assert!(
-            TypeInference::infer(&Expr::parse("\\x. if x then \\y. x else false").unwrap())
-                .is_none()
-        );
+    fn strict_if_meet_not_join() {
+        assert!(infer_strict("\\x:?. if x then \\y:?. x else false").is_none());
+        assert!(infer_strict("\\x:?. if x then \\y. x else false").is_none());
+        assert!(infer_strict("\\x. if x then \\y:?. x else false").is_none());
+        assert!(infer_strict("\\x. if x then \\y. x else false").is_none());
     }
+
+    #[test]
+    fn lax_if_meet_not_join() {
+        let _ = infer("\\x:?. if x then \\y:?. x else false");
+        let _ = infer("\\x:?. if x then \\y. x else false");
+        let _ = infer("\\x. if x then \\y:?. x else false");
+        let _ = infer("\\x. if x then \\y. x else false");
+    }
+
 
     #[test]
     fn well_typed_ann() {
@@ -1393,7 +1432,6 @@ mod test {
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
-        
         assert_eq!(m, MigrationalType::Base(BaseType::Bool));
     }
 
@@ -1432,7 +1470,7 @@ mod test {
 
     #[test]
     pub fn subst_merge() {
-        let mut ti = TypeInference::new();
+        let mut ti = TypeInference::new(Options::default());
         let a = ti.fresh_variable();
         let b = ti.fresh_variable();
         let c = ti.fresh_variable();

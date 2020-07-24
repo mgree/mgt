@@ -5,4 +5,4 @@ pub mod syntax;
 
 pub mod infer;
 
-pub use infer::TypeInference;
+pub use infer::{Ctx, Options, TypeInference};
