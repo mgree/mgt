@@ -907,24 +907,22 @@ impl TypeInference {
         }
     }
 
-    pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
-        let mut ti = TypeInference::new();
-
-        let (e, m) = ti.generate_constraints(Ctx::empty(), e)?;
+    pub fn run(&mut self, ctx: Ctx, e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+        let (e, m) = self.generate_constraints(ctx, e)?;
 
         debug!("Generated constraints:");
         debug!("  e = {}", e);
         debug!("  m = {}", m);
-        debug!("  constraints = {}", ti.constraints);
-        debug!("  pi = {}", ti.pattern);
+        debug!("  constraints = {}", self.constraints);
+        debug!("  pi = {}", self.pattern);
 
-        if ti.pattern == Pattern::Bot() {
+        if self.pattern == Pattern::Bot() {
             error!("constraint generation produced false pattern (i.e., statically untypable");
             return None;
         }
 
-        let (theta, mut pi) = ti.unify(ti.constraints.clone());
-        pi = pi.meet(ti.pattern);
+        let (theta, mut pi) = self.unify(self.constraints.clone());
+        pi = pi.meet(self.pattern.clone());
         let e = e.apply(&theta);
         let m = m.clone().apply(&theta);
         debug!("Unified constraints:");
@@ -949,6 +947,12 @@ impl TypeInference {
         debug!("]");
 
         Some((e, m, ves))
+    }
+
+    pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+        let mut ti = TypeInference::new();
+
+        ti.run(Ctx::empty(), e)
     }
 }
 
