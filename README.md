@@ -16,3 +16,8 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
   + [ ] Operations on constants
   + [ ] Overloading resolution
   + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables)
+
+## QUESTIONS
+
+- Conditionals as LUB? Otherwise, which programs get rejected?
+- Left over choices, e.g., `\x:?. x : d0<?, 'a> -> d0<?, 'a>`
