@@ -12,7 +12,7 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 ## TODO
 
 - Other language features
-  + [ ] Parser improvements (multi-argument lambdas, arguments in lets and letrecs)
+  + [ ] Parser improvements (multi-argument lambdas, arguments in lets and letrecs, assume expressions (let w/o defn))
   + [ ] Operations on constants
-  + [ ] Overloading resolution
-  + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables)
+  + [ ] Overloading resolution (start with `==`)
+  + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables). First cut: just have `Ctx` track type schemes, instantiating at every variable. Most things will be monomorphic, but assumes can give us polymorphism.
