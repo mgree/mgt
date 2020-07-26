@@ -15,6 +15,8 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
   + [ ] Parser improvements (multi-argument lambdas, arguments in lets and letrecs, assume expressions (let w/o defn))
   + [ ] Operations on constants with overloading
         Mostly done. Not sure how to handle `==?` always remaining as an option...
+
+        Correct solution: ad hoc the overloaded ones for now.
         
         testing: add asserts to ensure that choices don't show up in the final, eliminated AST
   + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables). First cut: just have `Ctx` track type schemes, instantiating at every variable. Most things will be monomorphic, but assumes can give us polymorphism.
