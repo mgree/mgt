@@ -65,6 +65,24 @@ pub enum Constant {
     Int(isize),
 }
 
+/// unary operations in source expressions
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceUOp {
+    Not,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceBOp {
+    Plus,
+    Minus,
+    Times,
+    Divide,
+    And,
+    Or,
+    Equal,
+    LessThan
+}
+
 /// x
 pub type Variable = String;
 
@@ -841,6 +859,31 @@ impl Display for Side {
             Side::Left() => write!(f, "L"),
             Side::Right() => write!(f, "R"),
         }
+    }
+}
+
+impl Display for SourceUOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            SourceUOp::Not => "!",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl Display for SourceBOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            SourceBOp::Plus => "+",
+            SourceBOp::Minus => "-",
+            SourceBOp::Times => "*",
+            SourceBOp::Divide => "/",
+            SourceBOp::And => "&&",
+            SourceBOp::Or => "||",
+            SourceBOp::Equal => "==",
+            SourceBOp::LessThan => "<",
+        };
+        write!(f, "{}", s)
     }
 }
 
