@@ -70,7 +70,55 @@ impl TargetExpr {
     }
 
     pub fn eliminate(self, elim: &Eliminator) -> TargetExpr {
-        self.map_types(&|m: MigrationalType| m.eliminate(elim))
+        match self {
+            Expr::Const(c) => Expr::Const(c),
+            Expr::Var(x) => Expr::Var(x),
+            Expr::Lam(x, t, e) => Expr::lam(x, t.eliminate(elim), e.eliminate(elim)),
+            Expr::App(e1, e2) => Expr::app(e1.eliminate(elim), e2.eliminate(elim)),
+            Expr::Ann(e, t) => Expr::ann(e.eliminate(elim), t.eliminate(elim)),
+            Expr::If(e1, e2, e3) => {
+                Expr::if_(e1.eliminate(elim), e2.eliminate(elim), e3.eliminate(elim))
+            }
+            Expr::Let(x, t, e1, e2) => {
+                Expr::let_(x, t.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
+            }
+            Expr::LetRec(defns, e2) => Expr::letrec(
+                defns
+                    .into_iter()
+                    .map(|(v, t, e1)| (v, t.eliminate(elim), e1.eliminate(elim)))
+                    .collect(),
+                e2.eliminate(elim),
+            ),
+            Expr::UOp(op, e) => Expr::uop(op.eliminate(elim), e.eliminate(elim)),
+            Expr::BOp(op, e1, e2) => {
+                Expr::bop(op.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
+            }
+        }
+    }
+}
+
+impl TargetUOp {
+    pub fn eliminate(self, _elim: &Eliminator) -> Self {
+        self
+    }
+}
+
+impl TargetBOp {
+    pub fn eliminate(self, elim: &Eliminator) -> Self {
+        match self {
+            TargetBOp::Choice(d, op1, op2) => match elim.0.get(&d) {
+                Some(Side::Right()) => op2.eliminate(elim),
+                Some(Side::Left()) => op1.eliminate(elim),
+                None => {
+                    warn!(
+                        "No choice for variation {}; choosing {} over {}",
+                        d, op1, op2
+                    );
+                    op1.eliminate(elim)
+                }
+            },
+            _ => self,
+        }
     }
 }
 
@@ -743,6 +791,11 @@ impl TypeInference {
             )],
             SourceBOp::LessThan => vec![(
                 TargetBOp::LessThan,
+                MigrationalType::int(),
+                MigrationalType::bool(),
+            )],
+            SourceBOp::LessThanEqual => vec![(
+                TargetBOp::LessThanEqual,
                 MigrationalType::int(),
                 MigrationalType::bool(),
             )],
@@ -1428,6 +1481,19 @@ mod test {
         no_maximal_typing("false + false");
         no_maximal_typing("false + (\\x:?. x)");
         no_maximal_typing("false + (\\x. x)");
+    }
+
+    #[test]
+    fn overload_eq() {
+        let (e, m, ves) = infer("0 == false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        match e.eliminate(ve) {
+            Expr::BOp(TargetBOp::EqualDyn, _, _) => (),
+            e => panic!("expected ==?, got {}", e),
+        }
     }
 
     #[test]

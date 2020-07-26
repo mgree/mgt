@@ -14,15 +14,8 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 - Other language features
   + [ ] Parser improvements (multi-argument lambdas, arguments in lets and letrecs, assume expressions (let w/o defn))
   + [ ] Operations on constants with overloading
-        `Expr<U, B, T>`
-        `SourceUOp` and `SourceBOp` resolve to `Iter<(TargetUOp, MigrationalType, MigrationalType)>` and `Iter<(TargetUOp, MigrationalType, MigrationalType, MigrationalType)>`, respectively
-
-        e.g, `SourceEq` resolves to `[(TargetEqBool, Bool, Bool, Bool), (TargetEqInt, Int, Int, Bool), (TargetEqGeneric, Dyn, Dyn, Bool)]`
-
-        constraint generation offers choices---putting generic last (so it's the default)
-
-        `TargetXOp` has `Choice(Variation, TargetXOp, TargetXop)` node
-
+        Mostly done. Not sure how to handle `==?` always remaining as an option...
+        
         testing: add asserts to ensure that choices don't show up in the final, eliminated AST
   + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables). First cut: just have `Ctx` track type schemes, instantiating at every variable. Most things will be monomorphic, but assumes can give us polymorphism.
 

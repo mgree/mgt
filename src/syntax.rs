@@ -82,6 +82,7 @@ pub enum SourceBOp {
     Or,
     Equal,
     LessThan,
+    LessThanEqual,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,6 +103,7 @@ pub enum TargetBOp {
     EqualInt,
     EqualDyn,
     LessThan,
+    LessThanEqual,
     Choice(Variation, Box<TargetBOp>, Box<TargetBOp>),
 }
 
@@ -1020,6 +1022,7 @@ impl Display for SourceBOp {
             SourceBOp::Or => "||",
             SourceBOp::Equal => "==",
             SourceBOp::LessThan => "<",
+            SourceBOp::LessThanEqual => "<=",
         };
         write!(f, "{}", s)
     }
@@ -1048,6 +1051,7 @@ impl Display for TargetBOp {
             TargetBOp::EqualInt => "==i",
             TargetBOp::EqualDyn => "==?",
             TargetBOp::LessThan => "<",
+            TargetBOp::LessThanEqual => "<=",
             TargetBOp::Choice(d, op1, op2) => return write!(f, "{}<{}, {}>", d, op1, op2),
         };
         write!(f, "{}", s)
