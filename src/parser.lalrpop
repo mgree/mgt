@@ -81,7 +81,7 @@ Const: SourceExpr = {
     Bool => Expr::Const(Constant::Bool(<>)),
 };
 
-Num: isize = r"[-?0-9]+" => isize::from_str(<>).unwrap();
+Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
 
 Bool: bool = {
     "true" => true,
@@ -124,6 +124,6 @@ match {
     "true",
     "false",
 } else {
-    r"[-?0-9]+",
+    r"-?[0-9]+",
     r"[[:alpha:]][[:alnum:]_']*"
 }
