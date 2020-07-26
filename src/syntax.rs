@@ -392,6 +392,30 @@ impl TargetBOp {
             _ => HashSet::new(),
         }
     }
+
+    pub fn choice(d: Variation, op1: Self, op2: Self) -> Self {
+        TargetBOp::Choice(
+            d,
+            Box::new(op1.select(d, Side::Left())),
+            Box::new(op2.select(d, Side::Right())),
+        )
+    }
+
+    pub fn select(&self, d: Variation, side: Side) -> Self {
+        match self {
+            TargetBOp::Choice(d2, op1, op2) => {
+                if d == *d2 {
+                    match side {
+                        Side::Left() => op1.select(d, side),
+                        Side::Right() => op2.select(d, side),
+                    }
+                } else {
+                    TargetBOp::choice(*d2, op1.select(d, side), op2.select(d, side))
+                }
+            }
+            _ => self.clone(),
+        }
+    }
 }
 
 impl TargetExpr {
@@ -779,6 +803,14 @@ impl Display for VariationalType {
 }
 
 impl MigrationalType {
+    pub fn bool() -> Self {
+        MigrationalType::Base(BaseType::Bool)
+    }
+
+    pub fn int() -> Self {
+        MigrationalType::Base(BaseType::Int)
+    }
+
     pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
@@ -946,8 +978,8 @@ impl From<VariationalType> for MigrationalType {
 impl From<&Constant> for MigrationalType {
     fn from(c: &Constant) -> Self {
         match c {
-            Constant::Bool(_) => MigrationalType::Base(BaseType::Bool),
-            Constant::Int(_) => MigrationalType::Base(BaseType::Int),
+            Constant::Bool(_) => MigrationalType::bool(),
+            Constant::Int(_) => MigrationalType::int(),
         }
     }
 }
