@@ -69,6 +69,7 @@ pub enum Constant {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SourceUOp {
     Not,
+    Negate,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,7 +81,28 @@ pub enum SourceBOp {
     And,
     Or,
     Equal,
-    LessThan
+    LessThan,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TargetUOp {
+    Not,
+    Negate,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TargetBOp {
+    Plus,
+    Minus,
+    Times,
+    Divide,
+    And,
+    Or,
+    EqualBool,
+    EqualInt,
+    EqualDyn,
+    LessThan,
+    Choice(Variation, Box<TargetBOp>, Box<TargetBOp>),
 }
 
 /// x
@@ -88,57 +110,66 @@ pub type Variable = String;
 
 /// e (ITGL)
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr<T> {
+pub enum Expr<T, U, B> {
     Const(Constant),
     Var(Variable),
-    Lam(Variable, T, Box<Expr<T>>),
-    Ann(Box<Expr<T>>, T),
-    App(Box<Expr<T>>, Box<Expr<T>>),
-    If(Box<Expr<T>>, Box<Expr<T>>, Box<Expr<T>>),
-    Let(Variable, T, Box<Expr<T>>, Box<Expr<T>>),
-    LetRec(Vec<(Variable, T, Expr<T>)>, Box<Expr<T>>),
-    // TODO operations on constants
+    Lam(Variable, T, Box<Self>),
+    Ann(Box<Expr<T, U, B>>, T),
+    App(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
+    If(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
+    Let(Variable, T, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
+    LetRec(Vec<(Variable, T, Expr<T, U, B>)>, Box<Expr<T, U, B>>),
+    UOp(U, Box<Expr<T, U, B>>),
+    BOp(B, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
 }
 
-pub type SourceExpr = Expr<Option<GradualType>>;
-pub type TargetExpr = Expr<MigrationalType>;
+pub type SourceExpr = Expr<Option<GradualType>, SourceUOp, SourceBOp>;
+pub type TargetExpr = Expr<MigrationalType, TargetUOp, TargetBOp>;
 
-impl<T> Expr<T> {
-    pub fn bool(b: bool) -> Expr<T> {
+impl<T, U, B> Expr<T, U, B> {
+    pub fn bool(b: bool) -> Self {
         Expr::Const(Constant::Bool(b))
     }
 
-    pub fn int(n: isize) -> Expr<T> {
+    pub fn int(n: isize) -> Self {
         Expr::Const(Constant::Int(n))
     }
 
-    pub fn lam(v: Variable, t: T, e: Expr<T>) -> Expr<T> {
+    pub fn lam(v: Variable, t: T, e: Self) -> Self {
         Expr::Lam(v, t, Box::new(e))
     }
 
-    pub fn ann(e: Expr<T>, t: T) -> Expr<T> {
+    pub fn ann(e: Self, t: T) -> Self {
         Expr::Ann(Box::new(e), t)
     }
 
-    pub fn app(e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    pub fn app(e1: Self, e2: Self) -> Self {
         Expr::App(Box::new(e1), Box::new(e2))
     }
 
-    pub fn if_(e1: Expr<T>, e2: Expr<T>, e3: Expr<T>) -> Expr<T> {
+    pub fn if_(e1: Self, e2: Self, e3: Self) -> Self {
         Expr::If(Box::new(e1), Box::new(e2), Box::new(e3))
     }
 
-    pub fn let_(x: Variable, t: T, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    pub fn let_(x: Variable, t: T, e1: Self, e2: Self) -> Self {
         Expr::Let(x, t, Box::new(e1), Box::new(e2))
     }
 
-    pub fn letrec(defns: Vec<(Variable, T, Expr<T>)>, e2: Expr<T>) -> Expr<T> {
+    pub fn letrec(defns: Vec<(Variable, T, Self)>, e2: Self) -> Self {
         Expr::LetRec(defns, Box::new(e2))
     }
 
-    pub fn map_types<F, U>(self, f: &F) -> Expr<U>
+    pub fn uop(op: U, e: Self) -> Self {
+        Expr::UOp(op, Box::new(e))
+    }
+
+    pub fn bop(op: B, e1: Self, e2: Self) -> Self {
+        Expr::BOp(op, Box::new(e1), Box::new(e2))
+    }
+
+    pub fn map_types<F, S>(self, f: &F) -> Expr<S, U, B>
     where
-        F: Fn(T) -> U,
+        F: Fn(T) -> S,
     {
         match self {
             Expr::Const(c) => Expr::Const(c),
@@ -155,6 +186,8 @@ impl<T> Expr<T> {
                     .collect(),
                 e2.map_types(f),
             ),
+            Expr::UOp(op, e) => Expr::uop(op, e.map_types(f)),
+            Expr::BOp(op, e1, e2) => Expr::bop(op, e1.map_types(f), e2.map_types(f)),
         }
     }
 
@@ -306,6 +339,31 @@ impl SourceExpr {
                     .append(pp.line())
                     .append(e2.pretty(pp))
             }
+            // TODO proper pretty printing with precedence
+            Expr::UOp(op, e) => pp
+                .as_string(op)
+                .append(pp.space())
+                .append(if e.is_compound() {
+                    e.pretty(pp).parens()
+                } else {
+                    e.pretty(pp)
+                }),
+            Expr::BOp(op, e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.as_string(op),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.space(),
+            ),
         }
     }
 }
@@ -315,6 +373,24 @@ impl Display for SourceExpr {
         let pp = pretty::BoxAllocator;
         let doc = self.pretty::<_, ()>(&pp);
         doc.1.render_fmt(DEFAULT_WIDTH, f)
+    }
+}
+
+impl TargetUOp {
+    pub fn choices(&self) -> HashSet<&Variation> {
+        match self {
+            TargetUOp::Negate => HashSet::new(),
+            TargetUOp::Not => HashSet::new(),
+        }
+    }
+}
+
+impl TargetBOp {
+    pub fn choices(&self) -> HashSet<&Variation> {
+        match self {
+            TargetBOp::Choice(d, op1, op2) => op1.choices().union(op2.choices()).update(d),
+            _ => HashSet::new(),
+        }
     }
 }
 
@@ -332,6 +408,10 @@ impl TargetExpr {
                     .into_iter()
                     .map(|(_x, t, e1)| t.choices().union(e1.choices()));
                 HashSet::unions(ds).union(e2.choices())
+            }
+            Expr::UOp(op, e) => op.choices().union(e.choices()),
+            Expr::BOp(op, e1, e2) => {
+                HashSet::unions(vec![op.choices(), e1.choices(), e2.choices()])
             }
         }
     }
@@ -443,6 +523,31 @@ impl TargetExpr {
                     .append(pp.line())
                     .append(e2.pretty(pp))
             }
+            // TODO proper pretty printing with precedence
+            Expr::UOp(op, e) => pp
+                .as_string(op)
+                .append(pp.space())
+                .append(if e.is_compound() {
+                    e.pretty(pp).parens()
+                } else {
+                    e.pretty(pp)
+                }),
+            Expr::BOp(op, e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.as_string(op),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.space(),
+            ),
         }
     }
 }
@@ -866,6 +971,7 @@ impl Display for SourceUOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             SourceUOp::Not => "!",
+            SourceUOp::Negate => "~",
         };
         write!(f, "{}", s)
     }
@@ -882,6 +988,35 @@ impl Display for SourceBOp {
             SourceBOp::Or => "||",
             SourceBOp::Equal => "==",
             SourceBOp::LessThan => "<",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl Display for TargetUOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TargetUOp::Not => "!",
+            TargetUOp::Negate => "~",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl Display for TargetBOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TargetBOp::Plus => "+",
+            TargetBOp::Minus => "-",
+            TargetBOp::Times => "*",
+            TargetBOp::Divide => "/",
+            TargetBOp::And => "&&",
+            TargetBOp::Or => "||",
+            TargetBOp::EqualBool => "==b",
+            TargetBOp::EqualInt => "==i",
+            TargetBOp::EqualDyn => "==?",
+            TargetBOp::LessThan => "<",
+            TargetBOp::Choice(d, op1, op2) => return write!(f, "{}<{}, {}>", d, op1, op2),
         };
         write!(f, "{}", s)
     }
@@ -1094,6 +1229,7 @@ mod test {
         se_round_trip("false", "false");
         se_round_trip("5", "5");
         se_round_trip("-20", "-20");
+        se_round_trip("~20", "~ 20");
         se_round_trip("4747", "4747");
 
         se_round_trip("x", "x");

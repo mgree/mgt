@@ -636,6 +636,8 @@ impl TypeInference {
 
                 Some((Expr::letrec(e_defns, e_body), m_body))
             }
+            Expr::UOp(_op, _e) => todo!("unary operations"),
+            Expr::BOp(_op, _e1, _e2) => todo!("binary operations"),
         }
     }
 
@@ -998,7 +1000,7 @@ mod test {
 
     fn infer_strict(
         s: &str,
-    ) -> Option<(Expr<MigrationalType>, MigrationalType, HashSet<Eliminator>)> {
+    ) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
         let mut options = Options::default();
         options.strict_ifs = true;
         

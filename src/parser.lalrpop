@@ -31,14 +31,32 @@ pub Expr: SourceExpr = {
 };
 
 ExprAnn: SourceExpr = {
-    <e:ExprApp> ":" <t:Type> => Expr::ann(e, Some(t)),
-    <ExprApp>,
+    <e:ExprFactor> ":" <t:Type> => Expr::ann(e, Some(t)),
+    <ExprFactor>,
+}
+
+ExprFactor: SourceExpr = {
+   <e1:ExprFactor> "+" <e2:ExprTerm> => Expr::bop(SourceBOp::Plus, e1, e2),
+   <e1:ExprFactor> "-" <e2:ExprTerm> => Expr::bop(SourceBOp::Minus, e1, e2),
+   <ExprTerm>,
+}
+
+ExprTerm: SourceExpr = {
+   <e1:ExprTerm> "*" <e2:ExprApp> => Expr::bop(SourceBOp::Times, e1, e2),
+   <e1:ExprTerm> "/" <e2:ExprApp> => Expr::bop(SourceBOp::Divide, e1, e2),
+   <ExprApp>,
 }
 
 ExprApp: SourceExpr = {
-    <e1:ExprApp> <e2:ExprAtom> => Expr::app(e1, e2),
-    <ExprAtom>,
+    <e1:ExprApp> <e2:ExprUnary> => Expr::app(e1, e2),
+    <ExprUnary>,
 };
+
+ExprUnary: SourceExpr = {
+    "~" <ExprAtom> => Expr::uop(SourceUOp::Negate, <>),
+    "!" <ExprAtom> => Expr::uop(SourceUOp::Not, <>),
+    <ExprAtom>,
+}
 
 ExprAtom: SourceExpr = {
     <Const>,
@@ -63,7 +81,7 @@ Const: SourceExpr = {
     Bool => Expr::Const(Constant::Bool(<>)),
 };
 
-Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
+Num: isize = r"[-?0-9]+" => isize::from_str(<>).unwrap();
 
 Bool: bool = {
     "true" => true,
@@ -81,6 +99,16 @@ match {
     ".",
     ":",
     "=",
+    "!",
+    "~",
+    "+",
+    "-",
+    "*", 
+    "/",
+    "&&",
+    "||",
+    "==",
+    "<"
 } else {
     "dyn",
     "bool",
@@ -96,6 +124,6 @@ match {
     "true",
     "false",
 } else {
-    r"-?[0-9]+",
+    r"[-?0-9]+",
     r"[[:alpha:]][[:alnum:]_']*"
 }
