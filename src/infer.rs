@@ -52,12 +52,10 @@ impl MigrationalType {
             MigrationalType::Fun(m1, m2) => {
                 MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
             }
-            MigrationalType::Choice(d, m1, m2) => {
-                match elim.get(&d) {
-                    Side::Right() => m2.eliminate(elim),
-                    Side::Left() => m1.eliminate(elim),
-                }
-            }
+            MigrationalType::Choice(d, m1, m2) => match elim.get(&d) {
+                Side::Right() => m2.eliminate(elim),
+                Side::Left() => m1.eliminate(elim),
+            },
         }
     }
 }
@@ -531,56 +529,29 @@ impl TypeInference {
                 let m = ctx.lookup(x)?;
                 Some((Expr::Var(x.clone()), m.clone()))
             }
-            Expr::Lam(x, t, e) => match t {
-                Some(GradualType::Dyn()) => {
-                    let d = self.fresh_variation();
-                    let m_dom = MigrationalType::choice(
-                        d,
-                        MigrationalType::Dyn(),
-                        MigrationalType::Var(self.fresh_variable()),
-                    );
-                    let (e, m_cod) =
-                        self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
+            Expr::Lam(x, t, e) => {
+                let m_dom = match t {
+                    None => MigrationalType::Var(self.fresh_variable()),
+                    Some(t) => {
+                        self.dynamize(t)
+                    }
+                };
 
-                    Some((
-                        Expr::lam(x.clone(), m_dom.clone(), e),
-                        MigrationalType::fun(m_dom, m_cod),
-                    ))
-                }
-                Some(m_dom) => {
-                    let (e, m_cod) =
-                        self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
+                let (e, m_cod) =
+                    self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
 
-                    let m_dom: MigrationalType = m_dom.clone().into();
-                    Some((
-                        Expr::lam(x.clone(), m_dom.clone(), e),
-                        MigrationalType::fun(m_dom, m_cod),
-                    ))
-                }
-                None => {
-                    let m_dom = MigrationalType::Var(self.fresh_variable());
-                    let (e, m_cod) =
-                        self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
-
-                    Some((
-                        Expr::lam(x.clone(), m_dom.clone(), e),
-                        MigrationalType::fun(m_dom, m_cod),
-                    ))
-                }
-            },
+                let m_dom: MigrationalType = m_dom.clone().into();
+                Some((
+                    Expr::lam(x.clone(), m_dom.clone(), e),
+                    MigrationalType::fun(m_dom, m_cod),
+                ))
+            }
             Expr::Ann(e, t) => {
                 let (e, m) = self.generate_constraints(ctx, e)?;
 
                 match t {
                     Some(t) => {
-                        let mut m_ann: MigrationalType = t.clone().into();
-
-                        if m_ann.has_dyn() {
-                            let d = self.fresh_variation();
-                            let m_var = self.dyn_to_var(&m);
-
-                            m_ann = MigrationalType::choice(d, m_ann, m_var);
-                        }
+                        let m_ann = self.dynamize(t);
 
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
@@ -633,12 +604,14 @@ impl TypeInference {
 
                 let m_def = match t {
                     Some(t) => {
-                        let m: MigrationalType = t.clone().into();
+                        let m = self.dynamize(t);
+
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
                             m.clone(),
                             m_def.clone(),
                         ));
+
                         m
                     }
                     None => m_def,
@@ -826,6 +799,19 @@ impl TypeInference {
             MigrationalType::Fun(m1, m2) => {
                 MigrationalType::fun(self.dyn_to_var(m1), self.dyn_to_var(m2))
             }
+        }
+    }
+
+    fn dynamize(&mut self, g: &GradualType) -> MigrationalType {
+        let m: MigrationalType = g.clone().into();
+
+        if m.has_dyn() {
+            let d = self.fresh_variation();
+            let m_var = self.dyn_to_var(&m);
+
+            MigrationalType::choice(d, m, m_var)
+        } else {
+            m
         }
     }
 
