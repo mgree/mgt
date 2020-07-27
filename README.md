@@ -13,8 +13,10 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
 
 - Other language features
   + [ ] Parser improvements (multi-argument lambdas, arguments in lets and letrecs, assume expressions (let w/o defn))
-  + [ ] Testing: add asserts to ensure that choices don't show up in the final, eliminated AST
+  + Ensure that choices don't show up in the final, eliminated AST
+    - [ ] Using tests, or...
+    - [ ] `eliminate` operation that changes types to really have no choice left (would need more than one `Expr`, trait)
   + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables). First cut: just have `Ctx` track type schemes, instantiating at every variable. Most things will be monomorphic, but assumes can give us polymorphism.
 
         operation resolution may need to yield type schemes rather than types, too
-  + [ ] `eliminate` operation that changes types to really have no choice left (would need more than one `Expr`...)
+  
