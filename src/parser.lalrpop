@@ -67,12 +67,12 @@ ExprTerm: SourceExpr = {
 }
 
 ExprApp: SourceExpr = {
-    <e1:ExprApp> <e2:ExprUnary> => Expr::app(e1, e2),
+    <e1:ExprApp> <e2:ExprAtom> => Expr::app(e1, e2),
     <ExprUnary>,
 };
 
 ExprUnary: SourceExpr = {
-    "~" <ExprAtom> => Expr::uop(SourceUOp::Negate, <>),
+    "-" <ExprAtom> => Expr::uop(SourceUOp::Negate, <>),
     "!" <ExprAtom> => Expr::uop(SourceUOp::Not, <>),
     <ExprAtom>,
 }

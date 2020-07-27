@@ -1011,7 +1011,7 @@ impl Display for SourceUOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             SourceUOp::Not => "!",
-            SourceUOp::Negate => "~",
+            SourceUOp::Negate => "-",
         };
         write!(f, "{}", s)
     }
@@ -1038,7 +1038,7 @@ impl Display for TargetUOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             TargetUOp::Not => "!",
-            TargetUOp::Negate => "~",
+            TargetUOp::Negate => "-",
         };
         write!(f, "{}", s)
     }
@@ -1271,13 +1271,16 @@ mod test {
         se_round_trip("false", "false");
         se_round_trip("5", "5");
         se_round_trip("-20", "-20");
-        se_round_trip("~20", "~ 20");
         se_round_trip("4747", "4747");
 
         se_round_trip("x", "x");
         se_round_trip("\\x. x", "\\x. x");
         se_round_trip("fun x. x", "\\x. x");
         se_round_trip("\\x:bool. x", "\\x : bool. x");
+
+        se_round_trip("-x", "- x");
+        se_round_trip("5-x", "5 - x");
+        se_round_trip("-(m*x + b)", "- ((m * x) + b)");
 
         se_round_trip(
             "if true then false else \\x. x",
