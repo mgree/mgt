@@ -752,11 +752,8 @@ impl TypeInference {
     /// where `op` is a target operation, `dom` is the domain type, and `cod` is
     /// the return type.
     ///
-    /// INVARIANT: make the dynamic one last. the `Expr::BOp` case of
-    /// `generate_constraints` will generate a variation for each possibility.
-    /// Variation defaulting will select the final variation. When we're not
-    /// sure which type to infer, `?` is the only safe fallback... so make sure
-    /// it's the default!
+    /// INVARIANT: make the dynamic one first, in order to "prefer" a typed
+    /// answer when there aren't any real constraints
     fn bop(&mut self, op: &SourceBOp) -> Vec<(TargetBOp, MigrationalType, MigrationalType)> {
         match op {
             SourceBOp::And => vec![(
@@ -801,6 +798,11 @@ impl TypeInference {
             )],
             SourceBOp::Equal => vec![
                 (
+                    TargetBOp::EqualDyn,
+                    MigrationalType::Dyn(),
+                    MigrationalType::bool(),
+                ),
+                (
                     TargetBOp::EqualBool,
                     MigrationalType::bool(),
                     MigrationalType::bool(),
@@ -808,11 +810,6 @@ impl TypeInference {
                 (
                     TargetBOp::EqualInt,
                     MigrationalType::int(),
-                    MigrationalType::bool(),
-                ),
-                (
-                    TargetBOp::EqualDyn,
-                    MigrationalType::Dyn(),
                     MigrationalType::bool(),
                 ),
             ],
@@ -1493,6 +1490,94 @@ mod test {
         match e.eliminate(ve) {
             Expr::BOp(TargetBOp::EqualDyn, _, _) => (),
             e => panic!("expected ==?, got {}", e),
+        }
+
+        let (e, m, ves) = infer("(\\x. \\y. x == y) true false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        let e = e.eliminate(ve);
+        assert!(
+            match e.clone() {
+                Expr::App(e1, _) => match *e1 {
+                    Expr::App(e1, _) => match *e1 {
+                        Expr::Lam(_, _, e) => match *e {
+                            Expr::Lam(_, _, e) => match *e {
+                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                _ => false,
+                            },
+                            _ => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                },
+                _ => false,
+            },
+            "expected ==b, got {}",
+            e
+        );
+
+        let (e, m, ves) = infer("(\\x:?. \\y. x == y) true false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        let e = e.eliminate(ve);
+        assert!(
+            match e.clone() {
+                Expr::App(e1, _) => match *e1 {
+                    Expr::App(e1, _) => match *e1 {
+                        Expr::Lam(_, _, e) => match *e {
+                            Expr::Lam(_, _, e) => match *e {
+                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                _ => false,
+                            },
+                            _ => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                },
+                _ => false,
+            },
+            "expected ==b, got {}",
+            e
+        );
+
+        let (e, m, ves) = infer("(\\x. \\y:?. x == y) true false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        let e = e.eliminate(ve);
+        assert!(
+            match e.clone() {
+                Expr::App(e1, _) => match *e1 {
+                    Expr::App(e1, _) => match *e1 {
+                        Expr::Lam(_, _, e) => match *e {
+                            Expr::Lam(_, _, e) => match *e {
+                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                _ => false,
+                            },
+                            _ => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                },
+                _ => false,
+            },
+            "expected ==b, got {}",
+            e
+        );
+
+        let (_e, m, ves) = infer("(\\x:?. \\y:?. x == y) true false");
+
+        assert_eq!(ves.len(), 3);
+        for ve in ves.iter() {
+            assert_eq!(m.clone().eliminate(ve), MigrationalType::bool());
         }
     }
 
