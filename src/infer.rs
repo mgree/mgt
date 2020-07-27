@@ -262,6 +262,10 @@ impl Eliminator {
 
         elim
     }
+
+    pub fn score(&self) -> usize {
+        self.0.iter().filter(|(_d, side)| **side == Side::Right()).count()
+    }
 }
 
 impl Display for Eliminator {
@@ -646,43 +650,6 @@ impl TypeInference {
                 self.add_constraint(Constraint::Consistent(Pattern::Top(), m, m_dom));
 
                 Some((Expr::uop(op, e), m_cod))
-            }
-            Expr::BOp(SourceBOp::Equal, e1, e2) => {
-                let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
-                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
-
-                let ddyn = self.fresh_variation();
-                let dboolint = self.fresh_variation();
-
-                self.add_constraint(Constraint::Choice(
-                    ddyn,
-                    Constraint::Consistent(Pattern::Top(), MigrationalType::Dyn(), m1.clone()).and(
-                        Constraint::Consistent(Pattern::Top(), MigrationalType::Dyn(), m2.clone()),
-                    ),
-                    Constraint::Choice(
-                        dboolint,
-                        Constraint::Consistent(Pattern::Top(), MigrationalType::bool(), m1.clone()).and(
-                            Constraint::Consistent(Pattern::Top(), MigrationalType::bool(), m2.clone()),
-                        ),
-                        Constraint::Consistent(Pattern::Top(), MigrationalType::int(), m1).and(
-                            Constraint::Consistent(Pattern::Top(), MigrationalType::int(), m2),
-                        ),
-                        )
-                    .into(),
-                ));
-
-                Some((
-                    Expr::bop(
-                        TargetBOp::choice(
-                            ddyn,
-                            TargetBOp::EqualDyn,
-                            TargetBOp::choice(dboolint, TargetBOp::EqualBool, TargetBOp::EqualInt),
-                        ),
-                        e1,
-                        e2,
-                    ),
-                    MigrationalType::bool(),
-                ))
             }
             Expr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
@@ -1164,9 +1131,11 @@ impl TypeInference {
         debug!("Maximal valid eliminators:");
         debug!("ves = [");
         for ve in ves.iter() {
-            debug!("  {}", ve);
+            debug!("  {} score: {}", ve, ve.score());
         }
         debug!("]");
+
+
 
         Some((e, m, ves))
     }
