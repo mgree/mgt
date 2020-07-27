@@ -31,14 +31,51 @@ pub Expr: SourceExpr = {
 };
 
 ExprAnn: SourceExpr = {
-    <e:ExprApp> ":" <t:Type> => Expr::ann(e, Some(t)),
-    <ExprApp>,
+    <e:ExprOr> ":" <t:Type> => Expr::ann(e, Some(t)),
+    <ExprOr>,
+}
+
+ExprOr: SourceExpr = {
+    <e1:ExprOr> "||" <e2:ExprAnd> => Expr::bop(SourceBOp::Or, e1, e2),
+    <ExprAnd>,
+}
+
+ExprAnd: SourceExpr = {
+    <e1:ExprAnd> "&&" <e2:ExprCompare> => Expr::bop(SourceBOp::And, e1, e2),
+    <ExprCompare>,
+}
+
+ExprCompare: SourceExpr = {
+    <e1:ExprFactor> "==" <e2:ExprFactor> => Expr::bop(SourceBOp::Equal, e1, e2),
+    <e1:ExprFactor> "<" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThan, e1, e2),
+    <e1:ExprFactor> ">" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThan, e2, e1),
+    <e1:ExprFactor> "<=" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThanEqual, e1, e2),
+    <e1:ExprFactor> ">=" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThanEqual, e2, e1),
+    <ExprFactor>,
+}
+
+ExprFactor: SourceExpr = {
+   <e1:ExprFactor> "+" <e2:ExprTerm> => Expr::bop(SourceBOp::Plus, e1, e2),
+   <e1:ExprFactor> "-" <e2:ExprTerm> => Expr::bop(SourceBOp::Minus, e1, e2),
+   <ExprTerm>,
+}
+
+ExprTerm: SourceExpr = {
+   <e1:ExprTerm> "*" <e2:ExprApp> => Expr::bop(SourceBOp::Times, e1, e2),
+   <e1:ExprTerm> "/" <e2:ExprApp> => Expr::bop(SourceBOp::Divide, e1, e2),
+   <ExprApp>,
 }
 
 ExprApp: SourceExpr = {
-    <e1:ExprApp> <e2:ExprAtom> => Expr::app(e1, e2),
-    <ExprAtom>,
+    <e1:ExprApp> <e2:ExprUnary> => Expr::app(e1, e2),
+    <ExprUnary>,
 };
+
+ExprUnary: SourceExpr = {
+    "~" <ExprAtom> => Expr::uop(SourceUOp::Negate, <>),
+    "!" <ExprAtom> => Expr::uop(SourceUOp::Not, <>),
+    <ExprAtom>,
+}
 
 ExprAtom: SourceExpr = {
     <Const>,
@@ -81,6 +118,19 @@ match {
     ".",
     ":",
     "=",
+    "!",
+    "~",
+    "+",
+    "-",
+    "*", 
+    "/",
+    "&&",
+    "||",
+    "==",
+    "<",
+    "<=",
+    ">",
+    ">=",
 } else {
     "dyn",
     "bool",
