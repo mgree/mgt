@@ -530,12 +530,7 @@ impl TypeInference {
                 Some((Expr::Var(x.clone()), m.clone()))
             }
             Expr::Lam(x, t, e) => {
-                let m_dom = match t {
-                    None => MigrationalType::Var(self.fresh_variable()),
-                    Some(t) => {
-                        self.dynamize(t)
-                    }
-                };
+                let m_dom = self.freshen_annotation(t);
 
                 let (e, m_cod) =
                     self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
@@ -549,20 +544,15 @@ impl TypeInference {
             Expr::Ann(e, t) => {
                 let (e, m) = self.generate_constraints(ctx, e)?;
 
-                match t {
-                    Some(t) => {
-                        let m_ann = self.dynamize(t);
+                let m_ann = self.freshen_annotation(t);
 
-                        self.add_constraint(Constraint::Consistent(
-                            Pattern::Top(),
-                            m.clone(),
-                            m_ann.clone(),
-                        ));
+                self.add_constraint(Constraint::Consistent(
+                    Pattern::Top(),
+                    m.clone(),
+                    m_ann.clone(),
+                ));
 
-                        Some((Expr::ann(e, m), m_ann))
-                    }
-                    None => Some((e, m)),
-                }
+                Some((Expr::ann(e, m), m_ann))
             }
             Expr::App(e_fun, e_arg) => {
                 let (e_fun, m_fun) = self.generate_constraints(ctx.clone(), e_fun)?;
@@ -604,7 +594,7 @@ impl TypeInference {
 
                 let m_def = match t {
                     Some(t) => {
-                        let m = self.dynamize(t);
+                        let m = self.freshen_gradual_type(t);
 
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
@@ -626,15 +616,7 @@ impl TypeInference {
                 // extend context, mapping each variable to either its annotation or a fresh variable
                 let mut ctx = ctx.clone();
                 for (x, t, _) in defns.iter() {
-                    let m = match t {
-                        Some(t) => {
-                            let m: MigrationalType = t.clone().into();
-                            m
-                        }
-                        None => MigrationalType::Var(self.fresh_variable()),
-                    };
-
-                    ctx = ctx.extend(x.clone(), m);
+                    ctx = ctx.extend(x.clone(), self.freshen_annotation(t));
                 }
 
                 let mut e_defns: Vec<(Variable, MigrationalType, TargetExpr)> = Vec::new();
@@ -802,16 +784,22 @@ impl TypeInference {
         }
     }
 
-    fn dynamize(&mut self, g: &GradualType) -> MigrationalType {
+    fn freshen_gradual_type(&mut self, g: &GradualType) -> MigrationalType {
         let m: MigrationalType = g.clone().into();
 
         if m.has_dyn() {
             let d = self.fresh_variation();
             let m_var = self.dyn_to_var(&m);
-
             MigrationalType::choice(d, m, m_var)
         } else {
             m
+        }
+    }
+
+    fn freshen_annotation(&mut self, g: &Option<GradualType>) -> MigrationalType {
+        match g {
+            None => MigrationalType::Var(self.fresh_variable()),
+            Some(g) => self.freshen_gradual_type(g),
         }
     }
 
@@ -963,7 +951,7 @@ impl TypeInference {
                 .lookup(a)
                 .cloned()
                 .unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
-            map.insert(a.clone(), VariationalType::choice(d, v1, v2));
+            map = map.update(a.clone(), VariationalType::choice(d, v1, v2));
         }
 
         Subst(map)
@@ -1658,6 +1646,101 @@ mod test {
         let m = m.eliminate(ve);
 
         assert_eq!(m, MigrationalType::Dyn());
+    }
+
+    #[test]
+    fn let_poly_eq_both() {
+        let (_e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq true true && eq 0 0");
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+        assert_eq!(m, MigrationalType::bool());
+    }
+
+    #[test]
+    fn let_poly_eq_bool() {
+        let (_e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq true false");
+        assert!(!ves.is_empty());
+
+        for ve in ves.iter() {
+            let m = m.clone().eliminate(ve);
+            assert!(m == MigrationalType::bool() || m == MigrationalType::Dyn());
+        }
+    }
+
+    #[test]
+    fn let_poly_eq_int() {
+        let (_e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq 5 0");
+        assert!(!ves.is_empty());
+
+        for ve in ves.iter() {
+            let m = m.clone().eliminate(ve);
+            assert!(m == MigrationalType::bool() || m == MigrationalType::Dyn());
+        }
+    }
+
+    #[test]
+    fn let_poly_eq_mixed() {
+        let (e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq 5 true");
+        assert!(!ves.is_empty());
+
+        eprintln!("{} eliminators", ves.len());
+
+        for ve in ves.iter() {
+            let m = m.clone().eliminate(ve);
+            eprintln!("{}\n: {}", e.clone().eliminate(ve), m);
+            assert!(m == MigrationalType::bool() || m == MigrationalType::Dyn());
+        }
+    }
+
+    #[test]
+    fn let_polyargs_eq_mixed() {
+        let (e, m, ves) = infer("let eq = \\x:?. \\y:?. x == y in eq 5 true");
+        assert!(!ves.is_empty());
+
+        eprintln!("{} eliminators", ves.len());
+
+        for ve in ves.iter() {
+            let m = m.clone().eliminate(ve);
+            eprintln!("{}\n: {}", e.clone().eliminate(ve), m);
+            assert!(m == MigrationalType::bool() || m == MigrationalType::Dyn());
+        }
+    }
+
+    #[test]
+    pub fn let_polyargs_bool_wouldbenice() {
+        let (e, m, ves) = infer("let eq = \\x:?. \\y:?. x == y in eq false false && eq true false");
+        assert!(!ves.is_empty());
+
+        // currently get three options:
+        //
+        // x, y : bool;  == --> ==b
+        // x, y : ?;     == --> ==i (?!)
+        // x:?, y: bool; == --> ==b
+        //
+        // this kind of sucks... should really only get the first one
+        //
+        // simply reordering the bop cases doesn't help.
+
+        for (i, ve) in ves.iter().enumerate() {
+            let m = m.clone().eliminate(ve);
+            eprintln!("eliminator #{}:\n{}\n: {}", i+1, e.clone().eliminate(ve), m);
+            assert_eq!(m, MigrationalType::bool());
+        }
+    }
+
+    #[test]
+    fn eq_poly_broken() {
+        // this is behaving buggily. depending on whichever option comes closest
+        // to the EqDyn operator, one of these has one VE (closest) and one has
+        // two (furthest). both should have just one VE.
+        //
+        // i think the real solution here is something a bit more ad hoc during
+        // resolution. scan the list and filter out the obvious bad ones.
+        // ideally, there should just be a choice between the typed one and the
+        // dynamic typed one. then the usual stuff should work fine.
+        infer("true == true");
+        infer("0 == 0");
     }
 
     #[test]
