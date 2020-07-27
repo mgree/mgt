@@ -986,6 +986,12 @@ impl From<&Constant> for MigrationalType {
     }
 }
 
+impl Default for Side {
+    fn default() -> Self {
+        Side::Right()
+    }
+}
+
 impl Display for Variation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "d{}", self.0)

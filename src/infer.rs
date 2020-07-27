@@ -52,14 +52,12 @@ impl MigrationalType {
             MigrationalType::Fun(m1, m2) => {
                 MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
             }
-            MigrationalType::Choice(d, m1, m2) => match elim.0.get(&d) {
-                Some(Side::Right()) => m2.eliminate(elim),
-                Some(Side::Left()) => m1.eliminate(elim),
-                None => {
-                    warn!("No choice for variation {}; choosing {} over {}", d, m1, m2);
-                    m1.eliminate(elim)
+            MigrationalType::Choice(d, m1, m2) => {
+                match elim.get(&d) {
+                    Side::Right() => m2.eliminate(elim),
+                    Side::Left() => m1.eliminate(elim),
                 }
-            },
+            }
         }
     }
 }
@@ -106,16 +104,9 @@ impl TargetUOp {
 impl TargetBOp {
     pub fn eliminate(self, elim: &Eliminator) -> Self {
         match self {
-            TargetBOp::Choice(d, op1, op2) => match elim.0.get(&d) {
-                Some(Side::Right()) => op2.eliminate(elim),
-                Some(Side::Left()) => op1.eliminate(elim),
-                None => {
-                    warn!(
-                        "No choice for variation {}; choosing {} over {}",
-                        d, op1, op2
-                    );
-                    op1.eliminate(elim)
-                }
+            TargetBOp::Choice(d, op1, op2) => match elim.get(&d) {
+                Side::Right() => op2.eliminate(elim),
+                Side::Left() => op1.eliminate(elim),
             },
             _ => self,
         }
@@ -242,8 +233,16 @@ impl Eliminator {
         Eliminator(HashMap::new())
     }
 
-    pub fn get(&self, d: &Variation) -> Option<&Side> {
-        self.0.get(d)
+    pub fn get(&self, d: &Variation) -> Side {
+        let side = self.0.get(d);
+
+        match side {
+            None => {
+                warn!("No choice for variation {}; can't go wrong going right", d);
+                return Side::default();
+            }
+            Some(side) => *side,
+        }
     }
 
     pub fn update(self, d: Variation, side: Side) -> Self {
@@ -258,7 +257,7 @@ impl Eliminator {
         let mut elim = self;
 
         for d in ds.iter() {
-            if elim.get(d) != Some(&Side::Left()) {
+            if elim.0.get(d) != Some(&Side::Left()) {
                 elim = elim.update(**d, Side::Right());
             }
         }
