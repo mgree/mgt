@@ -647,6 +647,43 @@ impl TypeInference {
 
                 Some((Expr::uop(op, e), m_cod))
             }
+            Expr::BOp(SourceBOp::Equal, e1, e2) => {
+                let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
+                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
+
+                let ddyn = self.fresh_variation();
+                let dboolint = self.fresh_variation();
+
+                self.add_constraint(Constraint::Choice(
+                    ddyn,
+                    Constraint::Consistent(Pattern::Top(), MigrationalType::Dyn(), m1.clone()).and(
+                        Constraint::Consistent(Pattern::Top(), MigrationalType::Dyn(), m2.clone()),
+                    ),
+                    Constraint::Choice(
+                        dboolint,
+                        Constraint::Consistent(Pattern::Top(), MigrationalType::bool(), m1.clone()).and(
+                            Constraint::Consistent(Pattern::Top(), MigrationalType::bool(), m2.clone()),
+                        ),
+                        Constraint::Consistent(Pattern::Top(), MigrationalType::int(), m1).and(
+                            Constraint::Consistent(Pattern::Top(), MigrationalType::int(), m2),
+                        ),
+                        )
+                    .into(),
+                ));
+
+                Some((
+                    Expr::bop(
+                        TargetBOp::choice(
+                            ddyn,
+                            TargetBOp::EqualDyn,
+                            TargetBOp::choice(dboolint, TargetBOp::EqualBool, TargetBOp::EqualInt),
+                        ),
+                        e1,
+                        e2,
+                    ),
+                    MigrationalType::bool(),
+                ))
+            }
             Expr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
@@ -1112,13 +1149,17 @@ impl TypeInference {
         debug!("  theta = {}", theta);
         debug!("  pi = {}", pi);
         debug!("  m = {}", m);
+
+        let ves = pi.clone().valid_eliminators();
+        debug!("Valid eliminators:");
+        debug!("ves = [");
+        for ve in ves.iter() {
+            debug!("  {}", ve);
+        }
+        debug!("]");
+
         let ds = e.choices().clone();
-        let ves: HashSet<Eliminator> = pi
-            .clone()
-            .valid_eliminators()
-            .into_iter()
-            .map(move |ve| ve.expand(&ds))
-            .collect();
+        let ves: HashSet<Eliminator> = ves.into_iter().map(move |ve| ve.expand(&ds)).collect();
 
         debug!("Maximal valid eliminators:");
         debug!("ves = [");
@@ -1724,7 +1765,12 @@ mod test {
 
         for (i, ve) in ves.iter().enumerate() {
             let m = m.clone().eliminate(ve);
-            eprintln!("eliminator #{}:\n{}\n: {}", i+1, e.clone().eliminate(ve), m);
+            eprintln!(
+                "eliminator #{}:\n{}\n: {}",
+                i + 1,
+                e.clone().eliminate(ve),
+                m
+            );
             assert_eq!(m, MigrationalType::bool());
         }
     }
