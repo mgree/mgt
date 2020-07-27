@@ -262,6 +262,10 @@ impl Eliminator {
 
         elim
     }
+
+    pub fn score(&self) -> usize {
+        self.0.iter().filter(|(_d, side)| **side == Side::Right()).count()
+    }
 }
 
 impl Display for Eliminator {
@@ -1112,20 +1116,26 @@ impl TypeInference {
         debug!("  theta = {}", theta);
         debug!("  pi = {}", pi);
         debug!("  m = {}", m);
-        let ds = e.choices().clone();
-        let ves: HashSet<Eliminator> = pi
-            .clone()
-            .valid_eliminators()
-            .into_iter()
-            .map(move |ve| ve.expand(&ds))
-            .collect();
 
-        debug!("Maximal valid eliminators:");
+        let ves = pi.clone().valid_eliminators();
+        debug!("Valid eliminators:");
         debug!("ves = [");
         for ve in ves.iter() {
             debug!("  {}", ve);
         }
         debug!("]");
+
+        let ds = e.choices().clone();
+        let ves: HashSet<Eliminator> = ves.into_iter().map(move |ve| ve.expand(&ds)).collect();
+
+        debug!("Maximal valid eliminators:");
+        debug!("ves = [");
+        for ve in ves.iter() {
+            debug!("  {} score: {}", ve, ve.score());
+        }
+        debug!("]");
+
+
 
         Some((e, m, ves))
     }
@@ -1724,7 +1734,12 @@ mod test {
 
         for (i, ve) in ves.iter().enumerate() {
             let m = m.clone().eliminate(ve);
-            eprintln!("eliminator #{}:\n{}\n: {}", i+1, e.clone().eliminate(ve), m);
+            eprintln!(
+                "eliminator #{}:\n{}\n: {}",
+                i + 1,
+                e.clone().eliminate(ve),
+                m
+            );
             assert_eq!(m, MigrationalType::bool());
         }
     }
