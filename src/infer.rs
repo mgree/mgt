@@ -333,6 +333,7 @@ impl Display for Eliminator {
 #[derive(Clone, Debug)]
 pub enum Constraint {
     Consistent(Pattern, MigrationalType, MigrationalType),
+    Ground(Pattern, MigrationalType, BaseType), // TODO ultimately need our own notion of ground type
     Choice(Variation, Option<Side>, Constraints, Constraints),
 }
 
@@ -357,7 +358,14 @@ impl Constraint {
                     pp.line(),
                 )
                 .group(),
-
+            Constraint::Ground(pi, m, b) => pp.intersperse(
+                vec![
+                    m.pretty(pp),
+                    pp.text("=").append(pi.pretty(pp)),
+                    pp.as_string(MigrationalType::Base(*b)),
+                ],
+                pp.line(),
+            ),
             Constraint::Choice(d, None, cs1, cs2) => pp
                 .as_string(d)
                 .append(
@@ -401,6 +409,7 @@ impl Constraint {
             Constraint::Consistent(pi, m1, m2) => {
                 Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
             }
+            Constraint::Ground(pi, m, b) => Constraint::Ground(pi, m.apply(theta), b),
             Constraint::Choice(d, bias, cs1, cs2) => {
                 Constraint::Choice(d, bias, cs1.apply(theta), cs2.apply(theta))
             }
@@ -715,6 +724,45 @@ impl TypeInference {
                 self.add_constraint(Constraint::Consistent(Pattern::Top(), m, m_dom));
 
                 Some((Expr::uop(op, e), m_cod))
+            }
+            Expr::BOp(SourceBOp::Equal, e1, e2) => {
+                let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
+                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
+
+                let (mut op, mut m_dom, mut m_cod) = (
+                    TargetBOp::EqualDyn,
+                    MigrationalType::Dyn(),
+                    MigrationalType::bool(),
+                );
+                let mut cs = Constraints::epsilon();
+
+                for (op2, b_dom2, m_cod2) in vec![
+                    (
+                        TargetBOp::EqualBool,
+                        BaseType::Bool,
+                        MigrationalType::bool(),
+                    ),
+                    (TargetBOp::EqualInt, BaseType::Int, MigrationalType::bool()),
+                ]
+                .into_iter()
+                {
+                    let d = self.fresh_variation();
+
+                    op = TargetBOp::choice(d, op, op2);
+                    let cs2 = Constraints(vec![
+                        Constraint::Ground(Pattern::Top(), m1.clone(), b_dom2),
+                        Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
+                    ]);
+
+                    cs = Constraint::Choice(d, Some(Side::Right()), cs, cs2).into();
+                    m_dom =
+                        MigrationalType::choice(d, m_dom.clone(), MigrationalType::Base(b_dom2));
+                    m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
+                }
+
+                self.add_constraints(cs);
+
+                Some((Expr::bop(op, e1, e2), m_cod))
             }
             Expr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
@@ -1150,6 +1198,24 @@ impl TypeInference {
 
                 let theta = self.merge(d, theta1, theta2);
                 (theta, Pattern::choice_(d, bias, pi1, pi2))
+            }
+            Constraint::Ground(_pi, MigrationalType::Dyn(), _b) => (Subst::empty(), Pattern::Bot()),
+            Constraint::Ground(_pi, MigrationalType::Fun(_, _), _b) => {
+                (Subst::empty(), Pattern::Bot())
+            }
+            Constraint::Ground(_pi, MigrationalType::Base(b1), b2) => {
+                (Subst::empty(), (b1 == b2).into())
+            }
+            Constraint::Ground(_pi, MigrationalType::Var(a), b) => (
+                Subst::empty().extend(a, VariationalType::Base(b)),
+                Pattern::Top(),
+            ),
+            Constraint::Ground(pi, MigrationalType::Choice(d, m1, m2), b) => {
+                let (theta1, pi1) = self.unify1(Constraint::Ground(pi.clone(), *m1, b));
+                let (theta2, pi2) = self.unify1(Constraint::Ground(pi, *m2, b));
+
+                let theta = self.merge(d, theta1, theta2);
+                (theta, Pattern::choice(d, pi1, pi2))
             }
         }
     }
@@ -1621,10 +1687,30 @@ mod test {
 
         let (_e, m, ves) = infer("(\\x:?. \\y:?. x == y) true false");
 
-        assert_eq!(ves.len(), 3);
-        for ve in ves.iter() {
-            assert_eq!(m.clone().eliminate(ve), MigrationalType::bool());
-        }
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        let e = e.eliminate(ve);
+        assert!(
+            match e.clone() {
+                Expr::App(e1, _) => match *e1 {
+                    Expr::App(e1, _) => match *e1 {
+                        Expr::Lam(_, _, e) => match *e {
+                            Expr::Lam(_, _, e) => match *e {
+                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                _ => false,
+                            },
+                            _ => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                },
+                _ => false,
+            },
+            "expected ==b, got {}",
+            e
+        );
     }
 
     #[test]

@@ -9,7 +9,7 @@ pub const DEFAULT_WIDTH: usize = 80;
 lalrpop_mod!(parser);
 
 /// gamma
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BaseType {
     Bool,
     Int,
