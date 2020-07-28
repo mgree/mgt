@@ -1099,6 +1099,10 @@ impl TypeInference {
                 // (a), (a*)
                 (Subst::empty(), Pattern::Top())
             }
+            Constraint::Consistent(_p, MigrationalType::Var(a1), MigrationalType::Var(a2)) if a1 == a2 => {
+                // ??? MMG arises from recursion
+                (Subst::empty(), Pattern::Top())
+            } 
             Constraint::Consistent(p, MigrationalType::Var(a), m)
             | Constraint::Consistent(p, m, MigrationalType::Var(a)) => {
                 // (b), (b*)
@@ -1129,6 +1133,7 @@ impl TypeInference {
                 }
 
                 // failed occurs check! choices could let us avoid some of the branches, though...
+                debug!("failed occurs check");
 
                 match m.choices().iter().next() {
                     None => (Subst::empty(), Pattern::Bot()), // failure case
