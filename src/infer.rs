@@ -116,7 +116,7 @@ impl TargetBOp {
 pub enum Pattern {
     Bot(),
     Top(),
-    Choice(Variation, Box<Pattern>, Box<Pattern>),
+    Choice(Variation, Option<Side>, Box<Pattern>, Box<Pattern>),
 }
 
 impl Pattern {
@@ -129,9 +129,31 @@ impl Pattern {
         match self {
             Pattern::Bot() => pp.text("⊥"),
             Pattern::Top() => pp.text("⊤"),
-            Pattern::Choice(d, pat1, pat2) => pp.as_string(d).append(
+            Pattern::Choice(d, None, pat1, pat2) => pp.as_string(d).append(
                 pp.intersperse(
                     vec![pat1.pretty(pp), pat2.pretty(pp).nest(1)],
+                    pp.text(",").append(pp.line()),
+                )
+                .angles()
+                .group(),
+            ),
+            Pattern::Choice(d, Some(Side::Left()), pat1, pat2) => pp.as_string(d).append(
+                pp.intersperse(
+                    vec![
+                        pat1.pretty(pp).enclose(pp.text("*"), pp.nil()),
+                        pat2.pretty(pp).nest(1),
+                    ],
+                    pp.text(",").append(pp.line()),
+                )
+                .angles()
+                .group(),
+            ),
+            Pattern::Choice(d, Some(Side::Right()), pat1, pat2) => pp.as_string(d).append(
+                pp.intersperse(
+                    vec![
+                        pat1.pretty(pp),
+                        pat2.pretty(pp).enclose(pp.text("*"), pp.nil()).nest(1),
+                    ],
                     pp.text(",").append(pp.line()),
                 )
                 .angles()
@@ -144,7 +166,7 @@ impl Pattern {
         match self {
             Pattern::Bot() => Pattern::Bot(),
             Pattern::Top() => Pattern::Top(),
-            Pattern::Choice(d2, pat1, pat2) => {
+            Pattern::Choice(d2, bias, pat1, pat2) => {
                 if d == d2 {
                     match side {
                         Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once (invariant maintained in Pattern::choice)
@@ -153,6 +175,7 @@ impl Pattern {
                 } else {
                     Pattern::Choice(
                         d2,
+                        bias,
                         Box::new(pat1.select(d, side)),
                         Box::new(pat2.select(d, side)),
                     )
@@ -162,11 +185,20 @@ impl Pattern {
     }
 
     pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
+        Pattern::choice_(d, None, pat1, pat2)
+    }
+
+    pub fn biased_choice(d: Variation, bias: Side, pat1: Pattern, pat2: Pattern) -> Pattern {
+        Pattern::choice_(d, Some(bias), pat1, pat2)
+    }
+
+    pub fn choice_(d: Variation, bias: Option<Side>, pat1: Pattern, pat2: Pattern) -> Pattern {
         if pat1 == pat2 {
             pat1
         } else {
             Pattern::Choice(
                 d,
+                bias,
                 Box::new(pat1.select(d, Side::Left())),
                 Box::new(pat2.select(d, Side::Right())),
             )
@@ -177,11 +209,16 @@ impl Pattern {
         match self {
             Pattern::Top() => other,
             Pattern::Bot() => Pattern::Bot(),
-            Pattern::Choice(d1, pat11, pat12) => match other {
-                Pattern::Choice(d2, pat21, pat22) if *d1 == d2 => {
-                    Pattern::choice(*d1, pat11.meet(*pat21), pat12.meet(*pat22))
+            Pattern::Choice(d1, bias1, pat11, pat12) => match other {
+                Pattern::Choice(d2, bias2, pat21, pat22) if *d1 == d2 => {
+                    let bias = match (bias1, bias2) {
+                        (Some(_), Some(_)) | (None, None) => None,
+                        (Some(bias), None) => Some(*bias),
+                        (None, Some(bias)) => Some(bias),
+                    };
+                    Pattern::choice_(*d1, bias, pat11.meet(*pat21), pat12.meet(*pat22))
                 }
-                _ => Pattern::choice(*d1, pat11.meet(other.clone()), pat12.meet(other)),
+                _ => Pattern::choice_(*d1, *bias1, pat11.meet(other.clone()), pat12.meet(other)),
             },
         }
     }
@@ -190,7 +227,7 @@ impl Pattern {
         match self {
             Pattern::Top() => HashSet::unit(Eliminator::new()),
             Pattern::Bot() => HashSet::new(),
-            Pattern::Choice(d, pi1, pi2) => {
+            Pattern::Choice(d, bias, pi1, pi2) => {
                 let ves1: HashSet<Eliminator> = pi1
                     .valid_eliminators()
                     .into_iter()
@@ -202,7 +239,11 @@ impl Pattern {
                     .map(|ve| ve.update(d, Side::Right()))
                     .collect();
 
-                ves1.union(ves2)
+                match bias {
+                    Some(Side::Left()) if !ves1.is_empty() => ves1,
+                    Some(Side::Right()) if !ves2.is_empty() => ves2,
+                    _ => ves1.union(ves2),
+                }
             }
         }
     }
@@ -264,7 +305,10 @@ impl Eliminator {
     }
 
     pub fn score(&self) -> usize {
-        self.0.iter().filter(|(_d, side)| **side == Side::Right()).count()
+        self.0
+            .iter()
+            .filter(|(_d, side)| **side == Side::Right())
+            .count()
     }
 }
 
@@ -1125,7 +1169,7 @@ impl TypeInference {
         }
         debug!("]");
 
-        let ds = e.choices().clone();
+        let ds = e.choices().clone().union(m.choices());
         let ves: HashSet<Eliminator> = ves.into_iter().map(move |ve| ve.expand(&ds)).collect();
 
         debug!("Maximal valid eliminators:");
@@ -1134,8 +1178,6 @@ impl TypeInference {
             debug!("  {} score: {}", ve, ve.score());
         }
         debug!("]");
-
-
 
         Some((e, m, ves))
     }
