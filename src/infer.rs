@@ -2013,6 +2013,17 @@ mod test {
     }
 
     #[test]
+    fn letrec_mutual_loop() {
+        let (e, m, ves) = infer("let rec f x = g x and g y = f y in f true && g false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+        assert_eq!(m, MigrationalType::bool());
+        assert!(e.eliminate(ve).choices().is_empty())
+    }
+
+    #[test]
     fn eg_width() {
         let fixed: String = "fixed".into();
         let width_func: String = "width_func".into();
@@ -2040,7 +2051,7 @@ mod test {
     }
 
     #[test]
-    pub fn subst_merge() {
+    fn subst_merge() {
         let mut ti = TypeInference::new(Options::default());
         let a = ti.fresh_variable();
         let b = ti.fresh_variable();
