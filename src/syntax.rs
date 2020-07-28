@@ -141,6 +141,10 @@ impl<T, U, B> Expr<T, U, B> {
         Expr::Lam(v, t, Box::new(e))
     }
 
+    pub fn lams(args: Vec<(String, T)>, e: Self) -> Self {
+        args.into_iter().rev().fold(e, |e, (x,t)| Expr::lam(x, t, e))
+    }
+
     pub fn ann(e: Self, t: T) -> Self {
         Expr::Ann(Box::new(e), t)
     }
@@ -1071,17 +1075,17 @@ mod test {
     #[test]
     fn expr_id() {
         assert_eq!(
-            SourceExpr::parse("fun x. x").unwrap(),
+            SourceExpr::parse("\\x. x").unwrap(),
             Expr::lam("x".into(), None, Expr::Var("x".into()))
         );
 
         assert_eq!(
-            SourceExpr::parse("fun x:?. x").unwrap(),
+            SourceExpr::parse("\\x:?. x").unwrap(),
             Expr::lam("x".into(), Some(GradualType::Dyn()), Expr::Var("x".into()))
         );
 
         assert_eq!(
-            SourceExpr::parse("fun x:bool. x").unwrap(),
+            SourceExpr::parse("\\x:bool. x").unwrap(),
             Expr::lam(
                 "x".into(),
                 Some(GradualType::Base(BaseType::Bool)),
@@ -1130,7 +1134,7 @@ mod test {
     #[test]
     fn expr_neg() {
         assert_eq!(
-            SourceExpr::parse("fun b:bool. if b then false else true").unwrap(),
+            SourceExpr::parse("\\b:bool. if b then false else true").unwrap(),
             Expr::lam(
                 "b".into(),
                 Some(GradualType::Base(BaseType::Bool)),
@@ -1275,7 +1279,6 @@ mod test {
 
         se_round_trip("x", "x");
         se_round_trip("\\x. x", "\\x. x");
-        se_round_trip("fun x. x", "\\x. x");
         se_round_trip("\\x:bool. x", "\\x : bool. x");
 
         se_round_trip("-x", "- x");
@@ -1294,5 +1297,15 @@ mod test {
         // durrrrr
         se_round_trip("let x = (\\x. x) (\\y. y) (\\z. z) (\\w. w) 5 in (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x", 
                       "let x =\n(\\x. x) (\\y. y) (\\z. z) (\\w. w) 5\nin\n(\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x");
+    }
+
+    #[test]
+    fn pretty_multi_lambda() {
+        se_round_trip("\\x y. x", "\\x. \\y. x");
+        se_round_trip("\\x y z. x", "\\x. \\y. \\z. x");
+        se_round_trip("\\x (y:bool) z. x", "\\x. \\y : bool. \\z. x");
+        se_round_trip("\\x y. x", "\\x. \\y. x");
+        se_round_trip("\\x y z. x", "\\x. \\y. \\z. x");
+        se_round_trip("\\x (y:bool) z. x", "\\x. \\y : bool. \\z. x");
     }
 }

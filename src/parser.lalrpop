@@ -7,7 +7,7 @@ grammar;
 pub Type: GradualType = {
     <dom:TypeAtomic> "->" <cod:Type> => GradualType::fun(dom, cod),
     <TypeAtomic>,
-};
+}
 
 TypeAtomic: GradualType = {
     "dyn" => GradualType::Dyn(),
@@ -15,7 +15,17 @@ TypeAtomic: GradualType = {
     "bool" => GradualType::Base(BaseType::Bool),
     "int" => GradualType::Base(BaseType::Int),
     "(" <Type> ")",
-};
+}
+
+Args: Vec<(String, Option<GradualType>)> = {
+    <x:Id> <t:TypeAnnot> => vec![(x, Some(t))],
+    <Arg+>
+}
+
+Arg: (String, Option<GradualType>) = {
+    <Id> => (<>, None),
+    "(" <x:Id> <t:TypeAnnot?> ")" => (x, t),
+}
 
 TypeAnnot: GradualType = {
     ":" <Type> => <>,
@@ -23,12 +33,11 @@ TypeAnnot: GradualType = {
 
 pub Expr: SourceExpr = {
     "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
-    "\\" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e), // TODO multi-argument functions
-    "fun" <x:Id> <t:TypeAnnot?> "." <e:Expr> => Expr::lam(x, t, e),
+    "\\" <args:Args> "." <e:Expr> => Expr::lams(args, e),
     "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(x, t, e1, e2),
     "let" "rec" <defns:RecDefns> "in" <e2:Expr> => Expr::letrec(defns, e2),
     <ExprAnn>,
-};
+}
 
 ExprAnn: SourceExpr = {
     <e:ExprOr> ":" <t:Type> => Expr::ann(e, Some(t)),
@@ -81,7 +90,7 @@ ExprAtom: SourceExpr = {
     <Const>,
     <Id> => Expr::Var(<>),
     "(" <Expr> ")",
-};
+}
 
 RecDefns: Vec<(Variable, Option<GradualType>, SourceExpr)> = {
     <v:(<RecDefn> "and")*> <last:RecDefn> => {
@@ -98,7 +107,7 @@ RecDefn: (Variable, Option<GradualType>, SourceExpr) = {
 Const: SourceExpr = {
     Num => Expr::Const(Constant::Int(<>)),
     Bool => Expr::Const(Constant::Bool(<>)),
-};
+}
 
 Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
 
@@ -135,7 +144,6 @@ match {
     "dyn",
     "bool",
     "int",
-    "fun",
     "if",
     "then",
     "else",
