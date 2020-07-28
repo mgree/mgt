@@ -2020,7 +2020,18 @@ mod test {
         let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
         assert_eq!(m, MigrationalType::bool());
-        assert!(e.eliminate(ve).choices().is_empty())
+        assert!(e.eliminate(ve).choices().is_empty());
+
+        // underconstrained... will just leave a type variable, but cool
+        let (e, m, ves) = infer("let rec f x = g x and g y = f y in f true");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        match m.eliminate(ve) {
+            MigrationalType::Var(_) => (),
+            m => panic!("expected type variable, got {}", m)
+        }
+        assert!(e.eliminate(ve).choices().is_empty());
     }
 
     #[test]
