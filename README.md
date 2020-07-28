@@ -42,61 +42,43 @@ the target language:
 +? : ?      -> ?      -> ?
 ```
 
-(Recalling that `5 +? hi` is `"5hi"` and `true +? "love"` is
-`"truelove"`, just for lols.) Type inference itself is going to depend
-on overloading resolution.
+(Recalling that `5 +? hi` is `"5hi"` and `true +? "love"` is `"truelove"`, just
+for lols.) Type inference itself depends on overloading resolution.
 
 ### Current algorithm
 
-Only `==` is handled right now. Given `\x:?. \y:?. x == y`, constraint
-generation yields:
+Only `==` is handled right now. There are two new ingredients:
+
+  1. Biased choice. You can specify that you'd prefer a given choice to be made
+     if possible. When computing valid eliminators, biased choice will keep the
+     biased side and ignore the unbiased one---so long as there's a solution.
+  2. Ground constraints. You can require that a type _really_ be of some
+     particular ground type. For now, that's just base types, but it should be
+     possible to extend this.
+
+Taken together, an overloaded operation uses biased choice to try to select
+concrete implementations, but the arguments are given ground constraints so that
+we don't over-narrow things.
+
+Some examples (in `eg/`) clarify things well. In particular:
 
 ```
-e = \x : a0. \y : a1. x d1<d0<==?, ==b>, ==i> y
-m = a0 -> a1 -> d1<d0<bool,bool>,bool>
-constraints = d1<d0<? ≈⊤ a0 ⋀ ? ≈⊤ a1, bool ≈⊤ a0 ⋀ bool ≈⊤ a1>, int ≈⊤ a0 ⋀ int ≈⊤ a1>
-pi = ⊤
+let eq = \x:?. \y:?. x == y in 
+eq 5 true
 ```
 
-This encoding only does okay. In this instance, the "you can't go wrong going
-right" policy will just select `==i` when `==?` is the only safe option.
-
-On the more interesting `let eq = \x:?. \y:?. x == y in eq 5 true` we find:
+Will infer `x:int` and `y:bool`, but correctly select `==?`. Inference
+generalizes correctly:
 
 ```
-e = 
-  let eq : d0<?,a0> -> d1<?,a1> -> d3<d2<bool,bool>,bool> = \x : d0<?,a0>. \y : d1<?,a1>. x d3<d2<==?, ==b>, ==i> y in
-  ((eq 5 true) && (eq 0 0)) && (eq false false)
-m = bool
-constraints = d3<d2<? ≈⊤ d0<?,a0> ⋀ ? ≈⊤ d1<?,a1>,
-    bool ≈⊤ d0<?,a0> ⋀ bool ≈⊤ d1<?,a1>>,
-    int ≈⊤ d0<?,a0> ⋀ int ≈⊤ d1<?,a1>> ⋀ d0<?,a0>
-    ≈⊤
-    int ⋀ d1<?,a1> ≈⊤ bool ⋀ d0<?,a0> ≈⊤ int ⋀ d1<?,a1>
-    ≈⊤
-    int ⋀ bool ≈⊤ d3<d2<bool,bool>,bool> ⋀ bool
-    ≈⊤
-    d3<d2<bool,bool>,bool> ⋀ d0<?,a0> ≈⊤ bool ⋀ d1<?,a1>
-    ≈⊤
-    bool ⋀ bool ≈⊤ bool ⋀ bool ≈⊤ d3<d2<bool,bool>,bool>
+let eq = \x:?. \y:?. x == y in 
+eq 5 true && eq 0 0 && eq false false
 ```
 
-The sole valid eliminator is `{d0.L, d1.L}`; since you can't go wrong going
-right, the maximal valid eliminator is `{d3.R, d2.R, d0.L, d1.L}`, yielding:
+Will infer `x:?` and `y:?` and select `==?`.
 
-```
-let eq : ? -> ? -> bool = \x : ?. \y : ?. x ==i y in
-((eq 5 true) && (eq 0 0)) && (eq false false)
-: bool
-```
-
-Ack!
-
-So far as I can tell, the core issue is that using consistency and right-leaning
-leads to bad choices. Simply putting `?` on the right doesn't do the trick,
-either. I think the key issue is that operator overloading shouldn't use
-consistency, but equality: if you can't _prove_ that both arguments are `bool`s,
-you have no business using `==b`.
+Critically, writing `0 == 0 && true == false` will correctly select `==i` and
+`==b`, respectively.
 
 ## TODO
 

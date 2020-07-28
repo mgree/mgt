@@ -116,7 +116,7 @@ impl TargetBOp {
 pub enum Pattern {
     Bot(),
     Top(),
-    Choice(Variation, Box<Pattern>, Box<Pattern>),
+    Choice(Variation, Option<Side>, Box<Pattern>, Box<Pattern>),
 }
 
 impl Pattern {
@@ -129,9 +129,31 @@ impl Pattern {
         match self {
             Pattern::Bot() => pp.text("⊥"),
             Pattern::Top() => pp.text("⊤"),
-            Pattern::Choice(d, pat1, pat2) => pp.as_string(d).append(
+            Pattern::Choice(d, None, pat1, pat2) => pp.as_string(d).append(
                 pp.intersperse(
                     vec![pat1.pretty(pp), pat2.pretty(pp).nest(1)],
+                    pp.text(",").append(pp.line()),
+                )
+                .angles()
+                .group(),
+            ),
+            Pattern::Choice(d, Some(Side::Left()), pat1, pat2) => pp.as_string(d).append(
+                pp.intersperse(
+                    vec![
+                        pat1.pretty(pp).enclose(pp.text("*"), pp.nil()),
+                        pat2.pretty(pp).nest(1),
+                    ],
+                    pp.text(",").append(pp.line()),
+                )
+                .angles()
+                .group(),
+            ),
+            Pattern::Choice(d, Some(Side::Right()), pat1, pat2) => pp.as_string(d).append(
+                pp.intersperse(
+                    vec![
+                        pat1.pretty(pp),
+                        pat2.pretty(pp).enclose(pp.text("*"), pp.nil()).nest(1),
+                    ],
                     pp.text(",").append(pp.line()),
                 )
                 .angles()
@@ -144,7 +166,7 @@ impl Pattern {
         match self {
             Pattern::Bot() => Pattern::Bot(),
             Pattern::Top() => Pattern::Top(),
-            Pattern::Choice(d2, pat1, pat2) => {
+            Pattern::Choice(d2, bias, pat1, pat2) => {
                 if d == d2 {
                     match side {
                         Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once (invariant maintained in Pattern::choice)
@@ -153,6 +175,7 @@ impl Pattern {
                 } else {
                     Pattern::Choice(
                         d2,
+                        bias,
                         Box::new(pat1.select(d, side)),
                         Box::new(pat2.select(d, side)),
                     )
@@ -162,11 +185,20 @@ impl Pattern {
     }
 
     pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
+        Pattern::choice_(d, None, pat1, pat2)
+    }
+
+    pub fn biased_choice(d: Variation, bias: Side, pat1: Pattern, pat2: Pattern) -> Pattern {
+        Pattern::choice_(d, Some(bias), pat1, pat2)
+    }
+
+    pub fn choice_(d: Variation, bias: Option<Side>, pat1: Pattern, pat2: Pattern) -> Pattern {
         if pat1 == pat2 {
             pat1
         } else {
             Pattern::Choice(
                 d,
+                bias,
                 Box::new(pat1.select(d, Side::Left())),
                 Box::new(pat2.select(d, Side::Right())),
             )
@@ -177,11 +209,16 @@ impl Pattern {
         match self {
             Pattern::Top() => other,
             Pattern::Bot() => Pattern::Bot(),
-            Pattern::Choice(d1, pat11, pat12) => match other {
-                Pattern::Choice(d2, pat21, pat22) if *d1 == d2 => {
-                    Pattern::choice(*d1, pat11.meet(*pat21), pat12.meet(*pat22))
+            Pattern::Choice(d1, bias1, pat11, pat12) => match other {
+                Pattern::Choice(d2, bias2, pat21, pat22) if *d1 == d2 => {
+                    let bias = match (bias1, bias2) {
+                        (Some(_), Some(_)) | (None, None) => None,
+                        (Some(bias), None) => Some(*bias),
+                        (None, Some(bias)) => Some(bias),
+                    };
+                    Pattern::choice_(*d1, bias, pat11.meet(*pat21), pat12.meet(*pat22))
                 }
-                _ => Pattern::choice(*d1, pat11.meet(other.clone()), pat12.meet(other)),
+                _ => Pattern::choice_(*d1, *bias1, pat11.meet(other.clone()), pat12.meet(other)),
             },
         }
     }
@@ -190,7 +227,7 @@ impl Pattern {
         match self {
             Pattern::Top() => HashSet::unit(Eliminator::new()),
             Pattern::Bot() => HashSet::new(),
-            Pattern::Choice(d, pi1, pi2) => {
+            Pattern::Choice(d, bias, pi1, pi2) => {
                 let ves1: HashSet<Eliminator> = pi1
                     .valid_eliminators()
                     .into_iter()
@@ -202,7 +239,11 @@ impl Pattern {
                     .map(|ve| ve.update(d, Side::Right()))
                     .collect();
 
-                ves1.union(ves2)
+                match bias {
+                    Some(Side::Left()) if !ves1.is_empty() => ves1,
+                    Some(Side::Right()) if !ves2.is_empty() => ves2,
+                    _ => ves1.union(ves2),
+                }
             }
         }
     }
@@ -264,7 +305,10 @@ impl Eliminator {
     }
 
     pub fn score(&self) -> usize {
-        self.0.iter().filter(|(_d, side)| **side == Side::Right()).count()
+        self.0
+            .iter()
+            .filter(|(_d, side)| **side == Side::Right())
+            .count()
     }
 }
 
@@ -289,7 +333,8 @@ impl Display for Eliminator {
 #[derive(Clone, Debug)]
 pub enum Constraint {
     Consistent(Pattern, MigrationalType, MigrationalType),
-    Choice(Variation, Constraints, Constraints),
+    Ground(Pattern, MigrationalType, BaseType), // TODO ultimately need our own notion of ground type
+    Choice(Variation, Option<Side>, Constraints, Constraints),
 }
 
 #[derive(Clone, Debug)]
@@ -313,14 +358,42 @@ impl Constraint {
                     pp.line(),
                 )
                 .group(),
-
-            Constraint::Choice(d, cs1, cs2) => pp
+            Constraint::Ground(pi, m, b) => pp.intersperse(
+                vec![
+                    m.pretty(pp),
+                    pp.text("=").append(pi.pretty(pp)),
+                    pp.as_string(MigrationalType::Base(*b)),
+                ],
+                pp.line(),
+            ),
+            Constraint::Choice(d, None, cs1, cs2) => pp
                 .as_string(d)
                 .append(
                     cs1.pretty(pp)
                         .append(pp.text(","))
                         .append(pp.line())
                         .append(cs2.pretty(pp).nest(1))
+                        .angles(),
+                )
+                .group(),
+            Constraint::Choice(d, Some(Side::Left()), cs1, cs2) => pp
+                .as_string(d)
+                .append(
+                    cs1.pretty(pp)
+                        .enclose(pp.text("*"), pp.nil())
+                        .append(pp.text(","))
+                        .append(pp.line())
+                        .append(cs2.pretty(pp).nest(1))
+                        .angles(),
+                )
+                .group(),
+            Constraint::Choice(d, Some(Side::Right()), cs1, cs2) => pp
+                .as_string(d)
+                .append(
+                    cs1.pretty(pp)
+                        .append(pp.text(","))
+                        .append(pp.line())
+                        .append(cs2.pretty(pp).enclose(pp.text("*"), pp.nil()).nest(1))
                         .angles(),
                 )
                 .group(),
@@ -336,8 +409,9 @@ impl Constraint {
             Constraint::Consistent(pi, m1, m2) => {
                 Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
             }
-            Constraint::Choice(d, cs1, cs2) => {
-                Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta))
+            Constraint::Ground(pi, m, b) => Constraint::Ground(pi, m.apply(theta), b),
+            Constraint::Choice(d, bias, cs1, cs2) => {
+                Constraint::Choice(d, bias, cs1.apply(theta), cs2.apply(theta))
             }
         }
     }
@@ -651,6 +725,45 @@ impl TypeInference {
 
                 Some((Expr::uop(op, e), m_cod))
             }
+            Expr::BOp(SourceBOp::Equal, e1, e2) => {
+                let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
+                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
+
+                let (mut op, mut m_dom, mut m_cod) = (
+                    TargetBOp::EqualDyn,
+                    MigrationalType::Dyn(),
+                    MigrationalType::bool(),
+                );
+                let mut cs = Constraints::epsilon();
+
+                for (op2, b_dom2, m_cod2) in vec![
+                    (
+                        TargetBOp::EqualBool,
+                        BaseType::Bool,
+                        MigrationalType::bool(),
+                    ),
+                    (TargetBOp::EqualInt, BaseType::Int, MigrationalType::bool()),
+                ]
+                .into_iter()
+                {
+                    let d = self.fresh_variation();
+
+                    op = TargetBOp::choice(d, op, op2);
+                    let cs2 = Constraints(vec![
+                        Constraint::Ground(Pattern::Top(), m1.clone(), b_dom2),
+                        Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
+                    ]);
+
+                    cs = Constraint::Choice(d, Some(Side::Right()), cs, cs2).into();
+                    m_dom =
+                        MigrationalType::choice(d, m_dom.clone(), MigrationalType::Base(b_dom2));
+                    m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
+                }
+
+                self.add_constraints(cs);
+
+                Some((Expr::bop(op, e1, e2), m_cod))
+            }
             Expr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
@@ -673,7 +786,7 @@ impl TypeInference {
                         Constraint::Consistent(Pattern::Top(), m_dom2.clone(), m2.clone()),
                     ]);
 
-                    cs = Constraint::Choice(d, cs, cs2).into();
+                    cs = Constraint::Choice(d, Some(Side::Right()), cs, cs2).into();
                     m_dom = MigrationalType::choice(d, m_dom.clone(), m_dom2);
                     m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
                 }
@@ -835,7 +948,7 @@ impl TypeInference {
                 let (cs2, pat2) = self.dom(m_fun2, m_arg);
 
                 (
-                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Constraint::Choice(*d, None, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -871,7 +984,7 @@ impl TypeInference {
 
                 (
                     MigrationalType::choice(*d, m1, m2),
-                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Constraint::Choice(*d, None, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -908,7 +1021,7 @@ impl TypeInference {
 
                 (
                     MigrationalType::choice(*d, m1, m2),
-                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Constraint::Choice(*d, None, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -1078,10 +1191,28 @@ impl TypeInference {
                 // (e)
                 (Subst::empty(), Pattern::Bot())
             }
-            Constraint::Choice(d, cs1, cs2) => {
+            Constraint::Choice(d, bias, cs1, cs2) => {
                 // (h)
                 let (theta1, pi1) = self.unify(cs1);
                 let (theta2, pi2) = self.unify(cs2);
+
+                let theta = self.merge(d, theta1, theta2);
+                (theta, Pattern::choice_(d, bias, pi1, pi2))
+            }
+            Constraint::Ground(_pi, MigrationalType::Dyn(), _b) => (Subst::empty(), Pattern::Bot()),
+            Constraint::Ground(_pi, MigrationalType::Fun(_, _), _b) => {
+                (Subst::empty(), Pattern::Bot())
+            }
+            Constraint::Ground(_pi, MigrationalType::Base(b1), b2) => {
+                (Subst::empty(), (b1 == b2).into())
+            }
+            Constraint::Ground(_pi, MigrationalType::Var(a), b) => (
+                Subst::empty().extend(a, VariationalType::Base(b)),
+                Pattern::Top(),
+            ),
+            Constraint::Ground(pi, MigrationalType::Choice(d, m1, m2), b) => {
+                let (theta1, pi1) = self.unify1(Constraint::Ground(pi.clone(), *m1, b));
+                let (theta2, pi2) = self.unify1(Constraint::Ground(pi, *m2, b));
 
                 let theta = self.merge(d, theta1, theta2);
                 (theta, Pattern::choice(d, pi1, pi2))
@@ -1125,7 +1256,7 @@ impl TypeInference {
         }
         debug!("]");
 
-        let ds = e.choices().clone();
+        let ds = e.choices().clone().union(m.choices());
         let ves: HashSet<Eliminator> = ves.into_iter().map(move |ve| ve.expand(&ds)).collect();
 
         debug!("Maximal valid eliminators:");
@@ -1134,8 +1265,6 @@ impl TypeInference {
             debug!("  {} score: {}", ve, ve.score());
         }
         debug!("]");
-
-
 
         Some((e, m, ves))
     }
@@ -1558,10 +1687,89 @@ mod test {
 
         let (_e, m, ves) = infer("(\\x:?. \\y:?. x == y) true false");
 
-        assert_eq!(ves.len(), 3);
-        for ve in ves.iter() {
-            assert_eq!(m.clone().eliminate(ve), MigrationalType::bool());
-        }
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        let e = e.eliminate(ve);
+        assert!(
+            match e.clone() {
+                Expr::App(e1, _) => match *e1 {
+                    Expr::App(e1, _) => match *e1 {
+                        Expr::Lam(_, _, e) => match *e {
+                            Expr::Lam(_, _, e) => match *e {
+                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                _ => false,
+                            },
+                            _ => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                },
+                _ => false,
+            },
+            "expected ==b, got {}",
+            e
+        );
+    }
+
+    fn infer_eq(s: &str, mx: MigrationalType, my: MigrationalType, eq: TargetBOp) {
+        let (e, m, ves) = infer(s);
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        let e = e.eliminate(ve);
+        assert!(
+            match e.clone() {
+                Expr::Let(_, _, e, _) => match *e {
+                    Expr::Lam(_, mx_got, e) => {
+                        assert_eq!(mx, mx_got);
+                        match *e {
+                            Expr::Lam(_, my_got, e) => {
+                                assert_eq!(my, my_got);
+                                match *e {
+                                    Expr::BOp(op, _, _) => {
+                                        assert_eq!(eq, op);
+                                        true
+                                    }
+                                    _ => false,
+                                }
+                            }
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                },
+                _ => false,
+            },
+            "expected ==b, got {}",
+            e
+        );
+    }
+
+    #[test]
+    fn overloaded_eq() {
+        infer_eq(
+            "let eq = \\x:?. \\y:?. x == y in eq 5 true && eq 0 0 && eq false false",
+            MigrationalType::Dyn(),
+            MigrationalType::Dyn(),
+            TargetBOp::EqualDyn,
+        );
+
+        infer_eq(
+            "let eq = \\x:?. \\y:?. x == y in eq false false && eq true false",
+            MigrationalType::bool(),
+            MigrationalType::bool(),
+            TargetBOp::EqualBool,
+        );
+
+        infer_eq(
+            "let eq = \\x:?. \\y:?. x == y in eq 5 true",
+            MigrationalType::int(),
+            MigrationalType::bool(),
+            TargetBOp::EqualDyn,
+        );
     }
 
     #[test]
