@@ -333,7 +333,7 @@ impl Display for Eliminator {
 #[derive(Clone, Debug)]
 pub enum Constraint {
     Consistent(Pattern, MigrationalType, MigrationalType),
-    Choice(Variation, Constraints, Constraints),
+    Choice(Variation, Option<Side>, Constraints, Constraints),
 }
 
 #[derive(Clone, Debug)]
@@ -358,13 +358,34 @@ impl Constraint {
                 )
                 .group(),
 
-            Constraint::Choice(d, cs1, cs2) => pp
+            Constraint::Choice(d, None, cs1, cs2) => pp
                 .as_string(d)
                 .append(
                     cs1.pretty(pp)
                         .append(pp.text(","))
                         .append(pp.line())
                         .append(cs2.pretty(pp).nest(1))
+                        .angles(),
+                )
+                .group(),
+            Constraint::Choice(d, Some(Side::Left()), cs1, cs2) => pp
+                .as_string(d)
+                .append(
+                    cs1.pretty(pp)
+                        .enclose(pp.text("*"), pp.nil())
+                        .append(pp.text(","))
+                        .append(pp.line())
+                        .append(cs2.pretty(pp).nest(1))
+                        .angles(),
+                )
+                .group(),
+            Constraint::Choice(d, Some(Side::Right()), cs1, cs2) => pp
+                .as_string(d)
+                .append(
+                    cs1.pretty(pp)
+                        .append(pp.text(","))
+                        .append(pp.line())
+                        .append(cs2.pretty(pp).enclose(pp.text("*"), pp.nil()).nest(1))
                         .angles(),
                 )
                 .group(),
@@ -380,8 +401,8 @@ impl Constraint {
             Constraint::Consistent(pi, m1, m2) => {
                 Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
             }
-            Constraint::Choice(d, cs1, cs2) => {
-                Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta))
+            Constraint::Choice(d, bias, cs1, cs2) => {
+                Constraint::Choice(d, bias, cs1.apply(theta), cs2.apply(theta))
             }
         }
     }
@@ -717,7 +738,7 @@ impl TypeInference {
                         Constraint::Consistent(Pattern::Top(), m_dom2.clone(), m2.clone()),
                     ]);
 
-                    cs = Constraint::Choice(d, cs, cs2).into();
+                    cs = Constraint::Choice(d, Some(Side::Right()), cs, cs2).into();
                     m_dom = MigrationalType::choice(d, m_dom.clone(), m_dom2);
                     m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
                 }
@@ -879,7 +900,7 @@ impl TypeInference {
                 let (cs2, pat2) = self.dom(m_fun2, m_arg);
 
                 (
-                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Constraint::Choice(*d, None, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -915,7 +936,7 @@ impl TypeInference {
 
                 (
                     MigrationalType::choice(*d, m1, m2),
-                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Constraint::Choice(*d, None, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -952,7 +973,7 @@ impl TypeInference {
 
                 (
                     MigrationalType::choice(*d, m1, m2),
-                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Constraint::Choice(*d, None, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -1122,13 +1143,13 @@ impl TypeInference {
                 // (e)
                 (Subst::empty(), Pattern::Bot())
             }
-            Constraint::Choice(d, cs1, cs2) => {
+            Constraint::Choice(d, bias, cs1, cs2) => {
                 // (h)
                 let (theta1, pi1) = self.unify(cs1);
                 let (theta2, pi2) = self.unify(cs2);
 
                 let theta = self.merge(d, theta1, theta2);
-                (theta, Pattern::choice(d, pi1, pi2))
+                (theta, Pattern::choice_(d, bias, pi1, pi2))
             }
         }
     }
