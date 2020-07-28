@@ -1102,7 +1102,7 @@ impl TypeInference {
             Constraint::Consistent(_p, MigrationalType::Var(a1), MigrationalType::Var(a2)) if a1 == a2 => {
                 // ??? MMG arises from recursion
                 (Subst::empty(), Pattern::Top())
-            } 
+            }
             Constraint::Consistent(p, MigrationalType::Var(a), m)
             | Constraint::Consistent(p, m, MigrationalType::Var(a)) => {
                 // (b), (b*)
@@ -2031,18 +2031,12 @@ mod test {
             ),
         );
 
-        let (_e, m, ves) = TypeInference::infer(&width).unwrap();
-        assert_eq!(ves.len(), 1);
-        let ve = ves.iter().next().unwrap();
-        let m = m.eliminate(ve);
-
-        assert_eq!(
-            m,
-            MigrationalType::fun(
-                MigrationalType::bool(),
-                MigrationalType::fun(MigrationalType::Dyn(), MigrationalType::Dyn())
-            )
-        );
+        let (e, m, ves) = TypeInference::infer(&width).unwrap();
+        assert_eq!(ves.len(), 2);
+        for ve in ves.iter() {
+            assert!(m.clone().eliminate(ve).choices().is_empty());
+            assert!(e.clone().eliminate(ve).choices().is_empty())
+        }
     }
 
     #[test]
