@@ -141,6 +141,12 @@ impl<T, U, B> Expr<T, U, B> {
         Expr::Lam(v, t, Box::new(e))
     }
 
+    pub fn lams(args: Vec<(String, T)>, e: Self) -> Self {
+        args.into_iter()
+            .rev()
+            .fold(e, |e, (x, t)| Expr::lam(x, t, e))
+    }
+
     pub fn ann(e: Self, t: T) -> Self {
         Expr::Ann(Box::new(e), t)
     }
@@ -1071,17 +1077,17 @@ mod test {
     #[test]
     fn expr_id() {
         assert_eq!(
-            SourceExpr::parse("fun x. x").unwrap(),
+            SourceExpr::parse("\\x. x").unwrap(),
             Expr::lam("x".into(), None, Expr::Var("x".into()))
         );
 
         assert_eq!(
-            SourceExpr::parse("fun x:?. x").unwrap(),
+            SourceExpr::parse("\\x:?. x").unwrap(),
             Expr::lam("x".into(), Some(GradualType::Dyn()), Expr::Var("x".into()))
         );
 
         assert_eq!(
-            SourceExpr::parse("fun x:bool. x").unwrap(),
+            SourceExpr::parse("\\x:bool. x").unwrap(),
             Expr::lam(
                 "x".into(),
                 Some(GradualType::Base(BaseType::Bool)),
@@ -1130,7 +1136,7 @@ mod test {
     #[test]
     fn expr_neg() {
         assert_eq!(
-            SourceExpr::parse("fun b:bool. if b then false else true").unwrap(),
+            SourceExpr::parse("\\b:bool. if b then false else true").unwrap(),
             Expr::lam(
                 "b".into(),
                 Some(GradualType::Base(BaseType::Bool)),
@@ -1265,6 +1271,25 @@ mod test {
         assert_eq!(format!("{}", e2), e_pp);
     }
 
+    fn eq_up_to_ws(s1: &str, s2: &str) {
+        let v1 : Vec<&str> = s1.split_whitespace().collect();
+        let v2 : Vec<&str> = s2.split_whitespace().collect();
+
+        assert_eq!(v1, v2);
+    }
+
+    fn se_round_trip_up_to_ws(s: &str, pp: &str) {
+        let e = SourceExpr::parse(s).unwrap();
+        let e_pp = format!("{}", e);
+
+        eq_up_to_ws(pp, &e_pp);
+
+        let e2 = SourceExpr::parse(&e_pp).unwrap();
+        // may not be equal due to empty annotations... but shouldn't come up
+        assert_eq!(e, e2);
+        eq_up_to_ws(&format!("{}", e2), &e_pp);
+    }
+
     #[test]
     fn pretty_sourceexpr() {
         se_round_trip("true", "true");
@@ -1275,7 +1300,6 @@ mod test {
 
         se_round_trip("x", "x");
         se_round_trip("\\x. x", "\\x. x");
-        se_round_trip("fun x. x", "\\x. x");
         se_round_trip("\\x:bool. x", "\\x : bool. x");
 
         se_round_trip("-x", "- x");
@@ -1294,5 +1318,41 @@ mod test {
         // durrrrr
         se_round_trip("let x = (\\x. x) (\\y. y) (\\z. z) (\\w. w) 5 in (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x", 
                       "let x =\n(\\x. x) (\\y. y) (\\z. z) (\\w. w) 5\nin\n(\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x");
+    }
+
+    #[test]
+    fn pretty_multi_lambda() {
+        se_round_trip("\\x y. x", "\\x. \\y. x");
+        se_round_trip("\\x y z. x", "\\x. \\y. \\z. x");
+        se_round_trip("\\x (y:bool) z. x", "\\x. \\y : bool. \\z. x");
+        se_round_trip("\\x y. x", "\\x. \\y. x");
+        se_round_trip("\\x y z. x", "\\x. \\y. \\z. x");
+        se_round_trip("\\x (y:bool) z. x", "\\x. \\y : bool. \\z. x");
+    }
+
+    #[test]
+    fn pretty_let_fun() {
+        se_round_trip(
+            "let f x = if x then false else true in f false",
+            "let f = \\x. if x then false else true in f false",
+        );
+        se_round_trip(
+            "let f (x:bool) = if x then false else true in f false",
+            "let f = \\x : bool. if x then false else true in f false",
+        );
+        se_round_trip(
+            "let f (x:?) (y:bool) = if x && y then false else true in f false",
+            "let f = \\x : ?. \\y : bool. if x && y then false else true in f false",
+        );
+
+        se_round_trip_up_to_ws(
+            "let rec f x = g x and g y = f y in f 0",
+            "let rec f = \\x. g x and g = \\y. f y in f 0",
+        );
+
+        se_round_trip_up_to_ws(
+            "let rec f (x:bool) = g x and g (y:int) = f y in f 0",
+            "let rec f = \\x : bool. g x and g = \\y : int. f y in f 0",
+        )
     }
 }

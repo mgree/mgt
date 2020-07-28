@@ -1099,6 +1099,10 @@ impl TypeInference {
                 // (a), (a*)
                 (Subst::empty(), Pattern::Top())
             }
+            Constraint::Consistent(_p, MigrationalType::Var(a1), MigrationalType::Var(a2)) if a1 == a2 => {
+                // ??? MMG arises from recursion
+                (Subst::empty(), Pattern::Top())
+            }
             Constraint::Consistent(p, MigrationalType::Var(a), m)
             | Constraint::Consistent(p, m, MigrationalType::Var(a)) => {
                 // (b), (b*)
@@ -1129,6 +1133,7 @@ impl TypeInference {
                 }
 
                 // failed occurs check! choices could let us avoid some of the branches, though...
+                debug!("failed occurs check");
 
                 match m.choices().iter().next() {
                     None => (Subst::empty(), Pattern::Bot()), // failure case
@@ -2008,6 +2013,28 @@ mod test {
     }
 
     #[test]
+    fn letrec_mutual_loop() {
+        let (e, m, ves) = infer("let rec f x = g x and g y = f y in f true && g false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+        assert_eq!(m, MigrationalType::bool());
+        assert!(e.eliminate(ve).choices().is_empty());
+
+        // underconstrained... will just leave a type variable, but cool
+        let (e, m, ves) = infer("let rec f x = g x and g y = f y in f true");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        match m.eliminate(ve) {
+            MigrationalType::Var(_) => (),
+            m => panic!("expected type variable, got {}", m)
+        }
+        assert!(e.eliminate(ve).choices().is_empty());
+    }
+
+    #[test]
     fn eg_width() {
         let fixed: String = "fixed".into();
         let width_func: String = "width_func".into();
@@ -2026,22 +2053,16 @@ mod test {
             ),
         );
 
-        let (_e, m, ves) = TypeInference::infer(&width).unwrap();
-        assert_eq!(ves.len(), 1);
-        let ve = ves.iter().next().unwrap();
-        let m = m.eliminate(ve);
-
-        assert_eq!(
-            m,
-            MigrationalType::fun(
-                MigrationalType::bool(),
-                MigrationalType::fun(MigrationalType::Dyn(), MigrationalType::Dyn())
-            )
-        );
+        let (e, m, ves) = TypeInference::infer(&width).unwrap();
+        assert_eq!(ves.len(), 2);
+        for ve in ves.iter() {
+            assert!(m.clone().eliminate(ve).choices().is_empty());
+            assert!(e.clone().eliminate(ve).choices().is_empty())
+        }
     }
 
     #[test]
-    pub fn subst_merge() {
+    fn subst_merge() {
         let mut ti = TypeInference::new(Options::default());
         let a = ti.fresh_variable();
         let b = ti.fresh_variable();
