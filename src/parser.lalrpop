@@ -35,6 +35,7 @@ pub Expr: SourceExpr = {
     "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
     "\\" <args:Args> "." <e:Expr> => Expr::lams(args, e),
     "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(x, t, e1, e2),
+    "let" <f:Id> <args:Args> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(f, None, Expr::lams(args, e1), e2),
     "let" "rec" <defns:RecDefns> "in" <e2:Expr> => Expr::letrec(defns, e2),
     <ExprAnn>,
 }

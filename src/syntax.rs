@@ -142,7 +142,9 @@ impl<T, U, B> Expr<T, U, B> {
     }
 
     pub fn lams(args: Vec<(String, T)>, e: Self) -> Self {
-        args.into_iter().rev().fold(e, |e, (x,t)| Expr::lam(x, t, e))
+        args.into_iter()
+            .rev()
+            .fold(e, |e, (x, t)| Expr::lam(x, t, e))
     }
 
     pub fn ann(e: Self, t: T) -> Self {
@@ -1307,5 +1309,21 @@ mod test {
         se_round_trip("\\x y. x", "\\x. \\y. x");
         se_round_trip("\\x y z. x", "\\x. \\y. \\z. x");
         se_round_trip("\\x (y:bool) z. x", "\\x. \\y : bool. \\z. x");
+    }
+
+    #[test]
+    fn pretty_let_fun() {
+        se_round_trip(
+            "let f x = if x then false else true in f false",
+            "let f = \\x. if x then false else true in f false",
+        );
+        se_round_trip(
+            "let f (x:bool) = if x then false else true in f false",
+            "let f = \\x : bool. if x then false else true in f false",
+        );
+        se_round_trip(
+            "let f (x:?) (y:bool) = if x && y then false else true in f false",
+            "let f = \\x : ?. \\y : bool. if x && y then false else true in f false",
+        );
     }
 }
