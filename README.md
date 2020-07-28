@@ -108,4 +108,10 @@ you have no business using `==b`.
   + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables). First cut: just have `Ctx` track type schemes, instantiating at every variable. Most things will be monomorphic, but assumes can give us polymorphism.
 
         operation resolution may need to yield type schemes rather than types, too
+
+# Acknowledgments
+
+Conversations with [Arjun Guha](https://twitter.com/arjunguha) and [Colin
+Gordon](https://twitter.com/csgordon/) were helpful.
+[@jorendorff](https://twitter.com/jorendorff) gave a tip on concrete syntax.
   
