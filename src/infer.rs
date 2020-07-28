@@ -1713,6 +1713,65 @@ mod test {
         );
     }
 
+    fn infer_eq(s: &str, mx: MigrationalType, my: MigrationalType, eq: TargetBOp) {
+        let (e, m, ves) = infer(s);
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        let e = e.eliminate(ve);
+        assert!(
+            match e.clone() {
+                Expr::Let(_, _, e, _) => match *e {
+                    Expr::Lam(_, mx_got, e) => {
+                        assert_eq!(mx, mx_got);
+                        match *e {
+                            Expr::Lam(_, my_got, e) => {
+                                assert_eq!(my, my_got);
+                                match *e {
+                                    Expr::BOp(op, _, _) => {
+                                        assert_eq!(eq, op);
+                                        true
+                                    }
+                                    _ => false,
+                                }
+                            }
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                },
+                _ => false,
+            },
+            "expected ==b, got {}",
+            e
+        );
+    }
+
+    #[test]
+    fn overloaded_eq() {
+        infer_eq(
+            "let eq = \\x:?. \\y:?. x == y in eq 5 true && eq 0 0 && eq false false",
+            MigrationalType::Dyn(),
+            MigrationalType::Dyn(),
+            TargetBOp::EqualDyn,
+        );
+
+        infer_eq(
+            "let eq = \\x:?. \\y:?. x == y in eq false false && eq true false",
+            MigrationalType::bool(),
+            MigrationalType::bool(),
+            TargetBOp::EqualBool,
+        );
+
+        infer_eq(
+            "let eq = \\x:?. \\y:?. x == y in eq 5 true",
+            MigrationalType::int(),
+            MigrationalType::bool(),
+            TargetBOp::EqualDyn,
+        );
+    }
+
     #[test]
     fn ill_typed_ann() {
         let (_e, _m, ves) = TypeInference::infer(&Expr::ann(
