@@ -17,14 +17,27 @@ TypeAtomic: GradualType = {
     "(" <Type> ")",
 }
 
-Args: Vec<(String, Option<GradualType>)> = {
+Args: Vec<(Variable, Option<GradualType>)> = {
     <x:Id> <t:TypeAnnot> => vec![(x, Some(t))],
     <Arg+>
 }
 
-Arg: (String, Option<GradualType>) = {
+Arg: (Variable, Option<GradualType>) = {
     <Id> => (<>, None),
     "(" <x:Id> <t:TypeAnnot?> ")" => (x, t),
+}
+
+RecDefns: Vec<(Variable, Option<GradualType>, SourceExpr)> = {
+    <v:(<RecDefn> "and")*> <last:RecDefn> => {
+        let mut v = v;
+        v.push(last);
+        v
+    }
+}
+
+RecDefn: (Variable, Option<GradualType>, SourceExpr) = {
+    <Id> <TypeAnnot?> "=" <Expr>,
+    <f:Id> <args:Args> "=" <e:Expr> => (f, None, Expr::lams(args, e)),
 }
 
 TypeAnnot: GradualType = {
@@ -93,18 +106,6 @@ ExprAtom: SourceExpr = {
     "(" <Expr> ")",
 }
 
-RecDefns: Vec<(Variable, Option<GradualType>, SourceExpr)> = {
-    <v:(<RecDefn> "and")*> <last:RecDefn> => {
-        let mut v = v;
-        v.push(last);
-        v
-    }
-}
-
-RecDefn: (Variable, Option<GradualType>, SourceExpr) = {
-    <Id> <TypeAnnot?> "=" <Expr>
-}
-
 Const: SourceExpr = {
     Num => Expr::Const(Constant::Int(<>)),
     Bool => Expr::Const(Constant::Bool(<>)),
@@ -117,7 +118,7 @@ Bool: bool = {
     "false" => false,
 };
 
-Id: String = <r"[[:alpha:]][[:alnum:]_']*"> => <>.to_string();
+Id: Variable = <r"[[:alpha:]][[:alnum:]_']*"> => <>.to_string();
 
 match {
     "?",

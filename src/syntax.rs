@@ -1271,6 +1271,25 @@ mod test {
         assert_eq!(format!("{}", e2), e_pp);
     }
 
+    fn eq_up_to_ws(s1: &str, s2: &str) {
+        let v1 : Vec<&str> = s1.split_whitespace().collect();
+        let v2 : Vec<&str> = s2.split_whitespace().collect();
+
+        assert_eq!(v1, v2);
+    }
+
+    fn se_round_trip_up_to_ws(s: &str, pp: &str) {
+        let e = SourceExpr::parse(s).unwrap();
+        let e_pp = format!("{}", e);
+
+        eq_up_to_ws(pp, &e_pp);
+
+        let e2 = SourceExpr::parse(&e_pp).unwrap();
+        // may not be equal due to empty annotations... but shouldn't come up
+        assert_eq!(e, e2);
+        eq_up_to_ws(&format!("{}", e2), &e_pp);
+    }
+
     #[test]
     fn pretty_sourceexpr() {
         se_round_trip("true", "true");
@@ -1325,5 +1344,15 @@ mod test {
             "let f (x:?) (y:bool) = if x && y then false else true in f false",
             "let f = \\x : ?. \\y : bool. if x && y then false else true in f false",
         );
+
+        se_round_trip_up_to_ws(
+            "let rec f x = g x and g y = f y in f 0",
+            "let rec f = \\x. g x and g = \\y. f y in f 0",
+        );
+
+        se_round_trip_up_to_ws(
+            "let rec f (x:bool) = g x and g (y:int) = f y in f 0",
+            "let rec f = \\x : bool. g x and g = \\y : int. f y in f 0",
+        )
     }
 }
