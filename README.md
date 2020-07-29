@@ -80,6 +80,15 @@ Will infer `x:?` and `y:?` and select `==?`.
 Critically, writing `0 == 0 && true == false` will correctly select `==i` and
 `==b`, respectively.
 
+## Assumptions/holes
+
+The `assume x [: t] in e` form lets you add bindings at arbitrary types without
+definitions. It uses typed holes `__[name]` generate fresh type variables.
+
+It's tempting to have a typed hole have type `?`, but that doesn't work like
+other bits of the inference. If you want something to be `?`, write `assume foo
+: ? in bar`. Writing `assume foo in bar` will try to infer `foo`'s type.
+
 ## TODO
 
 - Other language features
