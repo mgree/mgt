@@ -30,13 +30,13 @@ pub enum GradualType {
 
 /// d
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Variation(pub(super) usize, pub(super) Option<Side>);
+pub struct Variation(usize, Option<Side>);
 
 /// .1 or .2
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Side {
-    Left(),
-    Right(),
+    Left,
+    Right,
 }
 
 /// V
@@ -407,8 +407,8 @@ impl TargetBOp {
     pub fn choice(d: Variation, op1: Self, op2: Self) -> Self {
         TargetBOp::Choice(
             d,
-            Box::new(op1.select(d, Side::Left())),
-            Box::new(op2.select(d, Side::Right())),
+            Box::new(op1.select(d, Side::Left)),
+            Box::new(op2.select(d, Side::Right)),
         )
     }
 
@@ -417,8 +417,8 @@ impl TargetBOp {
             TargetBOp::Choice(d2, op1, op2) => {
                 if d == *d2 {
                     match side {
-                        Side::Left() => op1.select(d, side),
-                        Side::Right() => op2.select(d, side),
+                        Side::Left => op1.select(d, side),
+                        Side::Right => op2.select(d, side),
                     }
                 } else {
                     TargetBOp::choice(*d2, op1.select(d, side), op2.select(d, side))
@@ -773,8 +773,8 @@ impl VariationalType {
         // we _do_ project the inner types to the appropriate side of that variation, though
         VariationalType::Choice(
             d,
-            Box::new(v1.select(d, Side::Left())),
-            Box::new(v2.select(d, Side::Right())),
+            Box::new(v1.select(d, Side::Left)),
+            Box::new(v2.select(d, Side::Right)),
         )
     }
 
@@ -788,8 +788,8 @@ impl VariationalType {
             VariationalType::Choice(d2, v1, v2) => {
                 if d == *d2 {
                     match side {
-                        Side::Left() => v1.select(d, side),
-                        Side::Right() => v2.select(d, side),
+                        Side::Left => v1.select(d, side),
+                        Side::Right => v2.select(d, side),
                     }
                 } else {
                     VariationalType::choice(*d2, v1.select(d, side), v2.select(d, side))
@@ -868,8 +868,8 @@ impl MigrationalType {
         // we _do_ project the inner types to the appropriate side of that variation, though
         MigrationalType::Choice(
             d,
-            Box::new(m1.select(d, Side::Left())),
-            Box::new(m2.select(d, Side::Right())),
+            Box::new(m1.select(d, Side::Left)),
+            Box::new(m2.select(d, Side::Right)),
         )
     }
 
@@ -884,8 +884,8 @@ impl MigrationalType {
             MigrationalType::Choice(d2, m1, m2) => {
                 if d == *d2 {
                     match side {
-                        Side::Left() => m1.select(d, side),
-                        Side::Right() => m2.select(d, side),
+                        Side::Left => m1.select(d, side),
+                        Side::Right => m2.select(d, side),
                     }
                 } else {
                     MigrationalType::choice(*d2, m1.select(d, side), m2.select(d, side))
@@ -998,11 +998,15 @@ impl From<&Constant> for MigrationalType {
 
 impl Default for Side {
     fn default() -> Self {
-        Side::Right()
+        Side::Right
     }
 }
 
 impl Variation {
+    pub fn new(d: usize) -> Self {
+        Variation(d, None)
+    }
+
     pub fn bias(&self) -> Option<Side> {
         self.1
     }
@@ -1027,8 +1031,8 @@ impl Display for Variation {
 impl Display for Side {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Side::Left() => write!(f, "L"),
-            Side::Right() => write!(f, "R"),
+            Side::Left => write!(f, "L"),
+            Side::Right => write!(f, "R"),
         }
     }
 }

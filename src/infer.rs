@@ -53,8 +53,8 @@ impl MigrationalType {
                 MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
             }
             MigrationalType::Choice(d, m1, m2) => match elim.get(&d) {
-                Side::Right() => m2.eliminate(elim),
-                Side::Left() => m1.eliminate(elim),
+                Side::Right => m2.eliminate(elim),
+                Side::Left => m1.eliminate(elim),
             },
         }
     }
@@ -104,8 +104,8 @@ impl TargetBOp {
     pub fn eliminate(self, elim: &Eliminator) -> Self {
         match self {
             TargetBOp::Choice(d, op1, op2) => match elim.get(&d) {
-                Side::Right() => op2.eliminate(elim),
-                Side::Left() => op1.eliminate(elim),
+                Side::Right => op2.eliminate(elim),
+                Side::Left => op1.eliminate(elim),
             },
             _ => self,
         }
@@ -148,8 +148,8 @@ impl Pattern {
             Pattern::Choice(d2, pat1, pat2) => {
                 if d == d2 {
                     match side {
-                        Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once (invariant maintained in Pattern::choice)
-                        Side::Right() => *pat2,
+                        Side::Left => *pat1, // shouldn't need recursive select---each variation should appear only once (invariant maintained in Pattern::choice)
+                        Side::Right => *pat2,
                     }
                 } else {
                     Pattern::Choice(
@@ -168,8 +168,8 @@ impl Pattern {
         } else {
             Pattern::Choice(
                 d,
-                Box::new(pat1.select(d, Side::Left())),
-                Box::new(pat2.select(d, Side::Right())),
+                Box::new(pat1.select(d, Side::Left)),
+                Box::new(pat2.select(d, Side::Right)),
             )
         }
     }
@@ -195,17 +195,17 @@ impl Pattern {
                 let ves1: HashSet<Eliminator> = pi1
                     .valid_eliminators()
                     .into_iter()
-                    .map(|ve| ve.update(d, Side::Left()))
+                    .map(|ve| ve.update(d, Side::Left))
                     .collect();
                 let ves2: HashSet<Eliminator> = pi2
                     .valid_eliminators()
                     .into_iter()
-                    .map(|ve| ve.update(d, Side::Right()))
+                    .map(|ve| ve.update(d, Side::Right))
                     .collect();
 
                 match d.bias() {
-                    Some(Side::Left()) if !ves1.is_empty() => ves1,
-                    Some(Side::Right()) if !ves2.is_empty() => ves2,
+                    Some(Side::Left) if !ves1.is_empty() => ves1,
+                    Some(Side::Right) if !ves2.is_empty() => ves2,
                     _ => ves1.union(ves2),
                 }
             }
@@ -260,8 +260,8 @@ impl Eliminator {
         let mut elim = self;
 
         for d in ds.iter() {
-            if elim.0.get(d) != Some(&Side::Left()) {
-                elim = elim.update(**d, Side::Right());
+            if elim.0.get(d) != Some(&Side::Left) {
+                elim = elim.update(**d, Side::Right);
             }
         }
 
@@ -271,7 +271,7 @@ impl Eliminator {
     pub fn score(&self) -> usize {
         self.0
             .iter()
-            .filter(|(_d, side)| **side == Side::Right())
+            .filter(|(_d, side)| **side == Side::Right)
             .count()
     }
 }
@@ -523,7 +523,7 @@ impl TypeInference {
     fn fresh_variation(&mut self) -> Variation {
         let next = self.next_variation;
         self.next_variation += 1;
-        Variation(next, None)
+        Variation::new(next)
     }
 
     fn add_constraint(&mut self, c: Constraint) {
@@ -693,7 +693,7 @@ impl TypeInference {
                 ]
                 .into_iter()
                 {
-                    let d = self.fresh_variation().biased(Side::Right());
+                    let d = self.fresh_variation().biased(Side::Right);
 
                     op = TargetBOp::choice(d, op, op2);
                     let cs2 = Constraints(vec![
@@ -725,7 +725,7 @@ impl TypeInference {
                 ]);
 
                 for (op2, m_dom2, m_cod2) in ops {
-                    let d = self.fresh_variation().biased(Side::Right());
+                    let d = self.fresh_variation().biased(Side::Right);
 
                     op = TargetBOp::choice(d, op, op2);
                     let cs2 = Constraints(vec![
@@ -1116,8 +1116,8 @@ impl TypeInference {
                     MigrationalType::Choice(d, m1, m2),
                     MigrationalType::choice(
                         d,
-                        m.select(d, Side::Left()),
-                        m.select(d, Side::Right()),
+                        m.select(d, Side::Left),
+                        m.select(d, Side::Right),
                     ),
                 ))
             }
@@ -1350,7 +1350,7 @@ mod test {
             _ => panic!("expected id function at dyn or a -> a"),
         };
 
-        assert_eq!(ve, &Eliminator::new().update(d, Side::Right()));
+        assert_eq!(ve, &Eliminator::new().update(d, Side::Right));
 
         let m = m.eliminate(ve);
 
