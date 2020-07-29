@@ -8,6 +8,7 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
   - Some tiny bug fixes and divergences from the paper.
   - Mostly imperative implementation of constraint generation and unification.
   - Constraint generation takes a term optionally annotated with gradual types and returns a term fully annotated with migrational types.
+  - Operator overloading.
 
 ## Overloading
 
