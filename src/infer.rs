@@ -117,7 +117,7 @@ impl TargetBOp {
 pub enum Pattern {
     Bot(),
     Top(),
-    Choice(Variation, Option<Side>, Box<Pattern>, Box<Pattern>),
+    Choice(Variation, Box<Pattern>, Box<Pattern>),
 }
 
 impl Pattern {
@@ -130,31 +130,9 @@ impl Pattern {
         match self {
             Pattern::Bot() => pp.text("⊥"),
             Pattern::Top() => pp.text("⊤"),
-            Pattern::Choice(d, None, pat1, pat2) => pp.as_string(d).append(
+            Pattern::Choice(d, pat1, pat2) => pp.as_string(d).append(
                 pp.intersperse(
                     vec![pat1.pretty(pp), pat2.pretty(pp).nest(1)],
-                    pp.text(",").append(pp.line()),
-                )
-                .angles()
-                .group(),
-            ),
-            Pattern::Choice(d, Some(Side::Left()), pat1, pat2) => pp.as_string(d).append(
-                pp.intersperse(
-                    vec![
-                        pat1.pretty(pp).enclose(pp.text("*"), pp.nil()),
-                        pat2.pretty(pp).nest(1),
-                    ],
-                    pp.text(",").append(pp.line()),
-                )
-                .angles()
-                .group(),
-            ),
-            Pattern::Choice(d, Some(Side::Right()), pat1, pat2) => pp.as_string(d).append(
-                pp.intersperse(
-                    vec![
-                        pat1.pretty(pp),
-                        pat2.pretty(pp).enclose(pp.text("*"), pp.nil()).nest(1),
-                    ],
                     pp.text(",").append(pp.line()),
                 )
                 .angles()
@@ -167,7 +145,7 @@ impl Pattern {
         match self {
             Pattern::Bot() => Pattern::Bot(),
             Pattern::Top() => Pattern::Top(),
-            Pattern::Choice(d2, bias, pat1, pat2) => {
+            Pattern::Choice(d2, pat1, pat2) => {
                 if d == d2 {
                     match side {
                         Side::Left() => *pat1, // shouldn't need recursive select---each variation should appear only once (invariant maintained in Pattern::choice)
@@ -176,7 +154,6 @@ impl Pattern {
                 } else {
                     Pattern::Choice(
                         d2,
-                        bias,
                         Box::new(pat1.select(d, side)),
                         Box::new(pat2.select(d, side)),
                     )
@@ -186,20 +163,11 @@ impl Pattern {
     }
 
     pub fn choice(d: Variation, pat1: Pattern, pat2: Pattern) -> Pattern {
-        Pattern::choice_(d, None, pat1, pat2)
-    }
-
-    pub fn biased_choice(d: Variation, bias: Side, pat1: Pattern, pat2: Pattern) -> Pattern {
-        Pattern::choice_(d, Some(bias), pat1, pat2)
-    }
-
-    pub fn choice_(d: Variation, bias: Option<Side>, pat1: Pattern, pat2: Pattern) -> Pattern {
         if pat1 == pat2 {
             pat1
         } else {
             Pattern::Choice(
                 d,
-                bias,
                 Box::new(pat1.select(d, Side::Left())),
                 Box::new(pat2.select(d, Side::Right())),
             )
@@ -210,16 +178,11 @@ impl Pattern {
         match self {
             Pattern::Top() => other,
             Pattern::Bot() => Pattern::Bot(),
-            Pattern::Choice(d1, bias1, pat11, pat12) => match other {
-                Pattern::Choice(d2, bias2, pat21, pat22) if *d1 == d2 => {
-                    let bias = match (bias1, bias2) {
-                        (Some(_), Some(_)) | (None, None) => None,
-                        (Some(bias), None) => Some(*bias),
-                        (None, Some(bias)) => Some(bias),
-                    };
-                    Pattern::choice_(*d1, bias, pat11.meet(*pat21), pat12.meet(*pat22))
+            Pattern::Choice(d1, pat11, pat12) => match other {
+                Pattern::Choice(d2, pat21, pat22) if *d1 == d2 => {
+                    Pattern::choice(*d1, pat11.meet(*pat21), pat12.meet(*pat22))
                 }
-                _ => Pattern::choice_(*d1, *bias1, pat11.meet(other.clone()), pat12.meet(other)),
+                _ => Pattern::choice(*d1, pat11.meet(other.clone()), pat12.meet(other)),
             },
         }
     }
@@ -228,7 +191,7 @@ impl Pattern {
         match self {
             Pattern::Top() => HashSet::unit(Eliminator::new()),
             Pattern::Bot() => HashSet::new(),
-            Pattern::Choice(d, bias, pi1, pi2) => {
+            Pattern::Choice(d, pi1, pi2) => {
                 let ves1: HashSet<Eliminator> = pi1
                     .valid_eliminators()
                     .into_iter()
@@ -240,7 +203,7 @@ impl Pattern {
                     .map(|ve| ve.update(d, Side::Right()))
                     .collect();
 
-                match bias {
+                match d.bias() {
                     Some(Side::Left()) if !ves1.is_empty() => ves1,
                     Some(Side::Right()) if !ves2.is_empty() => ves2,
                     _ => ves1.union(ves2),
@@ -335,7 +298,7 @@ impl Display for Eliminator {
 pub enum Constraint {
     Consistent(Pattern, MigrationalType, MigrationalType),
     Ground(Pattern, MigrationalType, BaseType), // TODO ultimately need our own notion of ground type
-    Choice(Variation, Option<Side>, Constraints, Constraints),
+    Choice(Variation, Constraints, Constraints),
 }
 
 #[derive(Clone, Debug)]
@@ -367,34 +330,13 @@ impl Constraint {
                 ],
                 pp.line(),
             ),
-            Constraint::Choice(d, None, cs1, cs2) => pp
+            Constraint::Choice(d, cs1, cs2) => pp
                 .as_string(d)
                 .append(
                     cs1.pretty(pp)
                         .append(pp.text(","))
                         .append(pp.line())
                         .append(cs2.pretty(pp).nest(1))
-                        .angles(),
-                )
-                .group(),
-            Constraint::Choice(d, Some(Side::Left()), cs1, cs2) => pp
-                .as_string(d)
-                .append(
-                    cs1.pretty(pp)
-                        .enclose(pp.text("*"), pp.nil())
-                        .append(pp.text(","))
-                        .append(pp.line())
-                        .append(cs2.pretty(pp).nest(1))
-                        .angles(),
-                )
-                .group(),
-            Constraint::Choice(d, Some(Side::Right()), cs1, cs2) => pp
-                .as_string(d)
-                .append(
-                    cs1.pretty(pp)
-                        .append(pp.text(","))
-                        .append(pp.line())
-                        .append(cs2.pretty(pp).enclose(pp.text("*"), pp.nil()).nest(1))
                         .angles(),
                 )
                 .group(),
@@ -411,8 +353,8 @@ impl Constraint {
                 Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
             }
             Constraint::Ground(pi, m, b) => Constraint::Ground(pi, m.apply(theta), b),
-            Constraint::Choice(d, bias, cs1, cs2) => {
-                Constraint::Choice(d, bias, cs1.apply(theta), cs2.apply(theta))
+            Constraint::Choice(d, cs1, cs2) => {
+                Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta))
             }
         }
     }
@@ -581,7 +523,7 @@ impl TypeInference {
     fn fresh_variation(&mut self) -> Variation {
         let next = self.next_variation;
         self.next_variation += 1;
-        Variation(next)
+        Variation(next, None)
     }
 
     fn add_constraint(&mut self, c: Constraint) {
@@ -633,7 +575,10 @@ impl TypeInference {
 
                 Some((Expr::ann(e, m), m_ann))
             }
-            Expr::Hole(name) => Some((Expr::Hole(name.clone()), MigrationalType::Var(self.fresh_variable()))),
+            Expr::Hole(name) => Some((
+                Expr::Hole(name.clone()),
+                MigrationalType::Var(self.fresh_variable()),
+            )),
             Expr::App(e_fun, e_arg) => {
                 let (e_fun, m_fun) = self.generate_constraints(ctx.clone(), e_fun)?;
                 let (e_arg, m_arg) = self.generate_constraints(ctx, e_arg)?;
@@ -748,7 +693,7 @@ impl TypeInference {
                 ]
                 .into_iter()
                 {
-                    let d = self.fresh_variation();
+                    let d = self.fresh_variation().biased(Side::Right());
 
                     op = TargetBOp::choice(d, op, op2);
                     let cs2 = Constraints(vec![
@@ -756,7 +701,7 @@ impl TypeInference {
                         Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
                     ]);
 
-                    cs = Constraint::Choice(d, Some(Side::Right()), cs, cs2).into();
+                    cs = Constraint::Choice(d, cs, cs2).into();
                     m_dom =
                         MigrationalType::choice(d, m_dom.clone(), MigrationalType::Base(b_dom2));
                     m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
@@ -780,7 +725,7 @@ impl TypeInference {
                 ]);
 
                 for (op2, m_dom2, m_cod2) in ops {
-                    let d = self.fresh_variation();
+                    let d = self.fresh_variation().biased(Side::Right());
 
                     op = TargetBOp::choice(d, op, op2);
                     let cs2 = Constraints(vec![
@@ -788,7 +733,7 @@ impl TypeInference {
                         Constraint::Consistent(Pattern::Top(), m_dom2.clone(), m2.clone()),
                     ]);
 
-                    cs = Constraint::Choice(d, Some(Side::Right()), cs, cs2).into();
+                    cs = Constraint::Choice(d, cs, cs2).into();
                     m_dom = MigrationalType::choice(d, m_dom.clone(), m_dom2);
                     m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
                 }
@@ -950,7 +895,7 @@ impl TypeInference {
                 let (cs2, pat2) = self.dom(m_fun2, m_arg);
 
                 (
-                    Constraint::Choice(*d, None, cs1, cs2).into(),
+                    Constraint::Choice(*d, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -986,7 +931,7 @@ impl TypeInference {
 
                 (
                     MigrationalType::choice(*d, m1, m2),
-                    Constraint::Choice(*d, None, cs1, cs2).into(),
+                    Constraint::Choice(*d, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -1023,7 +968,7 @@ impl TypeInference {
 
                 (
                     MigrationalType::choice(*d, m1, m2),
-                    Constraint::Choice(*d, None, cs1, cs2).into(),
+                    Constraint::Choice(*d, cs1, cs2).into(),
                     Pattern::choice(*d, pat1, pat2),
                 )
             }
@@ -1200,13 +1145,13 @@ impl TypeInference {
                 // (e)
                 (Subst::empty(), Pattern::Bot())
             }
-            Constraint::Choice(d, bias, cs1, cs2) => {
+            Constraint::Choice(d, cs1, cs2) => {
                 // (h)
                 let (theta1, pi1) = self.unify(cs1);
                 let (theta2, pi2) = self.unify(cs2);
 
                 let theta = self.merge(d, theta1, theta2);
-                (theta, Pattern::choice_(d, bias, pi1, pi2))
+                (theta, Pattern::choice(d, pi1, pi2))
             }
             Constraint::Ground(_pi, MigrationalType::Dyn(), _b) => (Subst::empty(), Pattern::Bot()),
             Constraint::Ground(_pi, MigrationalType::Fun(_, _), _b) => {

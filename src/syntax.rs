@@ -30,7 +30,7 @@ pub enum GradualType {
 
 /// d
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Variation(pub(super) usize);
+pub struct Variation(pub(super) usize, pub(super) Option<Side>);
 
 /// .1 or .2
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -752,8 +752,8 @@ impl VariationalType {
                     .append(v2.pretty(pp))
                     .group()
             }
-            VariationalType::Choice(Variation(d), v1, v2) => pp
-                .text(format!("d{}", d))
+            VariationalType::Choice(d, v1, v2) => pp
+                .as_string(d)
                 .append(
                     v1.pretty(pp)
                         .append(pp.text(","))
@@ -847,8 +847,8 @@ impl MigrationalType {
                     .append(m2.pretty(pp))
                     .group()
             }
-            MigrationalType::Choice(Variation(d), m1, m2) => pp
-                .text(format!("d{}", d))
+            MigrationalType::Choice(d, m1, m2) => pp
+                .as_string(d)
                 .append(
                     m1.pretty(pp)
                         .append(pp.text(","))
@@ -1002,9 +1002,25 @@ impl Default for Side {
     }
 }
 
+impl Variation {
+    pub fn bias(&self) -> Option<Side> {
+        self.1
+    }
+
+    pub fn biased(self, side: Side) -> Self {
+        Variation(self.0, Some(side))
+    }
+}
+
 impl Display for Variation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "d{}", self.0)
+        let mut res = write!(f, "d{}", self.0)?;
+
+        if let Some(side) = self.1 {
+            res = write!(f, "{}", side)?;
+        }
+
+        Ok(res)
     }
 }
 
