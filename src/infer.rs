@@ -72,6 +72,7 @@ impl TargetExpr {
             Expr::Lam(x, t, e) => Expr::lam(x, t.eliminate(elim), e.eliminate(elim)),
             Expr::App(e1, e2) => Expr::app(e1.eliminate(elim), e2.eliminate(elim)),
             Expr::Ann(e, t) => Expr::ann(e.eliminate(elim), t.eliminate(elim)),
+            Expr::Hole(name) => Expr::Hole(name),
             Expr::If(e1, e2, e3) => {
                 Expr::if_(e1.eliminate(elim), e2.eliminate(elim), e3.eliminate(elim))
             }
@@ -632,6 +633,7 @@ impl TypeInference {
 
                 Some((Expr::ann(e, m), m_ann))
             }
+            Expr::Hole(name) => Some((Expr::Hole(name.clone()), MigrationalType::Var(self.fresh_variable()))),
             Expr::App(e_fun, e_arg) => {
                 let (e_fun, m_fun) = self.generate_constraints(ctx.clone(), e_fun)?;
                 let (e_arg, m_arg) = self.generate_constraints(ctx, e_arg)?;
@@ -1099,7 +1101,9 @@ impl TypeInference {
                 // (a), (a*)
                 (Subst::empty(), Pattern::Top())
             }
-            Constraint::Consistent(_p, MigrationalType::Var(a1), MigrationalType::Var(a2)) if a1 == a2 => {
+            Constraint::Consistent(_p, MigrationalType::Var(a1), MigrationalType::Var(a2))
+                if a1 == a2 =>
+            {
                 // ??? MMG arises from recursion
                 (Subst::empty(), Pattern::Top())
             }
@@ -1292,6 +1296,15 @@ mod test {
 
     fn infer(s: &str) -> (TargetExpr, MigrationalType, HashSet<Eliminator>) {
         try_infer(s).unwrap()
+    }
+
+    fn infer_unique(s: &str) -> (TargetExpr, MigrationalType) {
+        let (e, m, ves) = infer(s);
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+
+        (e.eliminate(ve), m.eliminate(ve))
     }
 
     fn no_maximal_typing(s: &str) {
@@ -1778,6 +1791,51 @@ mod test {
     }
 
     #[test]
+    fn holes() {
+        let (_, m) = infer_unique("__ + 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("__a + __b");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("(\\x. x + 1) __a");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("__ : bool");
+        assert_eq!(m, MigrationalType::bool());
+
+        let (_, m) = infer_unique("__");
+        match m {
+            MigrationalType::Var(_) => (),
+            m => panic!("expected type variable, got {}", m),
+        };
+    }
+
+    #[test]
+    fn assume() {
+        let (_, m) = infer_unique("assume x in x + 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("assume x:? in x + 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("assume x:int in x + 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, _m, ves) = infer("assume x:bool in x + 1");
+        assert!(ves.is_empty());
+
+        let (_, m) = infer_unique("assume x:? in if x then x + 1 else 0");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("assume x:? in if x then x + 1 else true");
+        assert_eq!(m, MigrationalType::Dyn());
+
+        let (_, _m, ves) = infer("assume x in if x then x + 1 else 0");
+        assert!(ves.is_empty());
+    }
+
+    #[test]
     fn ill_typed_ann() {
         let (_e, _m, ves) = TypeInference::infer(&Expr::ann(
             Expr::Const(Constant::Int(5)),
@@ -2029,7 +2087,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         match m.eliminate(ve) {
             MigrationalType::Var(_) => (),
-            m => panic!("expected type variable, got {}", m)
+            m => panic!("expected type variable, got {}", m),
         }
         assert!(e.eliminate(ve).choices().is_empty());
     }

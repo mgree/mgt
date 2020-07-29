@@ -83,7 +83,6 @@ Critically, writing `0 == 0 && true == false` will correctly select `==i` and
 ## TODO
 
 - Other language features
-  + [ ] Assume expressions (let w/o defn))
   + Ensure that choices don't show up in the final, eliminated AST
     - [ ] Using tests, or...
     - [ ] `eliminate` operation that changes types to really have no choice left (would need more than one `Expr`, trait)

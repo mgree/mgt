@@ -47,6 +47,7 @@ TypeAnnot: GradualType = {
 pub Expr: SourceExpr = {
     "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
     "\\" <args:Args> "." <e:Expr> => Expr::lams(args, e),
+    "assume" <x:Id> <t:TypeAnnot?> "in" <e2:Expr> => Expr::let_(x.clone(), t, Expr::Hole("__".to_string() + &x), e2),
     "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(x, t, e1, e2),
     "let" <f:Id> <args:Args> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(f, None, Expr::lams(args, e1), e2),
     "let" "rec" <defns:RecDefns> "in" <e2:Expr> => Expr::letrec(defns, e2),
@@ -102,6 +103,7 @@ ExprUnary: SourceExpr = {
 
 ExprAtom: SourceExpr = {
     <Const>,
+    <Hole>,
     <Id> => Expr::Var(<>),
     "(" <Expr> ")",
 }
@@ -118,7 +120,11 @@ Bool: bool = {
     "false" => false,
 };
 
-Id: Variable = <r"[[:alpha:]][[:alnum:]_']*"> => <>.to_string();
+Hole: SourceExpr = {
+  r"__[[:alnum:]_']*" => Expr::Hole(<>.to_string()),
+}
+
+Id: Variable = <r"[[:alpha:]_][[:alnum:]_']*"> => <>.to_string();
 
 match {
     "?",
@@ -149,13 +155,15 @@ match {
     "if",
     "then",
     "else",
+    "assume",
     "let",
     "rec",
     "and",
     "in",
     "true",
     "false",
+    r"__[[:alnum:]_']*"
 } else {
     r"-?[0-9]+",
-    r"[[:alpha:]][[:alnum:]_']*"
+    r"[[:alpha:]_][[:alnum:]_']*"
 }

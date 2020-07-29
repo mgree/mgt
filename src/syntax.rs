@@ -117,6 +117,7 @@ pub enum Expr<T, U, B> {
     Var(Variable),
     Lam(Variable, T, Box<Self>),
     Ann(Box<Expr<T, U, B>>, T),
+    Hole(String),
     App(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
     If(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
     Let(Variable, T, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
@@ -185,6 +186,7 @@ impl<T, U, B> Expr<T, U, B> {
             Expr::Lam(x, t, e) => Expr::lam(x, f(t), e.map_types(f)),
             Expr::App(e1, e2) => Expr::app(e1.map_types(f), e2.map_types(f)),
             Expr::Ann(e, t) => Expr::ann(e.map_types(f), f(t)),
+            Expr::Hole(name) => Expr::Hole(name),
             Expr::If(e1, e2, e3) => Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
             Expr::Let(x, t, e1, e2) => Expr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
             Expr::LetRec(defns, e2) => Expr::letrec(
@@ -250,6 +252,7 @@ impl SourceExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
+            Expr::Hole(name) => pp.text(name),
             Expr::Ann(e, None) => e.pretty(pp),
             Expr::Ann(e, Some(t)) => e
                 .pretty(pp)
@@ -429,7 +432,7 @@ impl TargetBOp {
 impl TargetExpr {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            Expr::Const(_) | Expr::Var(_) => HashSet::new(),
+            Expr::Const(_) | Expr::Var(_) | Expr::Hole(_) => HashSet::new(),
             Expr::Lam(_x, t, e) => t.choices().union(e.choices()),
             Expr::Ann(e, t) => e.choices().union(t.choices()),
             Expr::App(e1, e2) => e1.choices().union(e2.choices()),
@@ -470,6 +473,7 @@ impl TargetExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
+            Expr::Hole(name) => pp.text(name),
             Expr::Ann(e, t) => e
                 .pretty(pp)
                 .append(pp.space())
@@ -1272,8 +1276,8 @@ mod test {
     }
 
     fn eq_up_to_ws(s1: &str, s2: &str) {
-        let v1 : Vec<&str> = s1.split_whitespace().collect();
-        let v2 : Vec<&str> = s2.split_whitespace().collect();
+        let v1: Vec<&str> = s1.split_whitespace().collect();
+        let v2: Vec<&str> = s2.split_whitespace().collect();
 
         assert_eq!(v1, v2);
     }
@@ -1354,5 +1358,31 @@ mod test {
             "let rec f (x:bool) = g x and g (y:int) = f y in f 0",
             "let rec f = \\x : bool. g x and g = \\y : int. f y in f 0",
         )
+    }
+
+    #[test]
+    fn holes() {
+        se_round_trip("__", "__");
+        se_round_trip("__x", "__x");
+
+        match SourceExpr::parse("__").unwrap() {
+            Expr::Hole(name) => assert_eq!(name, "__"),
+            e => panic!("expected hole, got {}", e),
+        };
+
+        match SourceExpr::parse("__x").unwrap() {
+            Expr::Hole(name) => assert_eq!(name, "__x"),
+            e => panic!("expected hole, got {}", e),
+        };
+
+        match SourceExpr::parse("a__x").unwrap() {
+            Expr::Var(name) => assert_eq!(name, "a__x"),
+            e => panic!("expected var, got {}", e),
+        };
+
+        match SourceExpr::parse("_x").unwrap() {
+            Expr::Var(name) => assert_eq!(name, "_x"),
+            e => panic!("expected var, got {}", e),
+        };
     }
 }
