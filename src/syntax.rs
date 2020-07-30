@@ -13,6 +13,7 @@ lalrpop_mod!(parser);
 pub enum BaseType {
     Bool,
     Int,
+    String,
 }
 
 /// alpha
@@ -63,6 +64,7 @@ pub enum MigrationalType {
 pub enum Constant {
     Bool(bool),
     Int(isize),
+    String(String),
 }
 
 /// unary operations in source expressions
@@ -93,7 +95,9 @@ pub enum TargetUOp {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TargetBOp {
-    Plus,
+    PlusInt,
+    PlusString,
+    PlusDyn,
     Minus,
     Times,
     Divide,
@@ -101,6 +105,7 @@ pub enum TargetBOp {
     Or,
     EqualBool,
     EqualInt,
+    EqualString,
     EqualDyn,
     LessThan,
     LessThanEqual,
@@ -231,9 +236,7 @@ impl SourceExpr {
     {
         match self {
             Expr::Var(x) => pp.text(x),
-            Expr::Const(Constant::Bool(true)) => pp.text("true"),
-            Expr::Const(Constant::Bool(false)) => pp.text("false"),
-            Expr::Const(Constant::Int(n)) => pp.text(n.to_string()),
+            Expr::Const(c) => pp.as_string(c),
             Expr::Lam(x, None, e) => pp
                 .text("\\")
                 .append(pp.text(x))
@@ -459,9 +462,7 @@ impl TargetExpr {
     {
         match self {
             Expr::Var(x) => pp.text(x),
-            Expr::Const(Constant::Bool(true)) => pp.text("true"),
-            Expr::Const(Constant::Bool(false)) => pp.text("false"),
-            Expr::Const(Constant::Int(n)) => pp.text(n.to_string()),
+            Expr::Const(c) => pp.as_string(c),
             Expr::Lam(x, t, e) => pp
                 .text("\\")
                 .append(pp.text(x))
@@ -602,6 +603,16 @@ impl Display for TypeVariable {
     }
 }
 
+impl Display for BaseType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BaseType::Bool => write!(f, "bool"),
+            BaseType::Int => write!(f, "int"),
+            BaseType::String => write!(f, "string"),
+        }
+    }
+}
+
 impl GradualType {
     pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
         parser::TypeParser::new()
@@ -617,8 +628,7 @@ impl GradualType {
     {
         match self {
             GradualType::Dyn() => pp.text("?"),
-            GradualType::Base(BaseType::Bool) => pp.text("bool"),
-            GradualType::Base(BaseType::Int) => pp.text("int"),
+            GradualType::Base(b) => pp.as_string(b),
             GradualType::Var(a) => pp.as_string(a),
             GradualType::Fun(g1, g2) if g1.is_fun() => g1
                 .pretty(pp)
@@ -719,6 +729,12 @@ impl GradualType {
     }
 }
 
+impl From<BaseType> for GradualType {
+    fn from(b: BaseType) -> Self {
+        GradualType::Base(b)
+    }
+}
+
 impl Display for GradualType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let pp = pretty::BoxAllocator;
@@ -735,8 +751,7 @@ impl VariationalType {
         A: Clone,
     {
         match self {
-            VariationalType::Base(BaseType::Bool) => pp.text("bool"),
-            VariationalType::Base(BaseType::Int) => pp.text("int"),
+            VariationalType::Base(b) => pp.as_string(b),
             VariationalType::Var(a) => pp.as_string(a),
             VariationalType::Fun(v1, v2) => {
                 let mut dom = v1.pretty(pp);
@@ -823,6 +838,10 @@ impl MigrationalType {
         MigrationalType::Base(BaseType::Int)
     }
 
+    pub fn string() -> Self {
+        MigrationalType::Base(BaseType::String)
+    }
+
     pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
@@ -831,8 +850,7 @@ impl MigrationalType {
     {
         match self {
             MigrationalType::Dyn() => pp.text("?"),
-            MigrationalType::Base(BaseType::Bool) => pp.text("bool"),
-            MigrationalType::Base(BaseType::Int) => pp.text("int"),
+            MigrationalType::Base(b) => pp.as_string(b),
             MigrationalType::Var(a) => pp.as_string(a),
             MigrationalType::Fun(m1, m2) => {
                 let mut dom = m1.pretty(pp);
@@ -959,6 +977,12 @@ impl Display for MigrationalType {
     }
 }
 
+impl From<BaseType> for MigrationalType {
+    fn from(b: BaseType) -> Self {
+        MigrationalType::Base(b)
+    }
+}
+
 impl From<GradualType> for MigrationalType {
     fn from(g: GradualType) -> Self {
         match g {
@@ -992,6 +1016,7 @@ impl From<&Constant> for MigrationalType {
         match c {
             Constant::Bool(_) => MigrationalType::bool(),
             Constant::Int(_) => MigrationalType::int(),
+            Constant::String(_) => MigrationalType::string(),
         }
     }
 }
@@ -1077,7 +1102,9 @@ impl Display for TargetUOp {
 impl Display for TargetBOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            TargetBOp::Plus => "+",
+            TargetBOp::PlusInt => "+i",
+            TargetBOp::PlusString => "+s",
+            TargetBOp::PlusDyn => "+?",
             TargetBOp::Minus => "-",
             TargetBOp::Times => "*",
             TargetBOp::Divide => "/",
@@ -1085,12 +1112,24 @@ impl Display for TargetBOp {
             TargetBOp::Or => "||",
             TargetBOp::EqualBool => "==b",
             TargetBOp::EqualInt => "==i",
+            TargetBOp::EqualString => "==s",
             TargetBOp::EqualDyn => "==?",
             TargetBOp::LessThan => "<",
             TargetBOp::LessThanEqual => "<=",
             TargetBOp::Choice(d, op1, op2) => return write!(f, "{}<{}, {}>", d, op1, op2),
         };
         write!(f, "{}", s)
+    }
+}
+
+impl Display for Constant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Constant::Bool(true) => write!(f, "true"),
+            Constant::Bool(false) => write!(f, "false"),
+            Constant::Int(n) => write!(f, "{}", n),
+            Constant::String(s) => write!(f, "\"{}\"", s),
+        }
     }
 }
 
@@ -1114,7 +1153,7 @@ mod test {
             SourceExpr::parse("\\x:bool. x").unwrap(),
             Expr::lam(
                 "x".into(),
-                Some(GradualType::Base(BaseType::Bool)),
+                Some(BaseType::Bool.into()),
                 Expr::Var("x".into())
             )
         );
@@ -1163,7 +1202,7 @@ mod test {
             SourceExpr::parse("\\b:bool. if b then false else true").unwrap(),
             Expr::lam(
                 "b".into(),
-                Some(GradualType::Base(BaseType::Bool)),
+                Some(BaseType::Bool.into()),
                 Expr::if_(
                     Expr::Var("b".into()),
                     Expr::Const(Constant::Bool(false)),
@@ -1204,54 +1243,51 @@ mod test {
 
     #[test]
     fn types_atomic() {
-        assert_eq!(
-            GradualType::parse("bool").unwrap(),
-            GradualType::Base(BaseType::Bool)
-        );
-        assert_eq!(
-            GradualType::parse("int").unwrap(),
-            GradualType::Base(BaseType::Int)
-        );
+        assert_eq!(GradualType::parse("bool").unwrap(), BaseType::Bool.into());
+        assert_eq!(GradualType::parse("int").unwrap(), BaseType::Int.into());
         assert_eq!(GradualType::parse("?").unwrap(), GradualType::Dyn());
-        assert_eq!(GradualType::parse("dyn").unwrap(), GradualType::Dyn());
+
+        assert_eq!(
+            GradualType::parse("string").unwrap(),
+            BaseType::String.into()
+        );
     }
 
     #[test]
     fn types() {
         assert_eq!(
             GradualType::parse("bool->bool").unwrap(),
-            GradualType::fun(
-                GradualType::Base(BaseType::Bool),
-                GradualType::Base(BaseType::Bool)
-            )
+            GradualType::fun(BaseType::Bool.into(), BaseType::Bool.into())
         );
         assert_eq!(
             GradualType::parse("bool->bool->bool").unwrap(),
             GradualType::fun(
-                GradualType::Base(BaseType::Bool),
-                GradualType::fun(
-                    GradualType::Base(BaseType::Bool),
-                    GradualType::Base(BaseType::Bool)
-                )
+                BaseType::Bool.into(),
+                GradualType::fun(BaseType::Bool.into(), BaseType::Bool.into())
             )
         );
 
         assert_eq!(
             GradualType::parse("(bool->bool)->bool").unwrap(),
             GradualType::fun(
-                GradualType::fun(
-                    GradualType::Base(BaseType::Bool),
-                    GradualType::Base(BaseType::Bool)
-                ),
-                GradualType::Base(BaseType::Bool)
+                GradualType::fun(BaseType::Bool.into(), BaseType::Bool.into()),
+                BaseType::Bool.into()
             )
         );
 
         assert_eq!(
             GradualType::parse("(bool -> ?) -> bool").unwrap(),
             GradualType::fun(
-                GradualType::fun(GradualType::Base(BaseType::Bool), GradualType::Dyn()),
-                GradualType::Base(BaseType::Bool)
+                GradualType::fun(BaseType::Bool.into(), GradualType::Dyn()),
+                BaseType::Bool.into()
+            )
+        );
+
+        assert_eq!(
+            GradualType::parse("(bool -> string) -> int -> ?").unwrap(),
+            GradualType::fun(
+                GradualType::fun(BaseType::Bool.into(), BaseType::String.into()),
+                GradualType::fun(BaseType::Int.into(), GradualType::Dyn()),
             )
         );
     }
@@ -1404,5 +1440,12 @@ mod test {
             Expr::Var(name) => assert_eq!(name, "_x"),
             e => panic!("expected var, got {}", e),
         };
+    }
+
+    #[test]
+    fn strings() {
+        se_round_trip(r#""hello there""#, r#""hello there""#);
+        se_round_trip(r#"\x. "hello there""#, r#"\x. "hello there""#);
+        se_round_trip(r#"\x:string. "hello there""#, r#"\x : string. "hello there""#);
     }
 }

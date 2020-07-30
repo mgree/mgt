@@ -10,10 +10,10 @@ pub Type: GradualType = {
 }
 
 TypeAtomic: GradualType = {
-    "dyn" => GradualType::Dyn(),
     "?" => GradualType::Dyn(),
     "bool" => GradualType::Base(BaseType::Bool),
     "int" => GradualType::Base(BaseType::Int),
+    "string" => GradualType::Base(BaseType::String),
     "(" <Type> ")",
 }
 
@@ -111,6 +111,7 @@ ExprAtom: SourceExpr = {
 Const: SourceExpr = {
     Num => Expr::Const(Constant::Int(<>)),
     Bool => Expr::Const(Constant::Bool(<>)),
+    StrLit => Expr::Const(Constant::String(<>)),
 }
 
 Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
@@ -120,9 +121,15 @@ Bool: bool = {
     "false" => false,
 };
 
+// TODO custom lexer to support escapes
+StrLit: String = <r#""[^"]*""#> => {
+    let s = <>;
+    s[1..s.len()-1].to_string()
+};
+
 Hole: SourceExpr = {
   r"__[[:alnum:]_']*" => Expr::Hole(<>.to_string()),
-}
+};
 
 Id: Variable = <r"[[:alpha:]_][[:alnum:]_']*"> => <>.to_string();
 
@@ -152,6 +159,7 @@ match {
     "dyn",
     "bool",
     "int",
+    "string",
     "if",
     "then",
     "else",
@@ -162,8 +170,9 @@ match {
     "in",
     "true",
     "false",
-    r"__[[:alnum:]_']*"
+    r"__[[:alnum:]_']*",
+    r#""[^"]*""#,
 } else {
     r"-?[0-9]+",
-    r"[[:alpha:]_][[:alnum:]_']*"
+    r"[[:alpha:]_][[:alnum:]_']*",
 }

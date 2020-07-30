@@ -48,7 +48,8 @@ for lols.) Type inference itself depends on overloading resolution.
 
 ### Current algorithm
 
-Only `==` is handled right now. There are two new ingredients:
+Only `==` and `+` (with addition `+i` and string concatenation `+s`) are handled
+right now. There are two new ingredients:
 
   1. Biased choice. You can specify that you'd prefer a given choice to be made
      if possible. When computing valid eliminators, biased choice will keep the
@@ -96,13 +97,16 @@ other bits of the inference. If you want something to be `?`, write `assume foo
   + Ensure that choices don't show up in the final, eliminated AST
     - [ ] Using tests, or...
     - [ ] `eliminate` operation that changes types to really have no choice left (would need more than one `Expr`, trait)
-  + [ ] Let polymorphism and type schemes (need to separate unification variables and true type variables). First cut: just have `Ctx` track type schemes, instantiating at every variable. Most things will be monomorphic, but assumes can give us polymorphism.
-
-        operation resolution may need to yield type schemes rather than types, too
+  + [ ] Let polymorphism and type schemes (need to separate unification
+        variables and true type variables). First cut: just have `Ctx` track
+        type schemes, instantiating at every variable. Most things will be
+        monomorphic, but assumes can give us polymorphism. Operation resolution
+        may need to yield type schemes rather than types, too
 
 # Acknowledgments
 
-Conversations with [Arjun Guha](https://twitter.com/arjunguha) and [Colin
-Gordon](https://twitter.com/csgordon/) were helpful.
+Conversations with [Arjun Guha](https://twitter.com/arjunguha), [Colin
+Gordon](https://twitter.com/csgordon/), and [Ron
+Garcia](https://twitter.com/rg9119) were helpful.
 [@jorendorff](https://twitter.com/jorendorff) gave a tip on concrete syntax.
   

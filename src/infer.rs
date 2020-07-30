@@ -326,7 +326,7 @@ impl Constraint {
                 vec![
                     m.pretty(pp),
                     pp.text("=").append(pi.pretty(pp)),
-                    pp.as_string(MigrationalType::Base(*b)),
+                    pp.as_string(b),
                 ],
                 pp.line(),
             ),
@@ -492,6 +492,108 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options { strict_ifs: false }
+    }
+}
+
+impl SourceUOp {
+    /// Returns the sole possibility for a unary operation, i.e.
+    ///    [(op, dom, cod), ...]
+    /// where `op` is a target operation, `dom` is the domain type, and `cod` is the return type.
+    fn signature(&self) -> (TargetUOp, MigrationalType, MigrationalType) {
+        match self {
+            SourceUOp::Negate => (
+                TargetUOp::Negate,
+                MigrationalType::int(),
+                MigrationalType::int(),
+            ),
+            SourceUOp::Not => (
+                TargetUOp::Not,
+                MigrationalType::bool(),
+                MigrationalType::bool(),
+            ),
+        }
+    }
+}
+
+/// Different binary operation signatures.
+enum BOpSignature {
+    /// Used when any consistent type is okay. Only for non-overloaded operations.
+    Simple(TargetBOp, MigrationalType, MigrationalType),
+    Overloaded {
+        dyn_op: TargetBOp,
+        dyn_cod: MigrationalType,
+        overloads: Vec<(TargetBOp, BaseType, MigrationalType)>,
+    },
+}
+
+impl SourceBOp {
+    fn signature(&self) -> BOpSignature {
+        match self {
+            SourceBOp::Plus => BOpSignature::Overloaded {
+                dyn_op: TargetBOp::PlusDyn,
+                dyn_cod: MigrationalType::Dyn(),
+                overloads: vec![
+                    (TargetBOp::PlusInt, BaseType::Int, MigrationalType::int()),
+                    (
+                        TargetBOp::PlusString,
+                        BaseType::String,
+                        MigrationalType::string(),
+                    ),
+                ],
+            },
+            SourceBOp::Equal => BOpSignature::Overloaded {
+                dyn_op: TargetBOp::EqualDyn,
+                dyn_cod: MigrationalType::bool(),
+                overloads: vec![
+                    (
+                        TargetBOp::EqualBool,
+                        BaseType::Bool,
+                        MigrationalType::bool(),
+                    ),
+                    (TargetBOp::EqualInt, BaseType::Int, MigrationalType::bool()),
+                    (
+                        TargetBOp::EqualString,
+                        BaseType::String,
+                        MigrationalType::bool(),
+                    ),
+                ],
+            },
+            SourceBOp::And => BOpSignature::Simple(
+                TargetBOp::And,
+                MigrationalType::bool(),
+                MigrationalType::bool(),
+            ),
+            SourceBOp::Or => BOpSignature::Simple(
+                TargetBOp::Or,
+                MigrationalType::bool(),
+                MigrationalType::bool(),
+            ),
+            SourceBOp::Minus => BOpSignature::Simple(
+                TargetBOp::Minus,
+                MigrationalType::int(),
+                MigrationalType::int(),
+            ),
+            SourceBOp::Times => BOpSignature::Simple(
+                TargetBOp::Times,
+                MigrationalType::int(),
+                MigrationalType::int(),
+            ),
+            SourceBOp::Divide => BOpSignature::Simple(
+                TargetBOp::Divide,
+                MigrationalType::int(),
+                MigrationalType::int(),
+            ),
+            SourceBOp::LessThan => BOpSignature::Simple(
+                TargetBOp::LessThan,
+                MigrationalType::int(),
+                MigrationalType::bool(),
+            ),
+            SourceBOp::LessThanEqual => BOpSignature::Simple(
+                TargetBOp::LessThanEqual,
+                MigrationalType::int(),
+                MigrationalType::bool(),
+            ),
+        }
     }
 }
 
@@ -666,178 +768,72 @@ impl TypeInference {
             Expr::UOp(op, e) => {
                 let (e, m) = self.generate_constraints(ctx.clone(), e)?;
 
-                let (op, m_dom, m_cod) = self.uop(op);
+                let (op, m_dom, m_cod) = op.signature();
 
                 self.add_constraint(Constraint::Consistent(Pattern::Top(), m, m_dom));
 
                 Some((Expr::uop(op, e), m_cod))
             }
-            Expr::BOp(SourceBOp::Equal, e1, e2) => {
-                let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
-                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
-
-                let (mut op, mut m_dom, mut m_cod) = (
-                    TargetBOp::EqualDyn,
-                    MigrationalType::Dyn(),
-                    MigrationalType::bool(),
-                );
-                let mut cs = Constraints::epsilon();
-
-                for (op2, b_dom2, m_cod2) in vec![
-                    (
-                        TargetBOp::EqualBool,
-                        BaseType::Bool,
-                        MigrationalType::bool(),
-                    ),
-                    (TargetBOp::EqualInt, BaseType::Int, MigrationalType::bool()),
-                ]
-                .into_iter()
-                {
-                    let d = self.fresh_variation().biased(Side::Right);
-
-                    op = TargetBOp::choice(d, op, op2);
-                    let cs2 = Constraints(vec![
-                        Constraint::Ground(Pattern::Top(), m1.clone(), b_dom2),
-                        Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
-                    ]);
-
-                    cs = Constraint::Choice(d, cs, cs2).into();
-                    m_dom =
-                        MigrationalType::choice(d, m_dom.clone(), MigrationalType::Base(b_dom2));
-                    m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
-                }
-
-                self.add_constraints(cs);
-
-                Some((Expr::bop(op, e1, e2), m_cod))
-            }
             Expr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
 
-                let mut ops = self.bop(op).into_iter();
-                let (mut op, mut m_dom, mut m_cod) = ops
-                    .next()
-                    .expect("need at least one option for each binary operation");
-                let mut cs = Constraints(vec![
-                    Constraint::Consistent(Pattern::Top(), m_dom.clone(), m1.clone()),
-                    Constraint::Consistent(Pattern::Top(), m_dom.clone(), m2.clone()),
-                ]);
+                match op.signature() {
+                    BOpSignature::Simple(op, m_dom, m_cod) => {
+                        self.add_constraint(Constraint::Consistent(
+                            Pattern::Top(),
+                            m_dom.clone(),
+                            m1.clone(),
+                        ));
+                        self.add_constraint(Constraint::Consistent(
+                            Pattern::Top(),
+                            m_dom.clone(),
+                            m2.clone(),
+                        ));
 
-                for (op2, m_dom2, m_cod2) in ops {
-                    let d = self.fresh_variation().biased(Side::Right);
+                        Some((Expr::bop(op, e1, e2), m_cod))
+                    }
+                    BOpSignature::Overloaded {
+                        dyn_op,
+                        dyn_cod,
+                        overloads,
+                    } => {
+                        let mut op = dyn_op;
+                        let mut m_dom = MigrationalType::Dyn();
+                        let mut m_cod = dyn_cod;
 
-                    op = TargetBOp::choice(d, op, op2);
-                    let cs2 = Constraints(vec![
-                        Constraint::Consistent(Pattern::Top(), m_dom2.clone(), m1.clone()),
-                        Constraint::Consistent(Pattern::Top(), m_dom2.clone(), m2.clone()),
-                    ]);
+                        let mut cs = Constraints::epsilon();
 
-                    cs = Constraint::Choice(d, cs, cs2).into();
-                    m_dom = MigrationalType::choice(d, m_dom.clone(), m_dom2);
-                    m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
+                        for (op2, b_dom2, m_cod2) in overloads.into_iter() {
+                            let d = self.fresh_variation().biased(Side::Right);
+
+                            op = TargetBOp::choice(d, op, op2);
+                            let cs2 = Constraints(vec![
+                                Constraint::Ground(Pattern::Top(), m1.clone(), b_dom2),
+                                Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
+                            ]);
+                            cs = Constraint::Choice(d, cs, cs2).into();
+                            m_dom = MigrationalType::choice(
+                                d,
+                                m_dom.clone(),
+                                MigrationalType::Base(b_dom2),
+                            );
+                            m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
+                        }
+
+                        self.add_constraints(cs);
+
+                        Some((Expr::bop(op, e1, e2), m_cod))
+                    }
                 }
-
-                self.add_constraints(cs);
-
-                Some((Expr::bop(op, e1, e2), m_cod))
             }
-        }
-    }
-
-    /// Returns the sole possibility for a unary operation, i.e.
-    ///    [(op, dom, cod), ...]
-    /// where `op` is a target operation, `dom` is the domain type, and `cod` is the return type.
-    fn uop(&mut self, op: &SourceUOp) -> (TargetUOp, MigrationalType, MigrationalType) {
-        match op {
-            SourceUOp::Negate => (
-                TargetUOp::Negate,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            ),
-            SourceUOp::Not => (
-                TargetUOp::Not,
-                MigrationalType::bool(),
-                MigrationalType::bool(),
-            ),
-        }
-    }
-
-    /// Returns a list of possibilities:
-    ///
-    ///   [(op, dom, cod), ...]
-    ///
-    /// where `op` is a target operation, `dom` is the domain type, and `cod` is
-    /// the return type.
-    ///
-    /// INVARIANT: make the dynamic one first, in order to "prefer" a typed
-    /// answer when there aren't any real constraints
-    fn bop(&mut self, op: &SourceBOp) -> Vec<(TargetBOp, MigrationalType, MigrationalType)> {
-        match op {
-            SourceBOp::And => vec![(
-                TargetBOp::And,
-                MigrationalType::bool(),
-                MigrationalType::bool(),
-            )],
-            SourceBOp::Or => vec![(
-                TargetBOp::Or,
-                MigrationalType::bool(),
-                MigrationalType::bool(),
-            )],
-            SourceBOp::Plus => vec![(
-                TargetBOp::Plus,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            )],
-            SourceBOp::Minus => vec![(
-                TargetBOp::Minus,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            )],
-            SourceBOp::Times => vec![(
-                TargetBOp::Times,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            )],
-            SourceBOp::Divide => vec![(
-                TargetBOp::Divide,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            )],
-            SourceBOp::LessThan => vec![(
-                TargetBOp::LessThan,
-                MigrationalType::int(),
-                MigrationalType::bool(),
-            )],
-            SourceBOp::LessThanEqual => vec![(
-                TargetBOp::LessThanEqual,
-                MigrationalType::int(),
-                MigrationalType::bool(),
-            )],
-            SourceBOp::Equal => vec![
-                (
-                    TargetBOp::EqualDyn,
-                    MigrationalType::Dyn(),
-                    MigrationalType::bool(),
-                ),
-                (
-                    TargetBOp::EqualBool,
-                    MigrationalType::bool(),
-                    MigrationalType::bool(),
-                ),
-                (
-                    TargetBOp::EqualInt,
-                    MigrationalType::int(),
-                    MigrationalType::bool(),
-                ),
-            ],
         }
     }
 
     fn dyn_to_var(&mut self, m: &MigrationalType) -> MigrationalType {
         match m {
             MigrationalType::Dyn() => MigrationalType::Var(self.fresh_variable()),
-            MigrationalType::Base(b) => MigrationalType::Base(b.clone()),
+            MigrationalType::Base(b) => MigrationalType::Base(*b),
             MigrationalType::Var(a) => MigrationalType::Var(*a),
             MigrationalType::Choice(d, m1, m2) => {
                 MigrationalType::choice(*d, self.dyn_to_var(m1), self.dyn_to_var(m2))
@@ -1114,11 +1110,7 @@ impl TypeInference {
                 self.unify1(Constraint::Consistent(
                     p,
                     MigrationalType::Choice(d, m1, m2),
-                    MigrationalType::choice(
-                        d,
-                        m.select(d, Side::Left),
-                        m.select(d, Side::Right),
-                    ),
+                    MigrationalType::choice(d, m.select(d, Side::Left), m.select(d, Side::Right)),
                 ))
             }
             Constraint::Consistent(
@@ -1506,7 +1498,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert!(ve.is_empty());
 
-        assert_eq!(m, MigrationalType::Base(b));
+        assert_eq!(m, b.into());
     }
 
     #[test]
@@ -1541,18 +1533,44 @@ mod test {
     }
 
     #[test]
-    fn infer_plus() {
-        let (_e, m, ve) = infer("2 + 2");
+    fn infer_times() {
+        let (_e, m, ve) = infer("2 * 2");
 
         assert_eq!(ve.len(), 1);
         assert!(ve.iter().next().unwrap().is_empty());
         assert_eq!(m, MigrationalType::int());
 
-        no_maximal_typing("2 + false");
-        no_maximal_typing("false + 2");
-        no_maximal_typing("false + false");
-        no_maximal_typing("false + (\\x:?. x)");
-        no_maximal_typing("false + (\\x. x)");
+        no_maximal_typing("2 * false");
+        no_maximal_typing("false * 2");
+        no_maximal_typing("false * false");
+        no_maximal_typing("false * (\\x:?. x)");
+        no_maximal_typing("false * (\\x. x)");
+    }
+
+    #[test]
+    fn infer_strings() {
+        let (_, m, ve) = infer("\\x: string. x");
+
+        assert_eq!(ve.len(), 1);
+        assert!(ve.iter().next().unwrap().is_empty());
+        assert_eq!(
+            m,
+            MigrationalType::fun(BaseType::String.into(), BaseType::String.into())
+        );
+
+        let (_, m, ve) = infer(r#""hello""#);
+        assert_eq!(ve.len(), 1);
+        assert!(ve.iter().next().unwrap().is_empty());
+        assert_eq!(m, BaseType::String.into());
+
+        let (_, m, ve) = infer(r#"\x: string. "suuuup""#);
+
+        assert_eq!(ve.len(), 1);
+        assert!(ve.iter().next().unwrap().is_empty());
+        assert_eq!(
+            m,
+            MigrationalType::fun(BaseType::String.into(), BaseType::String.into())
+        );
     }
 
     #[test]
@@ -1565,6 +1583,36 @@ mod test {
         match e.eliminate(ve) {
             Expr::BOp(TargetBOp::EqualDyn, _, _) => (),
             e => panic!("expected ==?, got {}", e),
+        }
+
+        let (e, m, ves) = infer("0 == 0");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        match e.eliminate(ve) {
+            Expr::BOp(TargetBOp::EqualInt, _, _) => (),
+            e => panic!("expected ==i, got {}", e),
+        }
+
+        let (e, m, ves) = infer(r#""hi" == "sup""#);
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        match e.eliminate(ve) {
+            Expr::BOp(TargetBOp::EqualString, _, _) => (),
+            e => panic!("expected ==s, got {}", e),
+        }
+
+        let (e, m, ves) = infer("true == false");
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        assert_eq!(m.eliminate(ve), MigrationalType::bool());
+        match e.eliminate(ve) {
+            Expr::BOp(TargetBOp::EqualBool, _, _) => (),
+            e => panic!("expected ==b, got {}", e),
         }
 
         let (e, m, ves) = infer("(\\x. \\y. x == y) true false");
@@ -1706,7 +1754,8 @@ mod test {
                 },
                 _ => false,
             },
-            "expected ==b, got {}",
+            "expected term using {}, got {}",
+            eq,
             e
         );
     }
@@ -1736,14 +1785,96 @@ mod test {
     }
 
     #[test]
+    fn overloaded_plus() {
+        let (e, m) = infer_unique(r#""hi" + "bye""#);
+        assert_eq!(m, MigrationalType::string());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            e => panic!("expected +s, got {}", e),
+        }
+
+        let (e, m) = infer_unique(r#"__ + "bye""#);
+        assert_eq!(m, MigrationalType::string());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            e => panic!("expected +s, got {}", e),
+        }
+
+        let (e, m) = infer_unique(r#""bye" + "hi""#);
+        assert_eq!(m, MigrationalType::string());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            e => panic!("expected +s, got {}", e),
+        }
+
+        let (e, m) = infer_unique(r#"__ + __ + "hi""#);
+        assert_eq!(m, MigrationalType::string());
+        match e {
+            Expr::BOp(op, e1, _) => {
+                assert_eq!(op, TargetBOp::PlusString);
+                match *e1 {
+                    Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+                    e => panic!("expectes +s, got {}", e),
+                }
+            }
+            e => panic!("expected +s, got {}", e),
+        }
+
+        let (e, m) = infer_unique("1 + 1");
+        assert_eq!(m, MigrationalType::int());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
+            e => panic!("expected +i, got {}", e),
+        }
+
+        let (e, m) = infer_unique("1 + __");
+        assert_eq!(m, MigrationalType::int());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
+            e => panic!("expected +i, got {}", e),
+        }
+
+        let (e, m) = infer_unique("1 + \"hi\"");
+        assert_eq!(m, MigrationalType::Dyn());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            e => panic!("expected +?, got {}", e),
+        }
+
+        let (e, m) = infer_unique("true + false");
+        assert_eq!(m, MigrationalType::Dyn());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            e => panic!("expected +?, got {}", e),
+        }
+
+        let (e, m) = infer_unique("true + 1");
+        assert_eq!(m, MigrationalType::Dyn());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            e => panic!("expected +?, got {}", e),
+        }
+
+        let (e, m) = infer_unique("\"hi\" + false");
+        assert_eq!(m, MigrationalType::Dyn());
+        match e {
+            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            e => panic!("expected +?, got {}", e),
+        }
+    }
+
+    #[test]
     fn holes() {
-        let (_, m) = infer_unique("__ + 1");
+        let (_, m) = infer_unique("__ * 1");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("__a + __b");
+        let (_, m) = infer_unique("1 * __b");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("(\\x. x + 1) __a");
+        let (_, m) = infer_unique("__a * __b");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("(\\x. x * 1) __a");
         assert_eq!(m, MigrationalType::int());
 
         let (_, m) = infer_unique("__ : bool");
@@ -1758,25 +1889,25 @@ mod test {
 
     #[test]
     fn assume() {
-        let (_, m) = infer_unique("assume x in x + 1");
+        let (_, m) = infer_unique("assume x in x * 1");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("assume x:? in x + 1");
+        let (_, m) = infer_unique("assume x:? in x * 1");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("assume x:int in x + 1");
+        let (_, m) = infer_unique("assume x:int in x * 1");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, _m, ves) = infer("assume x:bool in x + 1");
+        let (_, _m, ves) = infer("assume x:int in if x then x * 1 else 0");
         assert!(ves.is_empty());
 
-        let (_, m) = infer_unique("assume x:? in if x then x + 1 else 0");
+        let (_, m) = infer_unique("assume x:? in if x then x * 1 else 0");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("assume x:? in if x then x + 1 else true");
+        let (_, m) = infer_unique("assume x:? in if x then x * 1 else true");
         assert_eq!(m, MigrationalType::Dyn());
 
-        let (_, _m, ves) = infer("assume x in if x then x + 1 else 0");
+        let (_, _m, ves) = infer("assume x in if x then x * 1 else 0");
         assert!(ves.is_empty());
     }
 
