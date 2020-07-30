@@ -2,6 +2,8 @@ use std::cmp::PartialEq;
 use std::fmt::Display;
 use std::hash::Hash;
 
+use log::{error, warn};
+
 use im_rc::HashSet;
 
 pub const DEFAULT_WIDTH: usize = 80;
@@ -686,6 +688,13 @@ impl ExplicitExpr {
             .fold(e, |e, (x, g)| ExplicitExpr::lam(x, g, e))
     }
 
+    pub fn coerce(e: Self, src: GradualType, tgt: GradualType) -> Self {
+        match Coercion::new(src, tgt) {
+            Coercion::Id => e,
+            c => ExplicitExpr::Coerce(Box::new(e), c),
+        }
+    }
+
     pub fn app(e1: Self, e2: Self) -> Self {
         ExplicitExpr::App(Box::new(e1), Box::new(e2))
     }
@@ -711,7 +720,88 @@ impl ExplicitExpr {
     }
 }
 
+impl Coercion {
+    pub fn new(src: GradualType, tgt: GradualType) -> Self {
+        if src == tgt {
+            return Coercion::Id;
+        }
+
+        match (src, tgt) {
+            (GradualType::Base(b), GradualType::Dyn()) => Coercion::Tag(GroundType::Base(b)),
+            (GradualType::Dyn(), GradualType::Base(b)) => Coercion::Check(GroundType::Base(b)),
+            (src @ GradualType::Fun(_, _), GradualType::Dyn()) => Coercion::seq(
+                Coercion::new(
+                    src,
+                    GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
+                ),
+                Coercion::Tag(GroundType::Fun),
+            ),
+            (GradualType::Dyn(), src @ GradualType::Fun(_, _)) => Coercion::seq(
+                Coercion::Check(GroundType::Fun),
+                Coercion::new(
+                    GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
+                    src,
+                ),
+            ),
+            (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
+                Coercion::fun(Coercion::new(*g21, *g11), Coercion::new(*g12, *g22))
+            }
+            (src, tgt) => {
+                error!("bad coercion from {} to {}, generating id", src, tgt);
+                Coercion::Id
+            }
+        }
+    }
+
+    fn seq(c1: Self, c2: Self) -> Self {
+        match (c1, c2) {
+            (Coercion::Id, c) | (c, Coercion::Id) => c,
+            (Coercion::Tag(b1), Coercion::Check(b2)) => {
+                if b1 == b2 {
+                    Coercion::Id
+                } else {
+                    let c =
+                        Coercion::Seq(Box::new(Coercion::Tag(b1)), Box::new(Coercion::Check(b2)));
+                    warn!("bound-to-fail coercion: {:?}", c);
+                    c
+                }
+            }
+            (Coercion::Check(b1), Coercion::Tag(b2)) => {
+                // TODO make this flaggable?
+                if b1 == b2 {
+                    Coercion::Id
+                } else {
+                    let c =
+                        Coercion::Seq(Box::new(Coercion::Check(b1)), Box::new(Coercion::Tag(b2)));
+                    warn!("absurd/ill-typed coercion: {:?}", c);
+                    c
+                }
+            }
+            (c1, c2) => Coercion::Seq(Box::new(c1), Box::new(c2)),
+        }
+    }
+
+    fn fun(c1: Self, c2: Self) -> Self {
+        match (c1, c2) {
+            (Coercion::Id, Coercion::Id) => Coercion::Id,
+            (c1, c2) => Coercion::Fun(Box::new(c1), Box::new(c2)),
+        }
+    }
+}
+
 impl GradualType {
+    pub fn bool() -> Self {
+        GradualType::Base(BaseType::Bool)
+    }
+
+    pub fn int() -> Self {
+        GradualType::Base(BaseType::Int)
+    }
+
+    pub fn string() -> Self {
+        GradualType::Base(BaseType::String)
+    }
+
     pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
         parser::TypeParser::new()
             .parse(s)
@@ -1065,6 +1155,21 @@ impl MigrationalType {
             }
         }
     }
+
+    pub fn try_gradual(&self) -> Option<GradualType> {
+        match self {
+            MigrationalType::Choice(_, _, _) => None,
+            MigrationalType::Base(b) => Some(GradualType::Base(b.clone())),
+            MigrationalType::Var(a) => Some(GradualType::Var(*a)),
+            MigrationalType::Dyn() => Some(GradualType::Dyn()),
+            MigrationalType::Fun(m1, m2) => {
+                let g1 = m1.try_gradual()?;
+                let g2 = m2.try_gradual()?;
+
+                Some(GradualType::fun(g1, g2))
+            }
+        }
+    }
 }
 
 impl Display for MigrationalType {
@@ -1115,6 +1220,26 @@ impl From<&Constant> for MigrationalType {
             Constant::Bool(_) => MigrationalType::bool(),
             Constant::Int(_) => MigrationalType::int(),
             Constant::String(_) => MigrationalType::string(),
+        }
+    }
+}
+
+impl From<Constant> for GroundType {
+    fn from(c: Constant) -> Self {
+        match c {
+            Constant::Bool(_) => GroundType::Base(BaseType::Bool),
+            Constant::Int(_) => GroundType::Base(BaseType::Int),
+            Constant::String(_) => GroundType::Base(BaseType::String),
+        }
+    }
+}
+
+impl From<Constant> for GradualType {
+    fn from(c: Constant) -> Self {
+        match c {
+            Constant::Bool(_) => GradualType::Base(BaseType::Bool),
+            Constant::Int(_) => GradualType::Base(BaseType::Int),
+            Constant::String(_) => GradualType::Base(BaseType::String),
         }
     }
 }

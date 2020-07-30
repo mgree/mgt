@@ -6,3 +6,5 @@ pub mod syntax;
 pub mod infer;
 
 pub use infer::{Ctx, Options, TypeInference};
+
+pub mod coerce;

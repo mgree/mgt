@@ -496,21 +496,13 @@ impl Default for Options {
 }
 
 impl SourceUOp {
-    /// Returns the sole possibility for a unary operation, i.e.
-    ///    [(op, dom, cod), ...]
-    /// where `op` is a target operation, `dom` is the domain type, and `cod` is the return type.
-    fn signature(&self) -> (ExplicitUOp, MigrationalType, MigrationalType) {
+    /// Returns the sole possibility for a unary operation.
+    ///
+    /// TODO with overloaded ones, we need UOpSignature, like below
+    fn explicit(&self) -> ExplicitUOp {
         match self {
-            SourceUOp::Negate => (
-                ExplicitUOp::Negate,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            ),
-            SourceUOp::Not => (
-                ExplicitUOp::Not,
-                MigrationalType::bool(),
-                MigrationalType::bool(),
-            ),
+            SourceUOp::Negate => ExplicitUOp::Negate,
+            SourceUOp::Not => ExplicitUOp::Not,
         }
     }
 }
@@ -550,7 +542,11 @@ impl SourceBOp {
                         BaseType::Bool,
                         MigrationalType::bool(),
                     ),
-                    (ExplicitBOp::EqualInt, BaseType::Int, MigrationalType::bool()),
+                    (
+                        ExplicitBOp::EqualInt,
+                        BaseType::Int,
+                        MigrationalType::bool(),
+                    ),
                     (
                         ExplicitBOp::EqualString,
                         BaseType::String,
@@ -593,6 +589,37 @@ impl SourceBOp {
                 MigrationalType::int(),
                 MigrationalType::bool(),
             ),
+        }
+    }
+}
+
+impl ExplicitUOp {
+    pub fn signature(&self) -> (GradualType, GradualType) {
+        match self {
+            ExplicitUOp::Negate => (GradualType::int(), GradualType::int()),
+            ExplicitUOp::Not => (GradualType::bool(), GradualType::bool()),
+        }
+    }
+}
+
+impl ExplicitBOp {
+    pub fn signature(&self) -> (GradualType, GradualType) {
+        match self {
+            ExplicitBOp::PlusInt => (GradualType::int(), GradualType::int()),
+            ExplicitBOp::PlusString => (GradualType::string(), GradualType::string()),
+            ExplicitBOp::PlusDyn => (GradualType::Dyn(), GradualType::Dyn()),
+            ExplicitBOp::Minus => (GradualType::int(), GradualType::int()),
+            ExplicitBOp::Times => (GradualType::int(), GradualType::int()),
+            ExplicitBOp::Divide => (GradualType::int(), GradualType::int()),
+            ExplicitBOp::And => (GradualType::bool(), GradualType::bool()),
+            ExplicitBOp::Or => (GradualType::bool(), GradualType::bool()),
+            ExplicitBOp::EqualBool => (GradualType::bool(), GradualType::bool()),
+            ExplicitBOp::EqualInt => (GradualType::int(), GradualType::bool()),
+            ExplicitBOp::EqualString => (GradualType::string(), GradualType::bool()),
+            ExplicitBOp::EqualDyn => (GradualType::Dyn(), GradualType::bool()),
+            ExplicitBOp::LessThan => (GradualType::int(), GradualType::bool()),
+            ExplicitBOp::LessThanEqual => (GradualType::int(), GradualType::bool()),
+            ExplicitBOp::Choice(_, _, _) => panic!("asked for signature of choice"),
         }
     }
 }
@@ -642,7 +669,7 @@ impl TypeInference {
 
     fn generate_constraints(
         &mut self,
-        ctx: Ctx,
+        ctx: Ctx, // TODO change to &Ctx
         e: &SourceExpr,
     ) -> Option<(TargetExpr, MigrationalType)> {
         match e {
@@ -768,11 +795,12 @@ impl TypeInference {
             GradualExpr::UOp(op, e) => {
                 let (e, m) = self.generate_constraints(ctx.clone(), e)?;
 
-                let (op, m_dom, m_cod) = op.signature();
+                let op = op.explicit();
+                let (g_dom, g_cod) = op.signature();
 
-                self.add_constraint(Constraint::Consistent(Pattern::Top(), m, m_dom));
+                self.add_constraint(Constraint::Consistent(Pattern::Top(), m, g_dom.into()));
 
-                Some((GradualExpr::uop(op, e), m_cod))
+                Some((GradualExpr::uop(op, e), g_cod.into()))
             }
             GradualExpr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
@@ -1282,7 +1310,11 @@ mod test {
         GradualExpr::lam(
             b.clone(),
             None,
-            GradualExpr::if_(GradualExpr::Var(b), GradualExpr::bool(false), GradualExpr::bool(true)),
+            GradualExpr::if_(
+                GradualExpr::Var(b),
+                GradualExpr::bool(false),
+                GradualExpr::bool(true),
+            ),
         )
     }
 
@@ -1291,7 +1323,11 @@ mod test {
         GradualExpr::lam(
             b.clone(),
             Some(GradualType::Dyn()),
-            GradualExpr::if_(GradualExpr::Var(b), GradualExpr::bool(false), GradualExpr::bool(true)),
+            GradualExpr::if_(
+                GradualExpr::Var(b),
+                GradualExpr::bool(false),
+                GradualExpr::bool(true),
+            ),
         )
     }
 
@@ -1423,7 +1459,11 @@ mod test {
 
     #[test]
     fn infer_conditional() {
-        let e = GradualExpr::if_(GradualExpr::bool(true), GradualExpr::bool(false), GradualExpr::bool(true));
+        let e = GradualExpr::if_(
+            GradualExpr::bool(true),
+            GradualExpr::bool(false),
+            GradualExpr::bool(true),
+        );
 
         let (_e, m, ves) = TypeInference::infer(&e).unwrap();
 
@@ -2181,8 +2221,14 @@ mod test {
                 Some(GradualType::Dyn()),
                 GradualExpr::if_(
                     GradualExpr::Var(fixed.clone()),
-                    GradualExpr::app(GradualExpr::Var(width_func.clone()), GradualExpr::Var(fixed.clone())),
-                    GradualExpr::app(GradualExpr::Var(width_func.clone()), GradualExpr::Const(Constant::Int(5))),
+                    GradualExpr::app(
+                        GradualExpr::Var(width_func.clone()),
+                        GradualExpr::Var(fixed.clone()),
+                    ),
+                    GradualExpr::app(
+                        GradualExpr::Var(width_func.clone()),
+                        GradualExpr::Const(Constant::Int(5)),
+                    ),
                 ),
             ),
         );
