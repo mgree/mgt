@@ -8,3 +8,5 @@ pub mod infer;
 pub use infer::{Ctx, Options, TypeInference};
 
 pub mod coerce;
+
+pub use coerce::CoercionInsertion;

@@ -882,6 +882,23 @@ impl GradualType {
         }
     }
 
+    pub fn join(&self, other: &GradualType) -> GradualType {
+        match (self, other) {
+            (g1, g2) if g1 == g2 => g1.clone(),
+            (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
+                GradualType::fun(g11.join(g21), g12.join(g22))
+            }
+            (GradualType::Base(b1), GradualType::Base(b2)) => {
+                if b1 == b2 {
+                    GradualType::Base(*b1)
+                } else {
+                    GradualType::Dyn()
+                }
+            }
+            (_g1, _g2) => GradualType::Dyn(),
+        }
+    }
+
     pub fn try_meet(&self, other: &GradualType) -> Option<GradualType> {
         match (self, other) {
             (GradualType::Dyn(), g) | (g, GradualType::Dyn()) => Some(g.clone()),

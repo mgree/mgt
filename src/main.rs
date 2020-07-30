@@ -87,7 +87,10 @@ fn main() {
         let e = e.clone().eliminate(&ve);
         let m = m.clone().eliminate(&ve);
 
-        println!("{}\n: {}", e, m);
+        let (e, g) = CoercionInsertion::run(e);
+        assert_eq!(m, g.into());
+
+        println!("{:?}\n: {}", e, m);
     }
 
     std::process::exit(0);
