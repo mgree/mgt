@@ -37,7 +37,7 @@ RecDefns: Vec<(Variable, Option<GradualType>, SourceExpr)> = {
 
 RecDefn: (Variable, Option<GradualType>, SourceExpr) = {
     <Id> <TypeAnnot?> "=" <Expr>,
-    <f:Id> <args:Args> "=" <e:Expr> => (f, None, Expr::lams(args, e)),
+    <f:Id> <args:Args> "=" <e:Expr> => (f, None, GradualExpr::lams(args, e)),
 }
 
 TypeAnnot: GradualType = {
@@ -45,73 +45,73 @@ TypeAnnot: GradualType = {
 }
 
 pub Expr: SourceExpr = {
-    "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => Expr::if_(c, t, e),
-    "\\" <args:Args> "." <e:Expr> => Expr::lams(args, e),
-    "assume" <x:Id> <t:TypeAnnot?> "in" <e2:Expr> => Expr::let_(x.clone(), t, Expr::Hole("__".to_string() + &x), e2),
-    "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(x, t, e1, e2),
-    "let" <f:Id> <args:Args> "=" <e1:Expr> "in" <e2:Expr> => Expr::let_(f, None, Expr::lams(args, e1), e2),
-    "let" "rec" <defns:RecDefns> "in" <e2:Expr> => Expr::letrec(defns, e2),
+    "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => GradualExpr::if_(c, t, e),
+    "\\" <args:Args> "." <e:Expr> => GradualExpr::lams(args, e),
+    "assume" <x:Id> <t:TypeAnnot?> "in" <e2:Expr> => GradualExpr::let_(x.clone(), t, GradualExpr::Hole("__".to_string() + &x), e2),
+    "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(x, t, e1, e2),
+    "let" <f:Id> <args:Args> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(f, None, GradualExpr::lams(args, e1), e2),
+    "let" "rec" <defns:RecDefns> "in" <e2:Expr> => GradualExpr::letrec(defns, e2),
     <ExprAnn>,
 }
 
 ExprAnn: SourceExpr = {
-    <e:ExprOr> ":" <t:Type> => Expr::ann(e, Some(t)),
+    <e:ExprOr> ":" <t:Type> => GradualExpr::ann(e, Some(t)),
     <ExprOr>,
 }
 
 ExprOr: SourceExpr = {
-    <e1:ExprOr> "||" <e2:ExprAnd> => Expr::bop(SourceBOp::Or, e1, e2),
+    <e1:ExprOr> "||" <e2:ExprAnd> => GradualExpr::bop(SourceBOp::Or, e1, e2),
     <ExprAnd>,
 }
 
 ExprAnd: SourceExpr = {
-    <e1:ExprAnd> "&&" <e2:ExprCompare> => Expr::bop(SourceBOp::And, e1, e2),
+    <e1:ExprAnd> "&&" <e2:ExprCompare> => GradualExpr::bop(SourceBOp::And, e1, e2),
     <ExprCompare>,
 }
 
 ExprCompare: SourceExpr = {
-    <e1:ExprFactor> "==" <e2:ExprFactor> => Expr::bop(SourceBOp::Equal, e1, e2),
-    <e1:ExprFactor> "<" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThan, e1, e2),
-    <e1:ExprFactor> ">" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThan, e2, e1),
-    <e1:ExprFactor> "<=" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThanEqual, e1, e2),
-    <e1:ExprFactor> ">=" <e2:ExprFactor> => Expr::bop(SourceBOp::LessThanEqual, e2, e1),
+    <e1:ExprFactor> "==" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::Equal, e1, e2),
+    <e1:ExprFactor> "<" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThan, e1, e2),
+    <e1:ExprFactor> ">" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThan, e2, e1),
+    <e1:ExprFactor> "<=" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThanEqual, e1, e2),
+    <e1:ExprFactor> ">=" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThanEqual, e2, e1),
     <ExprFactor>,
 }
 
 ExprFactor: SourceExpr = {
-   <e1:ExprFactor> "+" <e2:ExprTerm> => Expr::bop(SourceBOp::Plus, e1, e2),
-   <e1:ExprFactor> "-" <e2:ExprTerm> => Expr::bop(SourceBOp::Minus, e1, e2),
+   <e1:ExprFactor> "+" <e2:ExprTerm> => GradualExpr::bop(SourceBOp::Plus, e1, e2),
+   <e1:ExprFactor> "-" <e2:ExprTerm> => GradualExpr::bop(SourceBOp::Minus, e1, e2),
    <ExprTerm>,
 }
 
 ExprTerm: SourceExpr = {
-   <e1:ExprTerm> "*" <e2:ExprApp> => Expr::bop(SourceBOp::Times, e1, e2),
-   <e1:ExprTerm> "/" <e2:ExprApp> => Expr::bop(SourceBOp::Divide, e1, e2),
+   <e1:ExprTerm> "*" <e2:ExprApp> => GradualExpr::bop(SourceBOp::Times, e1, e2),
+   <e1:ExprTerm> "/" <e2:ExprApp> => GradualExpr::bop(SourceBOp::Divide, e1, e2),
    <ExprApp>,
 }
 
 ExprApp: SourceExpr = {
-    <e1:ExprApp> <e2:ExprAtom> => Expr::app(e1, e2),
+    <e1:ExprApp> <e2:ExprAtom> => GradualExpr::app(e1, e2),
     <ExprUnary>,
 };
 
 ExprUnary: SourceExpr = {
-    "-" <ExprAtom> => Expr::uop(SourceUOp::Negate, <>),
-    "!" <ExprAtom> => Expr::uop(SourceUOp::Not, <>),
+    "-" <ExprAtom> => GradualExpr::uop(SourceUOp::Negate, <>),
+    "!" <ExprAtom> => GradualExpr::uop(SourceUOp::Not, <>),
     <ExprAtom>,
 }
 
 ExprAtom: SourceExpr = {
     <Const>,
     <Hole>,
-    <Id> => Expr::Var(<>),
+    <Id> => GradualExpr::Var(<>),
     "(" <Expr> ")",
 }
 
 Const: SourceExpr = {
-    Num => Expr::Const(Constant::Int(<>)),
-    Bool => Expr::Const(Constant::Bool(<>)),
-    StrLit => Expr::Const(Constant::String(<>)),
+    Num => GradualExpr::Const(Constant::Int(<>)),
+    Bool => GradualExpr::Const(Constant::Bool(<>)),
+    StrLit => GradualExpr::Const(Constant::String(<>)),
 }
 
 Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
@@ -128,7 +128,7 @@ StrLit: String = <r#""[^"]*""#> => {
 };
 
 Hole: SourceExpr = {
-  r"__[[:alnum:]_']*" => Expr::Hole(<>.to_string()),
+  r"__[[:alnum:]_']*" => GradualExpr::Hole(<>.to_string()),
 };
 
 Id: Variable = <r"[[:alpha:]_][[:alnum:]_']*"> => <>.to_string();

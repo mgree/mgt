@@ -117,105 +117,105 @@ pub type Variable = String;
 
 /// e (ITGL)
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr<T, U, B> {
+pub enum GradualExpr<T, U, B> {
     Const(Constant),
     Var(Variable),
     Lam(Variable, T, Box<Self>),
-    Ann(Box<Expr<T, U, B>>, T),
+    Ann(Box<GradualExpr<T, U, B>>, T),
     Hole(String),
-    App(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
-    If(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
-    Let(Variable, T, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
-    LetRec(Vec<(Variable, T, Expr<T, U, B>)>, Box<Expr<T, U, B>>),
-    UOp(U, Box<Expr<T, U, B>>),
-    BOp(B, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
+    App(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    If(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    Let(Variable, T, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    LetRec(Vec<(Variable, T, GradualExpr<T, U, B>)>, Box<GradualExpr<T, U, B>>),
+    UOp(U, Box<GradualExpr<T, U, B>>),
+    BOp(B, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
 }
 
-pub type SourceExpr = Expr<Option<GradualType>, SourceUOp, SourceBOp>;
-pub type TargetExpr = Expr<MigrationalType, TargetUOp, TargetBOp>;
+pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
+pub type TargetExpr = GradualExpr<MigrationalType, TargetUOp, TargetBOp>;
 
-impl<T, U, B> Expr<T, U, B> {
+impl<T, U, B> GradualExpr<T, U, B> {
     pub fn bool(b: bool) -> Self {
-        Expr::Const(Constant::Bool(b))
+        GradualExpr::Const(Constant::Bool(b))
     }
 
     pub fn int(n: isize) -> Self {
-        Expr::Const(Constant::Int(n))
+        GradualExpr::Const(Constant::Int(n))
     }
 
     pub fn lam(v: Variable, t: T, e: Self) -> Self {
-        Expr::Lam(v, t, Box::new(e))
+        GradualExpr::Lam(v, t, Box::new(e))
     }
 
     pub fn lams(args: Vec<(String, T)>, e: Self) -> Self {
         args.into_iter()
             .rev()
-            .fold(e, |e, (x, t)| Expr::lam(x, t, e))
+            .fold(e, |e, (x, t)| GradualExpr::lam(x, t, e))
     }
 
     pub fn ann(e: Self, t: T) -> Self {
-        Expr::Ann(Box::new(e), t)
+        GradualExpr::Ann(Box::new(e), t)
     }
 
     pub fn app(e1: Self, e2: Self) -> Self {
-        Expr::App(Box::new(e1), Box::new(e2))
+        GradualExpr::App(Box::new(e1), Box::new(e2))
     }
 
     pub fn if_(e1: Self, e2: Self, e3: Self) -> Self {
-        Expr::If(Box::new(e1), Box::new(e2), Box::new(e3))
+        GradualExpr::If(Box::new(e1), Box::new(e2), Box::new(e3))
     }
 
     pub fn let_(x: Variable, t: T, e1: Self, e2: Self) -> Self {
-        Expr::Let(x, t, Box::new(e1), Box::new(e2))
+        GradualExpr::Let(x, t, Box::new(e1), Box::new(e2))
     }
 
     pub fn letrec(defns: Vec<(Variable, T, Self)>, e2: Self) -> Self {
-        Expr::LetRec(defns, Box::new(e2))
+        GradualExpr::LetRec(defns, Box::new(e2))
     }
 
     pub fn uop(op: U, e: Self) -> Self {
-        Expr::UOp(op, Box::new(e))
+        GradualExpr::UOp(op, Box::new(e))
     }
 
     pub fn bop(op: B, e1: Self, e2: Self) -> Self {
-        Expr::BOp(op, Box::new(e1), Box::new(e2))
+        GradualExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 
-    pub fn map_types<F, S>(self, f: &F) -> Expr<S, U, B>
+    pub fn map_types<F, S>(self, f: &F) -> GradualExpr<S, U, B>
     where
         F: Fn(T) -> S,
     {
         match self {
-            Expr::Const(c) => Expr::Const(c),
-            Expr::Var(x) => Expr::Var(x),
-            Expr::Lam(x, t, e) => Expr::lam(x, f(t), e.map_types(f)),
-            Expr::App(e1, e2) => Expr::app(e1.map_types(f), e2.map_types(f)),
-            Expr::Ann(e, t) => Expr::ann(e.map_types(f), f(t)),
-            Expr::Hole(name) => Expr::Hole(name),
-            Expr::If(e1, e2, e3) => Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
-            Expr::Let(x, t, e1, e2) => Expr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
-            Expr::LetRec(defns, e2) => Expr::letrec(
+            GradualExpr::Const(c) => GradualExpr::Const(c),
+            GradualExpr::Var(x) => GradualExpr::Var(x),
+            GradualExpr::Lam(x, t, e) => GradualExpr::lam(x, f(t), e.map_types(f)),
+            GradualExpr::App(e1, e2) => GradualExpr::app(e1.map_types(f), e2.map_types(f)),
+            GradualExpr::Ann(e, t) => GradualExpr::ann(e.map_types(f), f(t)),
+            GradualExpr::Hole(name) => GradualExpr::Hole(name),
+            GradualExpr::If(e1, e2, e3) => GradualExpr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
+            GradualExpr::Let(x, t, e1, e2) => GradualExpr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
+            GradualExpr::LetRec(defns, e2) => GradualExpr::letrec(
                 defns
                     .into_iter()
                     .map(|(v, t, e1)| (v, f(t), e1.map_types(f)))
                     .collect(),
                 e2.map_types(f),
             ),
-            Expr::UOp(op, e) => Expr::uop(op, e.map_types(f)),
-            Expr::BOp(op, e1, e2) => Expr::bop(op, e1.map_types(f), e2.map_types(f)),
+            GradualExpr::UOp(op, e) => GradualExpr::uop(op, e.map_types(f)),
+            GradualExpr::BOp(op, e1, e2) => GradualExpr::bop(op, e1.map_types(f), e2.map_types(f)),
         }
     }
 
     pub fn is_compound(&self) -> bool {
         match self {
-            Expr::Var(_) | Expr::Const(_) => false,
+            GradualExpr::Var(_) | GradualExpr::Const(_) => false,
             _ => true,
         }
     }
 
     pub fn is_app(&self) -> bool {
         match self {
-            Expr::App(_, _) => true,
+            GradualExpr::App(_, _) => true,
             _ => false,
         }
     }
@@ -235,16 +235,16 @@ impl SourceExpr {
         A: Clone,
     {
         match self {
-            Expr::Var(x) => pp.text(x),
-            Expr::Const(c) => pp.as_string(c),
-            Expr::Lam(x, None, e) => pp
+            GradualExpr::Var(x) => pp.text(x),
+            GradualExpr::Const(c) => pp.as_string(c),
+            GradualExpr::Lam(x, None, e) => pp
                 .text("\\")
                 .append(pp.text(x))
                 .append(pp.text("."))
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            Expr::Lam(x, Some(t), e) => pp
+            GradualExpr::Lam(x, Some(t), e) => pp
                 .text("\\")
                 .append(pp.text(x))
                 .append(pp.space())
@@ -255,16 +255,16 @@ impl SourceExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            Expr::Hole(name) => pp.text(name),
-            Expr::Ann(e, None) => e.pretty(pp),
-            Expr::Ann(e, Some(t)) => e
+            GradualExpr::Hole(name) => pp.text(name),
+            GradualExpr::Ann(e, None) => e.pretty(pp),
+            GradualExpr::Ann(e, Some(t)) => e
                 .pretty(pp)
                 .append(pp.space())
                 .append(pp.text(":"))
                 .append(pp.space())
                 .append(t.pretty(pp))
                 .group(),
-            Expr::App(e1, e2) => {
+            GradualExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
                 let mut d2 = e2.pretty(pp);
 
@@ -278,7 +278,7 @@ impl SourceExpr {
 
                 d1.append(pp.line()).append(d2).group()
             }
-            Expr::If(e1, e2, e3) => {
+            GradualExpr::If(e1, e2, e3) => {
                 let d_cond = pp
                     .text("if")
                     .append(pp.space())
@@ -301,7 +301,7 @@ impl SourceExpr {
 
                 pp.concat(vec![d_cond, d_then, d_else])
             }
-            Expr::Let(x, t, e1, e2) => {
+            GradualExpr::Let(x, t, e1, e2) => {
                 let d_annot = if let Some(t) = t {
                     pp.intersperse(vec![pp.text(":"), t.pretty(pp), pp.text("=")], pp.space())
                 } else {
@@ -323,7 +323,7 @@ impl SourceExpr {
                 )
                 .group()
             }
-            Expr::LetRec(defns, e2) => {
+            GradualExpr::LetRec(defns, e2) => {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
@@ -354,7 +354,7 @@ impl SourceExpr {
                     .append(e2.pretty(pp))
             }
             // TODO proper pretty printing with precedence
-            Expr::UOp(op, e) => pp
+            GradualExpr::UOp(op, e) => pp
                 .as_string(op)
                 .append(pp.space())
                 .append(if e.is_compound() {
@@ -362,7 +362,7 @@ impl SourceExpr {
                 } else {
                     e.pretty(pp)
                 }),
-            Expr::BOp(op, e1, e2) => pp.intersperse(
+            GradualExpr::BOp(op, e1, e2) => pp.intersperse(
                 vec![
                     if e1.is_compound() {
                         e1.pretty(pp).parens()
@@ -435,20 +435,20 @@ impl TargetBOp {
 impl TargetExpr {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            Expr::Const(_) | Expr::Var(_) | Expr::Hole(_) => HashSet::new(),
-            Expr::Lam(_x, t, e) => t.choices().union(e.choices()),
-            Expr::Ann(e, t) => e.choices().union(t.choices()),
-            Expr::App(e1, e2) => e1.choices().union(e2.choices()),
-            Expr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
-            Expr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
-            Expr::LetRec(defns, e2) => {
+            GradualExpr::Const(_) | GradualExpr::Var(_) | GradualExpr::Hole(_) => HashSet::new(),
+            GradualExpr::Lam(_x, t, e) => t.choices().union(e.choices()),
+            GradualExpr::Ann(e, t) => e.choices().union(t.choices()),
+            GradualExpr::App(e1, e2) => e1.choices().union(e2.choices()),
+            GradualExpr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
+            GradualExpr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
+            GradualExpr::LetRec(defns, e2) => {
                 let ds = defns
                     .into_iter()
                     .map(|(_x, t, e1)| t.choices().union(e1.choices()));
                 HashSet::unions(ds).union(e2.choices())
             }
-            Expr::UOp(op, e) => op.choices().union(e.choices()),
-            Expr::BOp(op, e1, e2) => {
+            GradualExpr::UOp(op, e) => op.choices().union(e.choices()),
+            GradualExpr::BOp(op, e1, e2) => {
                 HashSet::unions(vec![op.choices(), e1.choices(), e2.choices()])
             }
         }
@@ -461,9 +461,9 @@ impl TargetExpr {
         A: Clone,
     {
         match self {
-            Expr::Var(x) => pp.text(x),
-            Expr::Const(c) => pp.as_string(c),
-            Expr::Lam(x, t, e) => pp
+            GradualExpr::Var(x) => pp.text(x),
+            GradualExpr::Const(c) => pp.as_string(c),
+            GradualExpr::Lam(x, t, e) => pp
                 .text("\\")
                 .append(pp.text(x))
                 .append(pp.space())
@@ -474,15 +474,15 @@ impl TargetExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            Expr::Hole(name) => pp.text(name),
-            Expr::Ann(e, t) => e
+            GradualExpr::Hole(name) => pp.text(name),
+            GradualExpr::Ann(e, t) => e
                 .pretty(pp)
                 .append(pp.space())
                 .append(pp.text(":"))
                 .append(pp.space())
                 .append(t.pretty(pp))
                 .group(),
-            Expr::App(e1, e2) => {
+            GradualExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
                 let mut d2 = e2.pretty(pp);
 
@@ -496,7 +496,7 @@ impl TargetExpr {
 
                 d1.append(pp.line()).append(d2.nest(2)).group()
             }
-            Expr::If(e1, e2, e3) => {
+            GradualExpr::If(e1, e2, e3) => {
                 let d_cond = pp
                     .text("if")
                     .append(pp.space())
@@ -516,7 +516,7 @@ impl TargetExpr {
 
                 pp.concat(vec![d_cond, d_then, d_else]).group()
             }
-            Expr::Let(x, t, e1, e2) => {
+            GradualExpr::Let(x, t, e1, e2) => {
                 let d_bind = pp
                     .intersperse(
                         vec![
@@ -537,7 +537,7 @@ impl TargetExpr {
                 .append(pp.hardline())
                 .append(e2.pretty(pp))
             }
-            Expr::LetRec(defns, e2) => {
+            GradualExpr::LetRec(defns, e2) => {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
@@ -561,7 +561,7 @@ impl TargetExpr {
                     .append(e2.pretty(pp))
             }
             // TODO proper pretty printing with precedence
-            Expr::UOp(op, e) => pp
+            GradualExpr::UOp(op, e) => pp
                 .as_string(op)
                 .append(pp.space())
                 .append(if e.is_compound() {
@@ -569,7 +569,7 @@ impl TargetExpr {
                 } else {
                     e.pretty(pp)
                 }),
-            Expr::BOp(op, e1, e2) => pp.intersperse(
+            GradualExpr::BOp(op, e1, e2) => pp.intersperse(
                 vec![
                     if e1.is_compound() {
                         e1.pretty(pp).parens()
@@ -1141,20 +1141,20 @@ mod test {
     fn expr_id() {
         assert_eq!(
             SourceExpr::parse("\\x. x").unwrap(),
-            Expr::lam("x".into(), None, Expr::Var("x".into()))
+            GradualExpr::lam("x".into(), None, GradualExpr::Var("x".into()))
         );
 
         assert_eq!(
             SourceExpr::parse("\\x:?. x").unwrap(),
-            Expr::lam("x".into(), Some(GradualType::Dyn()), Expr::Var("x".into()))
+            GradualExpr::lam("x".into(), Some(GradualType::Dyn()), GradualExpr::Var("x".into()))
         );
 
         assert_eq!(
             SourceExpr::parse("\\x:bool. x").unwrap(),
-            Expr::lam(
+            GradualExpr::lam(
                 "x".into(),
                 Some(BaseType::Bool.into()),
-                Expr::Var("x".into())
+                GradualExpr::Var("x".into())
             )
         );
     }
@@ -1163,22 +1163,22 @@ mod test {
     fn expr_app() {
         assert_eq!(
             SourceExpr::parse("true false 5").unwrap(),
-            Expr::app(
-                Expr::app(
-                    Expr::Const(Constant::Bool(true)),
-                    Expr::Const(Constant::Bool(false))
+            GradualExpr::app(
+                GradualExpr::app(
+                    GradualExpr::Const(Constant::Bool(true)),
+                    GradualExpr::Const(Constant::Bool(false))
                 ),
-                Expr::Const(Constant::Int(5))
+                GradualExpr::Const(Constant::Int(5))
             )
         );
 
         assert_eq!(
             SourceExpr::parse("true (false 5)").unwrap(),
-            Expr::app(
-                Expr::Const(Constant::Bool(true)),
-                Expr::app(
-                    Expr::Const(Constant::Bool(false)),
-                    Expr::Const(Constant::Int(5))
+            GradualExpr::app(
+                GradualExpr::Const(Constant::Bool(true)),
+                GradualExpr::app(
+                    GradualExpr::Const(Constant::Bool(false)),
+                    GradualExpr::Const(Constant::Int(5))
                 ),
             )
         );
@@ -1200,13 +1200,13 @@ mod test {
     fn expr_neg() {
         assert_eq!(
             SourceExpr::parse("\\b:bool. if b then false else true").unwrap(),
-            Expr::lam(
+            GradualExpr::lam(
                 "b".into(),
                 Some(BaseType::Bool.into()),
-                Expr::if_(
-                    Expr::Var("b".into()),
-                    Expr::Const(Constant::Bool(false)),
-                    Expr::Const(Constant::Bool(true))
+                GradualExpr::if_(
+                    GradualExpr::Var("b".into()),
+                    GradualExpr::Const(Constant::Bool(false)),
+                    GradualExpr::Const(Constant::Bool(true))
                 )
             )
         );
@@ -1217,7 +1217,7 @@ mod test {
         assert!(SourceExpr::parse("22").is_ok());
         assert_eq!(
             SourceExpr::parse("47").unwrap(),
-            Expr::Const(Constant::Int(47))
+            GradualExpr::Const(Constant::Int(47))
         );
         assert!(SourceExpr::parse("(22)").is_ok());
         assert!(SourceExpr::parse("((((22))))").is_ok());
@@ -1229,15 +1229,15 @@ mod test {
     fn const_bool() {
         assert_eq!(
             SourceExpr::parse("true").unwrap(),
-            Expr::Const(Constant::Bool(true))
+            GradualExpr::Const(Constant::Bool(true))
         );
         assert_eq!(
             SourceExpr::parse("false").unwrap(),
-            Expr::Const(Constant::Bool(false))
+            GradualExpr::Const(Constant::Bool(false))
         );
         assert_eq!(
             SourceExpr::parse("FALSE").unwrap(),
-            Expr::Var("FALSE".to_string())
+            GradualExpr::Var("FALSE".to_string())
         );
     }
 
@@ -1422,22 +1422,22 @@ mod test {
         se_round_trip("__x", "__x");
 
         match SourceExpr::parse("__").unwrap() {
-            Expr::Hole(name) => assert_eq!(name, "__"),
+            GradualExpr::Hole(name) => assert_eq!(name, "__"),
             e => panic!("expected hole, got {}", e),
         };
 
         match SourceExpr::parse("__x").unwrap() {
-            Expr::Hole(name) => assert_eq!(name, "__x"),
+            GradualExpr::Hole(name) => assert_eq!(name, "__x"),
             e => panic!("expected hole, got {}", e),
         };
 
         match SourceExpr::parse("a__x").unwrap() {
-            Expr::Var(name) => assert_eq!(name, "a__x"),
+            GradualExpr::Var(name) => assert_eq!(name, "a__x"),
             e => panic!("expected var, got {}", e),
         };
 
         match SourceExpr::parse("_x").unwrap() {
-            Expr::Var(name) => assert_eq!(name, "_x"),
+            GradualExpr::Var(name) => assert_eq!(name, "_x"),
             e => panic!("expected var, got {}", e),
         };
     }

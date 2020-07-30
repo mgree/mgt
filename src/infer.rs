@@ -67,28 +67,28 @@ impl TargetExpr {
 
     pub fn eliminate(self, elim: &Eliminator) -> TargetExpr {
         match self {
-            Expr::Const(c) => Expr::Const(c),
-            Expr::Var(x) => Expr::Var(x),
-            Expr::Lam(x, t, e) => Expr::lam(x, t.eliminate(elim), e.eliminate(elim)),
-            Expr::App(e1, e2) => Expr::app(e1.eliminate(elim), e2.eliminate(elim)),
-            Expr::Ann(e, t) => Expr::ann(e.eliminate(elim), t.eliminate(elim)),
-            Expr::Hole(name) => Expr::Hole(name),
-            Expr::If(e1, e2, e3) => {
-                Expr::if_(e1.eliminate(elim), e2.eliminate(elim), e3.eliminate(elim))
+            GradualExpr::Const(c) => GradualExpr::Const(c),
+            GradualExpr::Var(x) => GradualExpr::Var(x),
+            GradualExpr::Lam(x, t, e) => GradualExpr::lam(x, t.eliminate(elim), e.eliminate(elim)),
+            GradualExpr::App(e1, e2) => GradualExpr::app(e1.eliminate(elim), e2.eliminate(elim)),
+            GradualExpr::Ann(e, t) => GradualExpr::ann(e.eliminate(elim), t.eliminate(elim)),
+            GradualExpr::Hole(name) => GradualExpr::Hole(name),
+            GradualExpr::If(e1, e2, e3) => {
+                GradualExpr::if_(e1.eliminate(elim), e2.eliminate(elim), e3.eliminate(elim))
             }
-            Expr::Let(x, t, e1, e2) => {
-                Expr::let_(x, t.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
+            GradualExpr::Let(x, t, e1, e2) => {
+                GradualExpr::let_(x, t.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
             }
-            Expr::LetRec(defns, e2) => Expr::letrec(
+            GradualExpr::LetRec(defns, e2) => GradualExpr::letrec(
                 defns
                     .into_iter()
                     .map(|(v, t, e1)| (v, t.eliminate(elim), e1.eliminate(elim)))
                     .collect(),
                 e2.eliminate(elim),
             ),
-            Expr::UOp(op, e) => Expr::uop(op.eliminate(elim), e.eliminate(elim)),
-            Expr::BOp(op, e1, e2) => {
-                Expr::bop(op.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
+            GradualExpr::UOp(op, e) => GradualExpr::uop(op.eliminate(elim), e.eliminate(elim)),
+            GradualExpr::BOp(op, e1, e2) => {
+                GradualExpr::bop(op.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
             }
         }
     }
@@ -646,13 +646,13 @@ impl TypeInference {
         e: &SourceExpr,
     ) -> Option<(TargetExpr, MigrationalType)> {
         match e {
-            Expr::Const(c) => Some((Expr::Const(c.clone()), c.into())),
-            Expr::Var(x) => {
+            GradualExpr::Const(c) => Some((GradualExpr::Const(c.clone()), c.into())),
+            GradualExpr::Var(x) => {
                 debug!("looking up {} in {:?}", x, ctx);
                 let m = ctx.lookup(x)?;
-                Some((Expr::Var(x.clone()), m.clone()))
+                Some((GradualExpr::Var(x.clone()), m.clone()))
             }
-            Expr::Lam(x, t, e) => {
+            GradualExpr::Lam(x, t, e) => {
                 let m_dom = self.freshen_annotation(t);
 
                 let (e, m_cod) =
@@ -660,11 +660,11 @@ impl TypeInference {
 
                 let m_dom: MigrationalType = m_dom.clone().into();
                 Some((
-                    Expr::lam(x.clone(), m_dom.clone(), e),
+                    GradualExpr::lam(x.clone(), m_dom.clone(), e),
                     MigrationalType::fun(m_dom, m_cod),
                 ))
             }
-            Expr::Ann(e, t) => {
+            GradualExpr::Ann(e, t) => {
                 let (e, m) = self.generate_constraints(ctx, e)?;
 
                 let m_ann = self.freshen_annotation(t);
@@ -675,13 +675,13 @@ impl TypeInference {
                     m_ann.clone(),
                 ));
 
-                Some((Expr::ann(e, m), m_ann))
+                Some((GradualExpr::ann(e, m), m_ann))
             }
-            Expr::Hole(name) => Some((
-                Expr::Hole(name.clone()),
+            GradualExpr::Hole(name) => Some((
+                GradualExpr::Hole(name.clone()),
                 MigrationalType::Var(self.fresh_variable()),
             )),
-            Expr::App(e_fun, e_arg) => {
+            GradualExpr::App(e_fun, e_arg) => {
                 let (e_fun, m_fun) = self.generate_constraints(ctx.clone(), e_fun)?;
                 let (e_arg, m_arg) = self.generate_constraints(ctx, e_arg)?;
 
@@ -692,9 +692,9 @@ impl TypeInference {
                 self.add_constraints(cs_arg);
                 self.add_pattern(pat_arg);
 
-                Some((Expr::app(e_fun, e_arg), m_res))
+                Some((GradualExpr::app(e_fun, e_arg), m_res))
             }
-            Expr::If(e_cond, e_then, e_else) => {
+            GradualExpr::If(e_cond, e_then, e_else) => {
                 // ??? MMG this rule isn't in the paper... but annotations are? :(
                 let (e_cond, m_cond) = self.generate_constraints(ctx.clone(), e_cond)?;
                 let (e_then, m_then) = self.generate_constraints(ctx.clone(), e_then)?;
@@ -714,9 +714,9 @@ impl TypeInference {
                 self.add_pattern(pi_res);
                 self.add_constraints(c_res);
 
-                Some((Expr::if_(e_cond, e_then, e_else), m_res))
+                Some((GradualExpr::if_(e_cond, e_then, e_else), m_res))
             }
-            Expr::Let(x, t, e_def, e_body) => {
+            GradualExpr::Let(x, t, e_def, e_body) => {
                 let (e_def, m_def) = self.generate_constraints(ctx.clone(), e_def)?;
 
                 let m_def = match t {
@@ -737,9 +737,9 @@ impl TypeInference {
                 let (e_body, m_body) =
                     self.generate_constraints(ctx.extend(x.clone(), m_def.clone()), e_body)?;
 
-                Some((Expr::let_(x.clone(), m_def, e_def, e_body), m_body))
+                Some((GradualExpr::let_(x.clone(), m_def, e_def, e_body), m_body))
             }
-            Expr::LetRec(defns, e_body) => {
+            GradualExpr::LetRec(defns, e_body) => {
                 // extend context, mapping each variable to either its annotation or a fresh variable
                 let mut ctx = ctx.clone();
                 for (x, t, _) in defns.iter() {
@@ -763,18 +763,18 @@ impl TypeInference {
 
                 let (e_body, m_body) = self.generate_constraints(ctx, e_body)?;
 
-                Some((Expr::letrec(e_defns, e_body), m_body))
+                Some((GradualExpr::letrec(e_defns, e_body), m_body))
             }
-            Expr::UOp(op, e) => {
+            GradualExpr::UOp(op, e) => {
                 let (e, m) = self.generate_constraints(ctx.clone(), e)?;
 
                 let (op, m_dom, m_cod) = op.signature();
 
                 self.add_constraint(Constraint::Consistent(Pattern::Top(), m, m_dom));
 
-                Some((Expr::uop(op, e), m_cod))
+                Some((GradualExpr::uop(op, e), m_cod))
             }
-            Expr::BOp(op, e1, e2) => {
+            GradualExpr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
 
@@ -791,7 +791,7 @@ impl TypeInference {
                             m2.clone(),
                         ));
 
-                        Some((Expr::bop(op, e1, e2), m_cod))
+                        Some((GradualExpr::bop(op, e1, e2), m_cod))
                     }
                     BOpSignature::Overloaded {
                         dyn_op,
@@ -823,7 +823,7 @@ impl TypeInference {
 
                         self.add_constraints(cs);
 
-                        Some((Expr::bop(op, e1, e2), m_cod))
+                        Some((GradualExpr::bop(op, e1, e2), m_cod))
                     }
                 }
             }
@@ -1255,49 +1255,49 @@ mod test {
         options.strict_ifs = true;
         let mut ti = TypeInference::new(options);
 
-        ti.run(Ctx::empty(), &Expr::parse(s).unwrap())
+        ti.run(Ctx::empty(), &GradualExpr::parse(s).unwrap())
     }
 
     fn identity() -> SourceExpr {
         let x = String::from("x");
-        Expr::lam(x.clone(), None, Expr::Var(x))
+        GradualExpr::lam(x.clone(), None, GradualExpr::Var(x))
     }
 
     fn bool_identity() -> SourceExpr {
         let x = String::from("x");
-        Expr::lam(
+        GradualExpr::lam(
             x.clone(),
             Some(GradualType::Base(BaseType::Bool)),
-            Expr::Var(x),
+            GradualExpr::Var(x),
         )
     }
 
     fn dyn_identity() -> SourceExpr {
         let x = String::from("x");
-        Expr::lam(x.clone(), Some(GradualType::Dyn()), Expr::Var(x))
+        GradualExpr::lam(x.clone(), Some(GradualType::Dyn()), GradualExpr::Var(x))
     }
 
     fn neg() -> SourceExpr {
         let b = String::from("b");
-        Expr::lam(
+        GradualExpr::lam(
             b.clone(),
             None,
-            Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
+            GradualExpr::if_(GradualExpr::Var(b), GradualExpr::bool(false), GradualExpr::bool(true)),
         )
     }
 
     fn dyn_neg() -> SourceExpr {
         let b = String::from("b");
-        Expr::lam(
+        GradualExpr::lam(
             b.clone(),
             Some(GradualType::Dyn()),
-            Expr::if_(Expr::Var(b), Expr::bool(false), Expr::bool(true)),
+            GradualExpr::if_(GradualExpr::Var(b), GradualExpr::bool(false), GradualExpr::bool(true)),
         )
     }
 
     fn little_omega() -> SourceExpr {
-        let x = Expr::Var(String::from("x"));
-        Expr::lam(String::from("x"), None, Expr::app(x.clone(), x))
+        let x = GradualExpr::Var(String::from("x"));
+        GradualExpr::lam(String::from("x"), None, GradualExpr::app(x.clone(), x))
     }
 
     #[test]
@@ -1324,10 +1324,10 @@ mod test {
         let ve = ves.iter().next().unwrap();
 
         let (d, a) = match e {
-            Expr::Lam(x, MigrationalType::Choice(d, m1, m2), e) => {
+            GradualExpr::Lam(x, MigrationalType::Choice(d, m1, m2), e) => {
                 assert_eq!(*m1, MigrationalType::Dyn());
                 let y = match *e {
-                    Expr::Var(y) => y,
+                    GradualExpr::Var(y) => y,
                     _ => panic!("expected variable as lambda body"),
                 };
 
@@ -1363,10 +1363,10 @@ mod test {
     fn infer_dyn_const() {
         let x = String::from("x");
         let y = String::from("y");
-        let k = Expr::lam(
+        let k = GradualExpr::lam(
             x.clone(),
             Some(GradualType::Dyn()),
-            Expr::lam(y, Some(GradualType::Dyn()), Expr::Var(x)),
+            GradualExpr::lam(y, Some(GradualType::Dyn()), GradualExpr::Var(x)),
         );
 
         let (_e, m, ves) = TypeInference::infer(&k).unwrap();
@@ -1423,7 +1423,7 @@ mod test {
 
     #[test]
     fn infer_conditional() {
-        let e = Expr::if_(Expr::bool(true), Expr::bool(false), Expr::bool(true));
+        let e = GradualExpr::if_(GradualExpr::bool(true), GradualExpr::bool(false), GradualExpr::bool(true));
 
         let (_e, m, ves) = TypeInference::infer(&e).unwrap();
 
@@ -1433,7 +1433,7 @@ mod test {
 
     #[test]
     fn infer_neg_or_id() {
-        let e = Expr::if_(Expr::bool(true), dyn_neg(), dyn_identity());
+        let e = GradualExpr::if_(GradualExpr::bool(true), dyn_neg(), dyn_identity());
 
         let (_e, m, ves) = TypeInference::infer(&e).unwrap();
         // just one maximal eliminator
@@ -1452,16 +1452,16 @@ mod test {
     fn infer_very_dynamic() {
         let x = String::from("x");
         let y = String::from("y");
-        let e = Expr::lam(
+        let e = GradualExpr::lam(
             x.clone(),
             Some(GradualType::Dyn()),
-            Expr::lam(
+            GradualExpr::lam(
                 y.clone(),
                 Some(GradualType::Dyn()),
-                Expr::if_(
-                    Expr::Var(x.clone()),
-                    Expr::app(Expr::Var(y.clone()), Expr::Var(x)),
-                    Expr::app(neg(), Expr::Var(y)),
+                GradualExpr::if_(
+                    GradualExpr::Var(x.clone()),
+                    GradualExpr::app(GradualExpr::Var(y.clone()), GradualExpr::Var(x)),
+                    GradualExpr::app(neg(), GradualExpr::Var(y)),
                 ),
             ),
         );
@@ -1492,7 +1492,7 @@ mod test {
     }
 
     fn check_constant(c: Constant, b: BaseType) {
-        let (_e, m, ves) = TypeInference::infer(&Expr::Const(c)).unwrap();
+        let (_e, m, ves) = TypeInference::infer(&GradualExpr::Const(c)).unwrap();
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -1511,7 +1511,7 @@ mod test {
 
     #[test]
     fn infer_big_omega() {
-        let big_omega = Expr::app(little_omega(), little_omega());
+        let big_omega = GradualExpr::app(little_omega(), little_omega());
         let (_e, _m, ves) = TypeInference::infer(&big_omega).unwrap();
 
         // m will probably be a type variable, but who cares
@@ -1581,7 +1581,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            Expr::BOp(TargetBOp::EqualDyn, _, _) => (),
+            GradualExpr::BOp(TargetBOp::EqualDyn, _, _) => (),
             e => panic!("expected ==?, got {}", e),
         }
 
@@ -1591,7 +1591,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            Expr::BOp(TargetBOp::EqualInt, _, _) => (),
+            GradualExpr::BOp(TargetBOp::EqualInt, _, _) => (),
             e => panic!("expected ==i, got {}", e),
         }
 
@@ -1601,7 +1601,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            Expr::BOp(TargetBOp::EqualString, _, _) => (),
+            GradualExpr::BOp(TargetBOp::EqualString, _, _) => (),
             e => panic!("expected ==s, got {}", e),
         }
 
@@ -1611,7 +1611,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            Expr::BOp(TargetBOp::EqualBool, _, _) => (),
+            GradualExpr::BOp(TargetBOp::EqualBool, _, _) => (),
             e => panic!("expected ==b, got {}", e),
         }
 
@@ -1623,11 +1623,11 @@ mod test {
         let e = e.eliminate(ve);
         assert!(
             match e.clone() {
-                Expr::App(e1, _) => match *e1 {
-                    Expr::App(e1, _) => match *e1 {
-                        Expr::Lam(_, _, e) => match *e {
-                            Expr::Lam(_, _, e) => match *e {
-                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                GradualExpr::App(e1, _) => match *e1 {
+                    GradualExpr::App(e1, _) => match *e1 {
+                        GradualExpr::Lam(_, _, e) => match *e {
+                            GradualExpr::Lam(_, _, e) => match *e {
+                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1650,11 +1650,11 @@ mod test {
         let e = e.eliminate(ve);
         assert!(
             match e.clone() {
-                Expr::App(e1, _) => match *e1 {
-                    Expr::App(e1, _) => match *e1 {
-                        Expr::Lam(_, _, e) => match *e {
-                            Expr::Lam(_, _, e) => match *e {
-                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                GradualExpr::App(e1, _) => match *e1 {
+                    GradualExpr::App(e1, _) => match *e1 {
+                        GradualExpr::Lam(_, _, e) => match *e {
+                            GradualExpr::Lam(_, _, e) => match *e {
+                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1677,11 +1677,11 @@ mod test {
         let e = e.eliminate(ve);
         assert!(
             match e.clone() {
-                Expr::App(e1, _) => match *e1 {
-                    Expr::App(e1, _) => match *e1 {
-                        Expr::Lam(_, _, e) => match *e {
-                            Expr::Lam(_, _, e) => match *e {
-                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                GradualExpr::App(e1, _) => match *e1 {
+                    GradualExpr::App(e1, _) => match *e1 {
+                        GradualExpr::Lam(_, _, e) => match *e {
+                            GradualExpr::Lam(_, _, e) => match *e {
+                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1704,11 +1704,11 @@ mod test {
         let e = e.eliminate(ve);
         assert!(
             match e.clone() {
-                Expr::App(e1, _) => match *e1 {
-                    Expr::App(e1, _) => match *e1 {
-                        Expr::Lam(_, _, e) => match *e {
-                            Expr::Lam(_, _, e) => match *e {
-                                Expr::BOp(TargetBOp::EqualBool, _, _) => true,
+                GradualExpr::App(e1, _) => match *e1 {
+                    GradualExpr::App(e1, _) => match *e1 {
+                        GradualExpr::Lam(_, _, e) => match *e {
+                            GradualExpr::Lam(_, _, e) => match *e {
+                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1733,14 +1733,14 @@ mod test {
         let e = e.eliminate(ve);
         assert!(
             match e.clone() {
-                Expr::Let(_, _, e, _) => match *e {
-                    Expr::Lam(_, mx_got, e) => {
+                GradualExpr::Let(_, _, e, _) => match *e {
+                    GradualExpr::Lam(_, mx_got, e) => {
                         assert_eq!(mx, mx_got);
                         match *e {
-                            Expr::Lam(_, my_got, e) => {
+                            GradualExpr::Lam(_, my_got, e) => {
                                 assert_eq!(my, my_got);
                                 match *e {
-                                    Expr::BOp(op, _, _) => {
+                                    GradualExpr::BOp(op, _, _) => {
                                         assert_eq!(eq, op);
                                         true
                                     }
@@ -1789,31 +1789,31 @@ mod test {
         let (e, m) = infer_unique(r#""hi" + "bye""#);
         assert_eq!(m, MigrationalType::string());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
             e => panic!("expected +s, got {}", e),
         }
 
         let (e, m) = infer_unique(r#"__ + "bye""#);
         assert_eq!(m, MigrationalType::string());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
             e => panic!("expected +s, got {}", e),
         }
 
         let (e, m) = infer_unique(r#""bye" + "hi""#);
         assert_eq!(m, MigrationalType::string());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
             e => panic!("expected +s, got {}", e),
         }
 
         let (e, m) = infer_unique(r#"__ + __ + "hi""#);
         assert_eq!(m, MigrationalType::string());
         match e {
-            Expr::BOp(op, e1, _) => {
+            GradualExpr::BOp(op, e1, _) => {
                 assert_eq!(op, TargetBOp::PlusString);
                 match *e1 {
-                    Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+                    GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
                     e => panic!("expectes +s, got {}", e),
                 }
             }
@@ -1823,42 +1823,42 @@ mod test {
         let (e, m) = infer_unique("1 + 1");
         assert_eq!(m, MigrationalType::int());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
             e => panic!("expected +i, got {}", e),
         }
 
         let (e, m) = infer_unique("1 + __");
         assert_eq!(m, MigrationalType::int());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
             e => panic!("expected +i, got {}", e),
         }
 
         let (e, m) = infer_unique("1 + \"hi\"");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
 
         let (e, m) = infer_unique("true + false");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
 
         let (e, m) = infer_unique("true + 1");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
 
         let (e, m) = infer_unique("\"hi\" + false");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            Expr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
     }
@@ -1913,8 +1913,8 @@ mod test {
 
     #[test]
     fn ill_typed_ann() {
-        let (_e, _m, ves) = TypeInference::infer(&Expr::ann(
-            Expr::Const(Constant::Int(5)),
+        let (_e, _m, ves) = TypeInference::infer(&GradualExpr::ann(
+            GradualExpr::Const(Constant::Int(5)),
             Some(GradualType::Base(BaseType::Bool)),
         ))
         .unwrap();
@@ -1940,11 +1940,11 @@ mod test {
 
     #[test]
     fn well_typed_ann() {
-        let (_e, m, ves) = TypeInference::infer(&Expr::lam(
+        let (_e, m, ves) = TypeInference::infer(&GradualExpr::lam(
             "x".into(),
             Some(GradualType::Dyn()),
-            Expr::ann(
-                Expr::Var("x".into()),
+            GradualExpr::ann(
+                GradualExpr::Var("x".into()),
                 Some(GradualType::Base(BaseType::Int)),
             ),
         ))
@@ -2119,9 +2119,9 @@ mod test {
     #[test]
     fn infer_bad_constraints() {
         assert!(
-            TypeInference::infer(&Expr::app(
-                Expr::Const(Constant::Bool(true)),
-                Expr::Const(Constant::Bool(false)),
+            TypeInference::infer(&GradualExpr::app(
+                GradualExpr::Const(Constant::Bool(true)),
+                GradualExpr::Const(Constant::Bool(false)),
             ))
             .is_none(),
             "type inference should fail"
@@ -2173,16 +2173,16 @@ mod test {
         let fixed: String = "fixed".into();
         let width_func: String = "width_func".into();
 
-        let width: SourceExpr = Expr::lam(
+        let width: SourceExpr = GradualExpr::lam(
             fixed.clone(),
             Some(GradualType::Dyn()),
-            Expr::lam(
+            GradualExpr::lam(
                 width_func.clone(),
                 Some(GradualType::Dyn()),
-                Expr::if_(
-                    Expr::Var(fixed.clone()),
-                    Expr::app(Expr::Var(width_func.clone()), Expr::Var(fixed.clone())),
-                    Expr::app(Expr::Var(width_func.clone()), Expr::Const(Constant::Int(5))),
+                GradualExpr::if_(
+                    GradualExpr::Var(fixed.clone()),
+                    GradualExpr::app(GradualExpr::Var(width_func.clone()), GradualExpr::Var(fixed.clone())),
+                    GradualExpr::app(GradualExpr::Var(width_func.clone()), GradualExpr::Const(Constant::Int(5))),
                 ),
             ),
         );
