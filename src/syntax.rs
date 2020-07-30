@@ -9,7 +9,7 @@ pub const DEFAULT_WIDTH: usize = 80;
 lalrpop_mod!(parser);
 
 /// gamma
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BaseType {
     Bool,
     Int,
@@ -88,13 +88,13 @@ pub enum SourceBOp {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TargetUOp {
+pub enum ExplicitUOp {
     Not,
     Negate,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TargetBOp {
+pub enum ExplicitBOp {
     PlusInt,
     PlusString,
     PlusDyn,
@@ -109,7 +109,7 @@ pub enum TargetBOp {
     EqualDyn,
     LessThan,
     LessThanEqual,
-    Choice(Variation, Box<TargetBOp>, Box<TargetBOp>),
+    Choice(Variation, Box<ExplicitBOp>, Box<ExplicitBOp>),
 }
 
 /// x
@@ -124,15 +124,63 @@ pub enum GradualExpr<T, U, B> {
     Ann(Box<GradualExpr<T, U, B>>, T),
     Hole(String),
     App(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
-    If(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
-    Let(Variable, T, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
-    LetRec(Vec<(Variable, T, GradualExpr<T, U, B>)>, Box<GradualExpr<T, U, B>>),
+    If(
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+    ),
+    Let(
+        Variable,
+        T,
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+    ),
+    LetRec(
+        Vec<(Variable, T, GradualExpr<T, U, B>)>,
+        Box<GradualExpr<T, U, B>>,
+    ),
     UOp(U, Box<GradualExpr<T, U, B>>),
     BOp(B, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
 }
 
 pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
-pub type TargetExpr = GradualExpr<MigrationalType, TargetUOp, TargetBOp>;
+pub type TargetExpr = GradualExpr<MigrationalType, ExplicitUOp, ExplicitBOp>;
+
+/// gamma
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroundType {
+    Base(BaseType),
+    Fun,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Coercion {
+    Id,
+    /// gamma!
+    Tag(GroundType),
+    /// gamma?
+    Check(GroundType),
+    Fun(Box<Coercion>, Box<Coercion>),
+    Seq(Box<Coercion>, Box<Coercion>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExplicitExpr {
+    Const(Constant),
+    Var(Variable),
+    Lam(Variable, GradualType, Box<Self>),
+    Hole(String),
+    Coerce(Box<ExplicitExpr>, Coercion),
+    App(Box<ExplicitExpr>, Box<ExplicitExpr>),
+    If(Box<ExplicitExpr>, Box<ExplicitExpr>, Box<ExplicitExpr>),
+    Let(Variable, GradualType, Box<ExplicitExpr>, Box<ExplicitExpr>),
+    LetRec(
+        Vec<(Variable, GradualType, ExplicitExpr)>,
+        Box<ExplicitExpr>,
+    ),
+    UOp(ExplicitUOp, Box<ExplicitExpr>),
+    BOp(ExplicitBOp, Box<ExplicitExpr>, Box<ExplicitExpr>),
+}
 
 impl<T, U, B> GradualExpr<T, U, B> {
     pub fn bool(b: bool) -> Self {
@@ -192,8 +240,12 @@ impl<T, U, B> GradualExpr<T, U, B> {
             GradualExpr::App(e1, e2) => GradualExpr::app(e1.map_types(f), e2.map_types(f)),
             GradualExpr::Ann(e, t) => GradualExpr::ann(e.map_types(f), f(t)),
             GradualExpr::Hole(name) => GradualExpr::Hole(name),
-            GradualExpr::If(e1, e2, e3) => GradualExpr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
-            GradualExpr::Let(x, t, e1, e2) => GradualExpr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
+            GradualExpr::If(e1, e2, e3) => {
+                GradualExpr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f))
+            }
+            GradualExpr::Let(x, t, e1, e2) => {
+                GradualExpr::let_(x, f(t), e1.map_types(f), e2.map_types(f))
+            }
             GradualExpr::LetRec(defns, e2) => GradualExpr::letrec(
                 defns
                     .into_iter()
@@ -354,14 +406,15 @@ impl SourceExpr {
                     .append(e2.pretty(pp))
             }
             // TODO proper pretty printing with precedence
-            GradualExpr::UOp(op, e) => pp
-                .as_string(op)
-                .append(pp.space())
-                .append(if e.is_compound() {
-                    e.pretty(pp).parens()
-                } else {
-                    e.pretty(pp)
-                }),
+            GradualExpr::UOp(op, e) => {
+                pp.as_string(op)
+                    .append(pp.space())
+                    .append(if e.is_compound() {
+                        e.pretty(pp).parens()
+                    } else {
+                        e.pretty(pp)
+                    })
+            }
             GradualExpr::BOp(op, e1, e2) => pp.intersperse(
                 vec![
                     if e1.is_compound() {
@@ -390,25 +443,25 @@ impl Display for SourceExpr {
     }
 }
 
-impl TargetUOp {
+impl ExplicitUOp {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            TargetUOp::Negate => HashSet::new(),
-            TargetUOp::Not => HashSet::new(),
+            ExplicitUOp::Negate => HashSet::new(),
+            ExplicitUOp::Not => HashSet::new(),
         }
     }
 }
 
-impl TargetBOp {
+impl ExplicitBOp {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            TargetBOp::Choice(d, op1, op2) => op1.choices().union(op2.choices()).update(d),
+            ExplicitBOp::Choice(d, op1, op2) => op1.choices().union(op2.choices()).update(d),
             _ => HashSet::new(),
         }
     }
 
     pub fn choice(d: Variation, op1: Self, op2: Self) -> Self {
-        TargetBOp::Choice(
+        ExplicitBOp::Choice(
             d,
             Box::new(op1.select(d, Side::Left)),
             Box::new(op2.select(d, Side::Right)),
@@ -417,14 +470,14 @@ impl TargetBOp {
 
     pub fn select(&self, d: Variation, side: Side) -> Self {
         match self {
-            TargetBOp::Choice(d2, op1, op2) => {
+            ExplicitBOp::Choice(d2, op1, op2) => {
                 if d == *d2 {
                     match side {
                         Side::Left => op1.select(d, side),
                         Side::Right => op2.select(d, side),
                     }
                 } else {
-                    TargetBOp::choice(*d2, op1.select(d, side), op2.select(d, side))
+                    ExplicitBOp::choice(*d2, op1.select(d, side), op2.select(d, side))
                 }
             }
             _ => self.clone(),
@@ -561,14 +614,15 @@ impl TargetExpr {
                     .append(e2.pretty(pp))
             }
             // TODO proper pretty printing with precedence
-            GradualExpr::UOp(op, e) => pp
-                .as_string(op)
-                .append(pp.space())
-                .append(if e.is_compound() {
-                    e.pretty(pp).parens()
-                } else {
-                    e.pretty(pp)
-                }),
+            GradualExpr::UOp(op, e) => {
+                pp.as_string(op)
+                    .append(pp.space())
+                    .append(if e.is_compound() {
+                        e.pretty(pp).parens()
+                    } else {
+                        e.pretty(pp)
+                    })
+            }
             GradualExpr::BOp(op, e1, e2) => pp.intersperse(
                 vec![
                     if e1.is_compound() {
@@ -610,6 +664,50 @@ impl Display for BaseType {
             BaseType::Int => write!(f, "int"),
             BaseType::String => write!(f, "string"),
         }
+    }
+}
+
+impl ExplicitExpr {
+    pub fn bool(b: bool) -> Self {
+        ExplicitExpr::Const(Constant::Bool(b))
+    }
+
+    pub fn int(n: isize) -> Self {
+        ExplicitExpr::Const(Constant::Int(n))
+    }
+
+    pub fn lam(v: Variable, g: GradualType, e: Self) -> Self {
+        ExplicitExpr::Lam(v, g, Box::new(e))
+    }
+
+    pub fn lams(args: Vec<(String, GradualType)>, e: Self) -> Self {
+        args.into_iter()
+            .rev()
+            .fold(e, |e, (x, g)| ExplicitExpr::lam(x, g, e))
+    }
+
+    pub fn app(e1: Self, e2: Self) -> Self {
+        ExplicitExpr::App(Box::new(e1), Box::new(e2))
+    }
+
+    pub fn if_(e1: Self, e2: Self, e3: Self) -> Self {
+        ExplicitExpr::If(Box::new(e1), Box::new(e2), Box::new(e3))
+    }
+
+    pub fn let_(x: Variable, g: GradualType, e1: Self, e2: Self) -> Self {
+        ExplicitExpr::Let(x, g, Box::new(e1), Box::new(e2))
+    }
+
+    pub fn letrec(defns: Vec<(Variable, GradualType, Self)>, e2: Self) -> Self {
+        ExplicitExpr::LetRec(defns, Box::new(e2))
+    }
+
+    pub fn uop(op: ExplicitUOp, e: Self) -> Self {
+        ExplicitExpr::UOp(op, Box::new(e))
+    }
+
+    pub fn bop(op: ExplicitBOp, e1: Self, e2: Self) -> Self {
+        ExplicitExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 }
 
@@ -1089,34 +1187,34 @@ impl Display for SourceBOp {
     }
 }
 
-impl Display for TargetUOp {
+impl Display for ExplicitUOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            TargetUOp::Not => "!",
-            TargetUOp::Negate => "-",
+            ExplicitUOp::Not => "!",
+            ExplicitUOp::Negate => "-",
         };
         write!(f, "{}", s)
     }
 }
 
-impl Display for TargetBOp {
+impl Display for ExplicitBOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            TargetBOp::PlusInt => "+i",
-            TargetBOp::PlusString => "+s",
-            TargetBOp::PlusDyn => "+?",
-            TargetBOp::Minus => "-",
-            TargetBOp::Times => "*",
-            TargetBOp::Divide => "/",
-            TargetBOp::And => "&&",
-            TargetBOp::Or => "||",
-            TargetBOp::EqualBool => "==b",
-            TargetBOp::EqualInt => "==i",
-            TargetBOp::EqualString => "==s",
-            TargetBOp::EqualDyn => "==?",
-            TargetBOp::LessThan => "<",
-            TargetBOp::LessThanEqual => "<=",
-            TargetBOp::Choice(d, op1, op2) => return write!(f, "{}<{}, {}>", d, op1, op2),
+            ExplicitBOp::PlusInt => "+i",
+            ExplicitBOp::PlusString => "+s",
+            ExplicitBOp::PlusDyn => "+?",
+            ExplicitBOp::Minus => "-",
+            ExplicitBOp::Times => "*",
+            ExplicitBOp::Divide => "/",
+            ExplicitBOp::And => "&&",
+            ExplicitBOp::Or => "||",
+            ExplicitBOp::EqualBool => "==b",
+            ExplicitBOp::EqualInt => "==i",
+            ExplicitBOp::EqualString => "==s",
+            ExplicitBOp::EqualDyn => "==?",
+            ExplicitBOp::LessThan => "<",
+            ExplicitBOp::LessThanEqual => "<=",
+            ExplicitBOp::Choice(d, op1, op2) => return write!(f, "{}<{}, {}>", d, op1, op2),
         };
         write!(f, "{}", s)
     }
@@ -1146,7 +1244,11 @@ mod test {
 
         assert_eq!(
             SourceExpr::parse("\\x:?. x").unwrap(),
-            GradualExpr::lam("x".into(), Some(GradualType::Dyn()), GradualExpr::Var("x".into()))
+            GradualExpr::lam(
+                "x".into(),
+                Some(GradualType::Dyn()),
+                GradualExpr::Var("x".into())
+            )
         );
 
         assert_eq!(
@@ -1446,6 +1548,9 @@ mod test {
     fn strings() {
         se_round_trip(r#""hello there""#, r#""hello there""#);
         se_round_trip(r#"\x. "hello there""#, r#"\x. "hello there""#);
-        se_round_trip(r#"\x:string. "hello there""#, r#"\x : string. "hello there""#);
+        se_round_trip(
+            r#"\x:string. "hello there""#,
+            r#"\x : string. "hello there""#,
+        );
     }
 }

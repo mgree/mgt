@@ -94,16 +94,16 @@ impl TargetExpr {
     }
 }
 
-impl TargetUOp {
+impl ExplicitUOp {
     pub fn eliminate(self, _elim: &Eliminator) -> Self {
         self
     }
 }
 
-impl TargetBOp {
+impl ExplicitBOp {
     pub fn eliminate(self, elim: &Eliminator) -> Self {
         match self {
-            TargetBOp::Choice(d, op1, op2) => match elim.get(&d) {
+            ExplicitBOp::Choice(d, op1, op2) => match elim.get(&d) {
                 Side::Right => op2.eliminate(elim),
                 Side::Left => op1.eliminate(elim),
             },
@@ -499,15 +499,15 @@ impl SourceUOp {
     /// Returns the sole possibility for a unary operation, i.e.
     ///    [(op, dom, cod), ...]
     /// where `op` is a target operation, `dom` is the domain type, and `cod` is the return type.
-    fn signature(&self) -> (TargetUOp, MigrationalType, MigrationalType) {
+    fn signature(&self) -> (ExplicitUOp, MigrationalType, MigrationalType) {
         match self {
             SourceUOp::Negate => (
-                TargetUOp::Negate,
+                ExplicitUOp::Negate,
                 MigrationalType::int(),
                 MigrationalType::int(),
             ),
             SourceUOp::Not => (
-                TargetUOp::Not,
+                ExplicitUOp::Not,
                 MigrationalType::bool(),
                 MigrationalType::bool(),
             ),
@@ -518,11 +518,11 @@ impl SourceUOp {
 /// Different binary operation signatures.
 enum BOpSignature {
     /// Used when any consistent type is okay. Only for non-overloaded operations.
-    Simple(TargetBOp, MigrationalType, MigrationalType),
+    Simple(ExplicitBOp, MigrationalType, MigrationalType),
     Overloaded {
-        dyn_op: TargetBOp,
+        dyn_op: ExplicitBOp,
         dyn_cod: MigrationalType,
-        overloads: Vec<(TargetBOp, BaseType, MigrationalType)>,
+        overloads: Vec<(ExplicitBOp, BaseType, MigrationalType)>,
     },
 }
 
@@ -530,66 +530,66 @@ impl SourceBOp {
     fn signature(&self) -> BOpSignature {
         match self {
             SourceBOp::Plus => BOpSignature::Overloaded {
-                dyn_op: TargetBOp::PlusDyn,
+                dyn_op: ExplicitBOp::PlusDyn,
                 dyn_cod: MigrationalType::Dyn(),
                 overloads: vec![
-                    (TargetBOp::PlusInt, BaseType::Int, MigrationalType::int()),
+                    (ExplicitBOp::PlusInt, BaseType::Int, MigrationalType::int()),
                     (
-                        TargetBOp::PlusString,
+                        ExplicitBOp::PlusString,
                         BaseType::String,
                         MigrationalType::string(),
                     ),
                 ],
             },
             SourceBOp::Equal => BOpSignature::Overloaded {
-                dyn_op: TargetBOp::EqualDyn,
+                dyn_op: ExplicitBOp::EqualDyn,
                 dyn_cod: MigrationalType::bool(),
                 overloads: vec![
                     (
-                        TargetBOp::EqualBool,
+                        ExplicitBOp::EqualBool,
                         BaseType::Bool,
                         MigrationalType::bool(),
                     ),
-                    (TargetBOp::EqualInt, BaseType::Int, MigrationalType::bool()),
+                    (ExplicitBOp::EqualInt, BaseType::Int, MigrationalType::bool()),
                     (
-                        TargetBOp::EqualString,
+                        ExplicitBOp::EqualString,
                         BaseType::String,
                         MigrationalType::bool(),
                     ),
                 ],
             },
             SourceBOp::And => BOpSignature::Simple(
-                TargetBOp::And,
+                ExplicitBOp::And,
                 MigrationalType::bool(),
                 MigrationalType::bool(),
             ),
             SourceBOp::Or => BOpSignature::Simple(
-                TargetBOp::Or,
+                ExplicitBOp::Or,
                 MigrationalType::bool(),
                 MigrationalType::bool(),
             ),
             SourceBOp::Minus => BOpSignature::Simple(
-                TargetBOp::Minus,
+                ExplicitBOp::Minus,
                 MigrationalType::int(),
                 MigrationalType::int(),
             ),
             SourceBOp::Times => BOpSignature::Simple(
-                TargetBOp::Times,
+                ExplicitBOp::Times,
                 MigrationalType::int(),
                 MigrationalType::int(),
             ),
             SourceBOp::Divide => BOpSignature::Simple(
-                TargetBOp::Divide,
+                ExplicitBOp::Divide,
                 MigrationalType::int(),
                 MigrationalType::int(),
             ),
             SourceBOp::LessThan => BOpSignature::Simple(
-                TargetBOp::LessThan,
+                ExplicitBOp::LessThan,
                 MigrationalType::int(),
                 MigrationalType::bool(),
             ),
             SourceBOp::LessThanEqual => BOpSignature::Simple(
-                TargetBOp::LessThanEqual,
+                ExplicitBOp::LessThanEqual,
                 MigrationalType::int(),
                 MigrationalType::bool(),
             ),
@@ -807,7 +807,7 @@ impl TypeInference {
                         for (op2, b_dom2, m_cod2) in overloads.into_iter() {
                             let d = self.fresh_variation().biased(Side::Right);
 
-                            op = TargetBOp::choice(d, op, op2);
+                            op = ExplicitBOp::choice(d, op, op2);
                             let cs2 = Constraints(vec![
                                 Constraint::Ground(Pattern::Top(), m1.clone(), b_dom2),
                                 Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
@@ -1581,7 +1581,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            GradualExpr::BOp(TargetBOp::EqualDyn, _, _) => (),
+            GradualExpr::BOp(ExplicitBOp::EqualDyn, _, _) => (),
             e => panic!("expected ==?, got {}", e),
         }
 
@@ -1591,7 +1591,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            GradualExpr::BOp(TargetBOp::EqualInt, _, _) => (),
+            GradualExpr::BOp(ExplicitBOp::EqualInt, _, _) => (),
             e => panic!("expected ==i, got {}", e),
         }
 
@@ -1601,7 +1601,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            GradualExpr::BOp(TargetBOp::EqualString, _, _) => (),
+            GradualExpr::BOp(ExplicitBOp::EqualString, _, _) => (),
             e => panic!("expected ==s, got {}", e),
         }
 
@@ -1611,7 +1611,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         assert_eq!(m.eliminate(ve), MigrationalType::bool());
         match e.eliminate(ve) {
-            GradualExpr::BOp(TargetBOp::EqualBool, _, _) => (),
+            GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => (),
             e => panic!("expected ==b, got {}", e),
         }
 
@@ -1627,7 +1627,7 @@ mod test {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
                             GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1654,7 +1654,7 @@ mod test {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
                             GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1681,7 +1681,7 @@ mod test {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
                             GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1708,7 +1708,7 @@ mod test {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
                             GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(TargetBOp::EqualBool, _, _) => true,
+                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
                                 _ => false,
                             },
                             _ => false,
@@ -1724,7 +1724,7 @@ mod test {
         );
     }
 
-    fn infer_eq(s: &str, mx: MigrationalType, my: MigrationalType, eq: TargetBOp) {
+    fn infer_eq(s: &str, mx: MigrationalType, my: MigrationalType, eq: ExplicitBOp) {
         let (e, m, ves) = infer(s);
 
         assert_eq!(ves.len(), 1);
@@ -1766,21 +1766,21 @@ mod test {
             "let eq = \\x:?. \\y:?. x == y in eq 5 true && eq 0 0 && eq false false",
             MigrationalType::Dyn(),
             MigrationalType::Dyn(),
-            TargetBOp::EqualDyn,
+            ExplicitBOp::EqualDyn,
         );
 
         infer_eq(
             "let eq = \\x:?. \\y:?. x == y in eq false false && eq true false",
             MigrationalType::bool(),
             MigrationalType::bool(),
-            TargetBOp::EqualBool,
+            ExplicitBOp::EqualBool,
         );
 
         infer_eq(
             "let eq = \\x:?. \\y:?. x == y in eq 5 true",
             MigrationalType::int(),
             MigrationalType::bool(),
-            TargetBOp::EqualDyn,
+            ExplicitBOp::EqualDyn,
         );
     }
 
@@ -1789,21 +1789,21 @@ mod test {
         let (e, m) = infer_unique(r#""hi" + "bye""#);
         assert_eq!(m, MigrationalType::string());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusString),
             e => panic!("expected +s, got {}", e),
         }
 
         let (e, m) = infer_unique(r#"__ + "bye""#);
         assert_eq!(m, MigrationalType::string());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusString),
             e => panic!("expected +s, got {}", e),
         }
 
         let (e, m) = infer_unique(r#""bye" + "hi""#);
         assert_eq!(m, MigrationalType::string());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusString),
             e => panic!("expected +s, got {}", e),
         }
 
@@ -1811,9 +1811,9 @@ mod test {
         assert_eq!(m, MigrationalType::string());
         match e {
             GradualExpr::BOp(op, e1, _) => {
-                assert_eq!(op, TargetBOp::PlusString);
+                assert_eq!(op, ExplicitBOp::PlusString);
                 match *e1 {
-                    GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusString),
+                    GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusString),
                     e => panic!("expectes +s, got {}", e),
                 }
             }
@@ -1823,42 +1823,42 @@ mod test {
         let (e, m) = infer_unique("1 + 1");
         assert_eq!(m, MigrationalType::int());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusInt),
             e => panic!("expected +i, got {}", e),
         }
 
         let (e, m) = infer_unique("1 + __");
         assert_eq!(m, MigrationalType::int());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusInt),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusInt),
             e => panic!("expected +i, got {}", e),
         }
 
         let (e, m) = infer_unique("1 + \"hi\"");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
 
         let (e, m) = infer_unique("true + false");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
 
         let (e, m) = infer_unique("true + 1");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
 
         let (e, m) = infer_unique("\"hi\" + false");
         assert_eq!(m, MigrationalType::Dyn());
         match e {
-            GradualExpr::BOp(op, _, _) => assert_eq!(op, TargetBOp::PlusDyn),
+            GradualExpr::BOp(op, _, _) => assert_eq!(op, ExplicitBOp::PlusDyn),
             e => panic!("expected +?, got {}", e),
         }
     }
