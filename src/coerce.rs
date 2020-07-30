@@ -154,3 +154,42 @@ impl CoercionInsertion {
         ci.make_explicit(&Ctx::empty(), e)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use crate::infer::*;
+
+    fn has_no_coercions(s: &str) {
+        let (e, m, ves) = TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap();
+
+        for ve in ves.iter() {
+            let e = e.clone().eliminate(ve);
+            let m = m.clone().eliminate(ve);
+
+            assert!(e.choices().is_empty());
+            assert!(m.choices().is_empty());
+
+            let (e, g) = CoercionInsertion::run(e);
+            assert_eq!(m, g.into());
+
+            assert!(e.coercions().is_empty());
+        }
+    }
+
+    #[test]
+    fn statically_typed_no_coercions() {
+        has_no_coercions("2 + 2");
+        has_no_coercions(r#""hi" + "sup""#);
+        has_no_coercions("true == false");
+        has_no_coercions("1 == 0");
+        has_no_coercions(r#""a" == "b""#);
+
+        has_no_coercions(r"\x. x");
+        has_no_coercions(r"\x. x + 1");
+        has_no_coercions(r#"\x. x + "hi""#);
+        has_no_coercions(r"let id = \x. x in id 12");
+        has_no_coercions(r"let id = \x. x in if true then false else id false");
+    }
+}

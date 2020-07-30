@@ -718,6 +718,40 @@ impl ExplicitExpr {
     pub fn bop(op: ExplicitBOp, e1: Self, e2: Self) -> Self {
         ExplicitExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
+
+    pub fn coercions(self) -> Vec<Coercion> {
+        match self {
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_) => vec![],
+            ExplicitExpr::Lam(_, _, e) | ExplicitExpr::UOp(_, e) => e.coercions(),
+            ExplicitExpr::Coerce(e, c) => {
+                let mut cs = e.coercions();
+                cs.push(c.clone());
+                cs
+            }
+            ExplicitExpr::App(e1, e2)
+            | ExplicitExpr::Let(_, _, e1, e2)
+            | ExplicitExpr::BOp(_, e1, e2) => {
+                let mut cs = e1.coercions();
+                cs.extend(e2.coercions());
+                cs
+            }
+            ExplicitExpr::If(e1, e2, e3) => {
+                let mut cs = e1.coercions();
+                cs.extend(e2.coercions());
+                cs.extend(e3.coercions());
+                cs
+            }
+            ExplicitExpr::LetRec(defns, e2) => {
+                let mut cs = e2.coercions();
+
+                for (_, _, e1) in defns.into_iter() {
+                    cs.extend(e1.coercions());
+                }
+
+                cs
+            }
+        }
+    }
 }
 
 impl Coercion {
