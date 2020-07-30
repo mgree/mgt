@@ -510,11 +510,10 @@ impl SourceUOp {
 /// Different binary operation signatures.
 enum BOpSignature {
     /// Used when any consistent type is okay. Only for non-overloaded operations.
-    Simple(ExplicitBOp, MigrationalType, MigrationalType),
+    Simple(ExplicitBOp),
     Overloaded {
         dyn_op: ExplicitBOp,
-        dyn_cod: MigrationalType,
-        overloads: Vec<(ExplicitBOp, BaseType, MigrationalType)>,
+        overloads: Vec<ExplicitBOp>,
     },
 }
 
@@ -523,72 +522,23 @@ impl SourceBOp {
         match self {
             SourceBOp::Plus => BOpSignature::Overloaded {
                 dyn_op: ExplicitBOp::PlusDyn,
-                dyn_cod: MigrationalType::Dyn(),
-                overloads: vec![
-                    (ExplicitBOp::PlusInt, BaseType::Int, MigrationalType::int()),
-                    (
-                        ExplicitBOp::PlusString,
-                        BaseType::String,
-                        MigrationalType::string(),
-                    ),
-                ],
+                overloads: vec![ExplicitBOp::PlusInt, ExplicitBOp::PlusString],
             },
             SourceBOp::Equal => BOpSignature::Overloaded {
                 dyn_op: ExplicitBOp::EqualDyn,
-                dyn_cod: MigrationalType::bool(),
                 overloads: vec![
-                    (
-                        ExplicitBOp::EqualBool,
-                        BaseType::Bool,
-                        MigrationalType::bool(),
-                    ),
-                    (
-                        ExplicitBOp::EqualInt,
-                        BaseType::Int,
-                        MigrationalType::bool(),
-                    ),
-                    (
-                        ExplicitBOp::EqualString,
-                        BaseType::String,
-                        MigrationalType::bool(),
-                    ),
+                    ExplicitBOp::EqualBool,
+                    ExplicitBOp::EqualInt,
+                    ExplicitBOp::EqualString,
                 ],
             },
-            SourceBOp::And => BOpSignature::Simple(
-                ExplicitBOp::And,
-                MigrationalType::bool(),
-                MigrationalType::bool(),
-            ),
-            SourceBOp::Or => BOpSignature::Simple(
-                ExplicitBOp::Or,
-                MigrationalType::bool(),
-                MigrationalType::bool(),
-            ),
-            SourceBOp::Minus => BOpSignature::Simple(
-                ExplicitBOp::Minus,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            ),
-            SourceBOp::Times => BOpSignature::Simple(
-                ExplicitBOp::Times,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            ),
-            SourceBOp::Divide => BOpSignature::Simple(
-                ExplicitBOp::Divide,
-                MigrationalType::int(),
-                MigrationalType::int(),
-            ),
-            SourceBOp::LessThan => BOpSignature::Simple(
-                ExplicitBOp::LessThan,
-                MigrationalType::int(),
-                MigrationalType::bool(),
-            ),
-            SourceBOp::LessThanEqual => BOpSignature::Simple(
-                ExplicitBOp::LessThanEqual,
-                MigrationalType::int(),
-                MigrationalType::bool(),
-            ),
+            SourceBOp::And => BOpSignature::Simple(ExplicitBOp::And),
+            SourceBOp::Or => BOpSignature::Simple(ExplicitBOp::Or),
+            SourceBOp::Minus => BOpSignature::Simple(ExplicitBOp::Minus),
+            SourceBOp::Times => BOpSignature::Simple(ExplicitBOp::Times),
+            SourceBOp::Divide => BOpSignature::Simple(ExplicitBOp::Divide),
+            SourceBOp::LessThan => BOpSignature::Simple(ExplicitBOp::LessThan),
+            SourceBOp::LessThanEqual => BOpSignature::Simple(ExplicitBOp::LessThanEqual),
         }
     }
 }
@@ -807,7 +757,10 @@ impl TypeInference {
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
 
                 match op.signature() {
-                    BOpSignature::Simple(op, m_dom, m_cod) => {
+                    BOpSignature::Simple(op) => {
+                        let (g_dom, g_cod) = op.signature();
+                        let m_dom : MigrationalType = g_dom.into();
+
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
                             m_dom.clone(),
@@ -815,24 +768,28 @@ impl TypeInference {
                         ));
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
-                            m_dom.clone(),
+                            m_dom,
                             m2.clone(),
                         ));
 
-                        Some((GradualExpr::bop(op, e1, e2), m_cod))
+                        Some((GradualExpr::bop(op, e1, e2), g_cod.into()))
                     }
-                    BOpSignature::Overloaded {
-                        dyn_op,
-                        dyn_cod,
-                        overloads,
-                    } => {
+                    BOpSignature::Overloaded { dyn_op, overloads } => {
                         let mut op = dyn_op;
-                        let mut m_dom = MigrationalType::Dyn();
-                        let mut m_cod = dyn_cod;
+                        let (g_dom, g_cod) = op.signature().into();
+                        let mut m_dom : MigrationalType = g_dom.into();
+                        let mut m_cod : MigrationalType = g_cod.into();
 
                         let mut cs = Constraints::epsilon();
 
-                        for (op2, b_dom2, m_cod2) in overloads.into_iter() {
+                        for op2 in overloads.into_iter() {
+                            let (g_dom2, g_cod2) = op2.signature();
+
+                            let b_dom2 = match g_dom2 {
+                                GradualType::Base(b) => b,
+                                m => panic!("expected base type in operation signature, got {}", m),
+                            };
+
                             let d = self.fresh_variation().biased(Side::Right);
 
                             op = ExplicitBOp::choice(d, op, op2);
@@ -846,7 +803,7 @@ impl TypeInference {
                                 m_dom.clone(),
                                 MigrationalType::Base(b_dom2),
                             );
-                            m_cod = MigrationalType::choice(d, m_cod.clone(), m_cod2);
+                            m_cod = MigrationalType::choice(d, m_cod.clone(), g_cod2.into());
                         }
 
                         self.add_constraints(cs);
