@@ -178,6 +178,20 @@ mod test {
         }
     }
 
+    fn unique_coercion(s: &str) -> (ExplicitExpr, GradualType) {
+        let (e, m, ves) = TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap();
+
+        assert_eq!(ves.len(), 1);
+        let ve = ves.iter().next().unwrap();
+        let m = m.eliminate(ve);
+
+        let (e, g) = CoercionInsertion::run(e.eliminate(ve));
+
+        assert_eq!(m, g.clone().into());
+
+        (e, g)
+    }
+
     #[test]
     fn statically_typed_no_coercions() {
         has_no_coercions("2 + 2");
@@ -191,5 +205,28 @@ mod test {
         has_no_coercions(r#"\x. x + "hi""#);
         has_no_coercions(r"let id = \x. x in id 12");
         has_no_coercions(r"let id = \x. x in if true then false else id false");
+    }
+
+    #[test]
+    fn overloaded_plus_coercions() {
+        let (e, g) = unique_coercion("1 + true");
+
+        assert_eq!(g, GradualType::Dyn());
+        assert_eq!(
+            e,
+            ExplicitExpr::bop(
+                ExplicitBOp::PlusDyn,
+                ExplicitExpr::coerce(
+                    ExplicitExpr::Const(Constant::Int(1)),
+                    GradualType::int(),
+                    GradualType::Dyn()
+                ),
+                ExplicitExpr::coerce(
+                    ExplicitExpr::Const(Constant::Bool(true)),
+                    GradualType::bool(),
+                    GradualType::Dyn()
+                ),
+            )
+        );
     }
 }
