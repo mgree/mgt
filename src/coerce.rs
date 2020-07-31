@@ -473,4 +473,60 @@ mod test {
         accepted("(\\x.x) == \"hi\"");
     }
 
+    fn coerce(s1: &str, s2: &str) -> Coercion {
+        // Coercion::new has a bunch of nice asserts already
+        Coercion::new(
+            &GradualType::parse(s1).unwrap(),
+            &GradualType::parse(s2).unwrap(),
+        )
+    }
+
+    #[test]
+    fn contravariant_function_coercions() {
+        assert_eq!(
+            coerce("int -> ?", "? -> int"),
+            Coercion::fun(
+                Coercion::Check(GroundType::Base(BaseType::Int)),
+                Coercion::Check(GroundType::Base(BaseType::Int))
+            )
+        );
+
+        assert_eq!(
+            coerce("? -> int", "int -> ?"),
+            Coercion::fun(
+                Coercion::Tag(GroundType::Base(BaseType::Int)),
+                Coercion::Tag(GroundType::Base(BaseType::Int))
+            )
+        );
+
+        assert_eq!(
+            coerce("? -> int", "?"),
+            Coercion::seq(
+                Coercion::fun(
+                    Coercion::Id(GradualType::Dyn()),
+                    Coercion::Tag(GroundType::Base(BaseType::Int))
+                ),
+                Coercion::Tag(GroundType::Fun)
+            )
+        );
+
+        let c = Coercion::seq(coerce("? -> int", "?"), coerce("?", "bool"));
+        assert_eq!(
+            c,
+            Coercion::seq(
+                Coercion::seq(
+                    Coercion::fun(
+                        Coercion::Id(GradualType::Dyn()),
+                        Coercion::Tag(GroundType::Base(BaseType::Int))
+                    ),
+                    Coercion::Tag(GroundType::Fun)
+                ),
+                Coercion::Check(GroundType::Base(BaseType::Bool))
+            )
+        );
+        
+        let (src, tgt) = c.types().expect("well typed");
+        assert_eq!(src, GradualType::parse("? -> int").unwrap());
+        assert_eq!(tgt, GradualType::bool());
+    }
 }

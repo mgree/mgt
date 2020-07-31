@@ -712,7 +712,7 @@ impl ExplicitExpr {
     }
 
     pub fn coerce(e: Self, src: GradualType, tgt: GradualType) -> Self {
-        match Coercion::new(src, tgt) {
+        match Coercion::new(&src, &tgt) {
             Coercion::Id(_) => e,
             c => ExplicitExpr::Coerce(Box::new(e), c),
         }
@@ -941,38 +941,40 @@ impl Display for ExplicitExpr {
 }
 
 impl Coercion {
-    pub fn new(src: GradualType, tgt: GradualType) -> Self {
+    pub fn new(src: &GradualType, tgt: &GradualType) -> Self {
         if src == tgt {
-            return Coercion::Id(src);
+            return Coercion::Id(src.clone());
         }
 
         let c = match (src, tgt) {
-            (GradualType::Base(b), GradualType::Dyn()) => Coercion::Tag(GroundType::Base(b)),
-            (GradualType::Dyn(), GradualType::Base(b)) => Coercion::Check(GroundType::Base(b)),
+            (GradualType::Base(b), GradualType::Dyn()) => Coercion::Tag(GroundType::Base(*b)),
+            (GradualType::Dyn(), GradualType::Base(b)) => Coercion::Check(GroundType::Base(*b)),
             (src @ GradualType::Fun(_, _), GradualType::Dyn()) => Coercion::seq(
                 Coercion::new(
                     src,
-                    GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
+                    &GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
                 ),
                 Coercion::Tag(GroundType::Fun),
             ),
             (GradualType::Dyn(), src @ GradualType::Fun(_, _)) => Coercion::seq(
                 Coercion::Check(GroundType::Fun),
                 Coercion::new(
-                    GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
+                    &GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
                     src,
                 ),
             ),
             (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
-                Coercion::fun(Coercion::new(*g21, *g11), Coercion::new(*g12, *g22))
+                Coercion::fun(Coercion::new(g21, g11), Coercion::new(g12, g22))
             }
             (src, tgt) => {
                 error!("bad coercion from {} to {}, generating id", src, tgt);
-                Coercion::Id(src)
+                Coercion::Id(src.clone())
             }
         };
 
-        assert!(c.well_typed());
+        let (g_src, g_tgt) = c.types().expect("well typed coercion");
+        assert_eq!(src, &g_src);
+        assert_eq!(tgt, &g_tgt);
 
         c
     }
@@ -1006,7 +1008,7 @@ impl Coercion {
         self.types().is_some()
     }
 
-    fn seq(c1: Self, c2: Self) -> Self {
+    pub fn seq(c1: Self, c2: Self) -> Self {
         match (c1, c2) {
             (Coercion::Id(_), c) | (c, Coercion::Id(_)) => c,
             (Coercion::Tag(b1), Coercion::Check(b2)) => {
@@ -1034,7 +1036,7 @@ impl Coercion {
         }
     }
 
-    fn fun(c1: Self, c2: Self) -> Self {
+    pub(crate) fn fun(c1: Self, c2: Self) -> Self {
         match (c1, c2) {
             (Coercion::Id(g1), Coercion::Id(g2)) => Coercion::Id(GradualType::fun(g1, g2)),
             (c1, c2) => Coercion::Fun(Box::new(c1), Box::new(c2)),
