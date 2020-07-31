@@ -1169,7 +1169,7 @@ impl TypeInference {
         debug!("  pi = {}", self.pattern);
 
         if self.pattern == Pattern::Bot() {
-            error!("constraint generation produced false pattern (i.e., statically untypable");
+            error!("constraint generation produced false pattern (i.e., statically untypable)");
             return None;
         }
 

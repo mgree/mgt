@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use log::{error, warn, info};
+use log::{error, info, warn};
 
 use im_rc::HashSet;
 
@@ -817,12 +817,12 @@ impl ExplicitExpr {
                 .append(pp.line())
                 .append(t.pretty(pp))
                 .group(),
-            ExplicitExpr::Coerce(e, c) => e
+            ExplicitExpr::Coerce(e, c) => c
                 .pretty(pp)
-                .append(pp.space())
-                .append(pp.text(":"))
+                .brackets()
+                .group()
                 .append(pp.line())
-                .append(c.pretty(pp).nest(2).group())
+                .append(e.pretty(pp).nest(2))
                 .group(),
             ExplicitExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
@@ -1024,7 +1024,10 @@ impl Coercion {
             (Coercion::Check(b1), Coercion::Tag(b2)) => {
                 // TODO make this flaggable?
                 if b1 == b2 {
-                    info!("applied (unsafe) ψ optimization to skip check/tag on {}", b1);
+                    info!(
+                        "applied (unsafe) ψ optimization to skip check/tag on {}",
+                        b1
+                    );
                     Coercion::Id(b1.into())
                 } else {
                     let c =
