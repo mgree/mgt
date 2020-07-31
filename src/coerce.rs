@@ -471,6 +471,7 @@ mod test {
         accepted("if 0 + 1 then 1 else true");
         accepted("(\\x.x) == (\\y. y)");
         accepted("(\\x.x) == \"hi\"");
+        accepted("false && (if true then (true:?) else (0:?))");
     }
 
     fn coerce(s1: &str, s2: &str) -> Coercion {
@@ -524,7 +525,7 @@ mod test {
                 Coercion::Check(GroundType::Base(BaseType::Bool))
             )
         );
-        
+
         let (src, tgt) = c.types().expect("well typed");
         assert_eq!(src, GradualType::parse("? -> int").unwrap());
         assert_eq!(tgt, GradualType::bool());
