@@ -262,7 +262,7 @@ impl<T, U, B> GradualExpr<T, U, B> {
 
     pub fn is_compound(&self) -> bool {
         match self {
-            GradualExpr::Var(_) | GradualExpr::Const(_) => false,
+            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_) => false,
             _ => true,
         }
     }
@@ -669,6 +669,15 @@ impl Display for BaseType {
     }
 }
 
+impl Display for GroundType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GroundType::Base(b) => b.fmt(f),
+            GroundType::Fun => write!(f, "fun"),
+        }
+    }
+}
+
 impl ExplicitExpr {
     pub fn bool(b: bool) -> Self {
         ExplicitExpr::Const(Constant::Bool(b))
@@ -719,6 +728,20 @@ impl ExplicitExpr {
         ExplicitExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 
+    pub fn is_compound(&self) -> bool {
+        match self {
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_) => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_app(&self) -> bool {
+        match self {
+            ExplicitExpr::App(_, _) => true,
+            _ => false,
+        }
+    }
+
     pub fn coercions(self) -> Vec<Coercion> {
         match self {
             ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_) => vec![],
@@ -751,6 +774,149 @@ impl ExplicitExpr {
                 cs
             }
         }
+    }
+
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            ExplicitExpr::Var(x) => pp.text(x),
+            ExplicitExpr::Const(c) => pp.as_string(c),
+            ExplicitExpr::Lam(x, t, e) => pp
+                .text("\\")
+                .append(pp.text(x))
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .append(pp.text("."))
+                .append(pp.line())
+                .append(e.pretty(pp).nest(2))
+                .group(),
+            ExplicitExpr::Hole(name) => pp.text(name),
+            ExplicitExpr::Coerce(e, c) => e
+                .pretty(pp)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.line())
+                .append(c.pretty(pp).nest(2).group())
+                .group(),
+            ExplicitExpr::App(e1, e2) => {
+                let mut d1 = e1.pretty(pp);
+                let mut d2 = e2.pretty(pp);
+
+                if e1.is_compound() && !e1.is_app() {
+                    d1 = d1.parens();
+                }
+
+                if e2.is_compound() {
+                    d2 = d2.parens();
+                }
+
+                d1.append(pp.line()).append(d2.nest(2)).group()
+            }
+            ExplicitExpr::If(e1, e2, e3) => {
+                let d_cond = pp
+                    .text("if")
+                    .append(pp.space())
+                    .append(e1.pretty(pp).nest(2))
+                    .append(pp.line());
+
+                let d_then = pp
+                    .text("then")
+                    .append(pp.line())
+                    .append(e2.pretty(pp).nest(2))
+                    .append(pp.line());
+
+                let d_else = pp
+                    .text("else")
+                    .append(pp.line())
+                    .append(e3.pretty(pp).nest(2));
+
+                pp.concat(vec![d_cond, d_then, d_else]).group()
+            }
+            ExplicitExpr::Let(x, t, e1, e2) => {
+                let d_bind = pp
+                    .intersperse(
+                        vec![
+                            pp.text("let"),
+                            pp.text(x),
+                            pp.text(":"),
+                            t.pretty(pp),
+                            pp.text("="),
+                        ],
+                        pp.space(),
+                    )
+                    .group();
+
+                pp.intersperse(
+                    vec![d_bind, e1.pretty(pp).nest(2), pp.text("in")],
+                    pp.line(),
+                )
+                .append(pp.hardline())
+                .append(e2.pretty(pp))
+            }
+            ExplicitExpr::LetRec(defns, e2) => {
+                let letrec = pp.text("let rec").append(pp.space());
+
+                let bindings = pp.intersperse(
+                    defns.into_iter().map(|(x, t, e1)| {
+                        pp.intersperse(
+                            vec![pp.text(x), pp.text(":"), t.pretty(pp), pp.text("=")],
+                            pp.space(),
+                        )
+                        .group()
+                        .append(pp.line())
+                        .append(e1.pretty(pp).nest(2))
+                    }),
+                    pp.text("and").enclose(pp.hardline(), pp.hardline()),
+                );
+
+                letrec
+                    .append(bindings)
+                    .append(pp.hardline())
+                    .append(pp.text("in"))
+                    .append(pp.line())
+                    .append(e2.pretty(pp))
+            }
+            // TODO proper pretty printing with precedence
+            ExplicitExpr::UOp(op, e) => {
+                pp.as_string(op)
+                    .append(pp.space())
+                    .append(if e.is_compound() {
+                        e.pretty(pp).parens()
+                    } else {
+                        e.pretty(pp)
+                    })
+            }
+            ExplicitExpr::BOp(op, e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.as_string(op),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.space(),
+            ),
+        }
+    }
+}
+
+impl Display for ExplicitExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
     }
 }
 
@@ -796,7 +962,7 @@ impl Coercion {
                 } else {
                     let c =
                         Coercion::Seq(Box::new(Coercion::Tag(b1)), Box::new(Coercion::Check(b2)));
-                    warn!("bound-to-fail coercion: {:?}", c);
+                    warn!("bound-to-fail coercion: {}", c);
                     c
                 }
             }
@@ -807,7 +973,7 @@ impl Coercion {
                 } else {
                     let c =
                         Coercion::Seq(Box::new(Coercion::Check(b1)), Box::new(Coercion::Tag(b2)));
-                    warn!("absurd/ill-typed coercion: {:?}", c);
+                    warn!("absurd/ill-typed coercion: {}", c);
                     c
                 }
             }
@@ -820,6 +986,62 @@ impl Coercion {
             (Coercion::Id, Coercion::Id) => Coercion::Id,
             (c1, c2) => Coercion::Fun(Box::new(c1), Box::new(c2)),
         }
+    }
+
+    fn is_compound(&self) -> bool {
+        match self {
+            Coercion::Fun(_, _) | Coercion::Seq(_, _) => true,
+            Coercion::Id | Coercion::Check(_) | Coercion::Tag(_) => false,
+        }
+    }
+
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            Coercion::Id => pp.text("ɩ"),
+            Coercion::Check(g) => pp.as_string(g).append(pp.text("?")),
+            Coercion::Tag(g) => pp.as_string(g).append(pp.text("!")),
+            Coercion::Fun(c1, c2) => {
+                let d1 = c1.pretty(pp).group();
+
+                let d1 = if c1.is_compound() { d1.parens() } else { d1 };
+
+                let d2 = c2.pretty(pp).group();
+                let d2 = if c2.is_compound() { d2.parens() } else { d2 };
+
+                d1.append(pp.space())
+                    .append(pp.text("↝"))
+                    .append(pp.line())
+                    .append(d2)
+                    .group()
+            }
+            Coercion::Seq(c1, c2) => {
+                let d1 = c1.pretty(pp).group();
+
+                let d1 = if c1.is_compound() { d1.parens() } else { d1 };
+
+                let d2 = c2.pretty(pp).group();
+                let d2 = if c2.is_compound() { d2.parens() } else { d2 };
+
+                d1.append(pp.space())
+                    .append(pp.text(";"))
+                    .append(pp.line())
+                    .append(d2)
+                    .group()
+            }
+        }
+    }
+}
+
+impl Display for Coercion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
     }
 }
 

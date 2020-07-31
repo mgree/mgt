@@ -57,7 +57,7 @@ impl CoercionInsertion {
                 let (g11, g12) = match g1.clone() {
                     GradualType::Fun(g11, g12) => (*g11, *g12),
                     GradualType::Dyn() => (GradualType::Dyn(), GradualType::Dyn()),
-                    g => panic!("applied non-function: {:?} : {}", e1, g),
+                    g => panic!("applied non-function: {} : {}", e1, g),
                 };
 
                 (

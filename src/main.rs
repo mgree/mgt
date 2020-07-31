@@ -90,7 +90,7 @@ fn main() {
         let (e, g) = CoercionInsertion::run(e);
         assert_eq!(m, g.into());
 
-        println!("{:?}\n: {}", e, m);
+        println!("{}\n: {}", e, m);
     }
 
     std::process::exit(0);
