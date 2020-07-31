@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use log::{error, warn};
+use log::{error, warn, info};
 
 use im_rc::HashSet;
 
@@ -1024,6 +1024,7 @@ impl Coercion {
             (Coercion::Check(b1), Coercion::Tag(b2)) => {
                 // TODO make this flaggable?
                 if b1 == b2 {
+                    info!("applied (unsafe) ψ optimization to skip check/tag on {}", b1);
                     Coercion::Id(b1.into())
                 } else {
                     let c =
