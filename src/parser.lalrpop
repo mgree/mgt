@@ -47,7 +47,7 @@ TypeAnnot: GradualType = {
 pub Expr: SourceExpr = {
     "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => GradualExpr::if_(c, t, e),
     "\\" <args:Args> "." <e:Expr> => GradualExpr::lams(args, e),
-    "assume" <x:Id> <t:TypeAnnot?> "in" <e2:Expr> => GradualExpr::let_(x.clone(), t, GradualExpr::Hole("__".to_string() + &x), e2),
+    "assume" <x:Id> <t:TypeAnnot?> "in" <e2:Expr> => GradualExpr::let_(x.clone(), t, GradualExpr::Hole("__".to_string() + &x, None), e2),
     "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(x, t, e1, e2),
     "let" <f:Id> <args:Args> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(f, None, GradualExpr::lams(args, e1), e2),
     "let" "rec" <defns:RecDefns> "in" <e2:Expr> => GradualExpr::letrec(defns, e2),
@@ -128,7 +128,7 @@ StrLit: String = <r#""[^"]*""#> => {
 };
 
 Hole: SourceExpr = {
-  r"__[[:alnum:]_']*" => GradualExpr::Hole(<>.to_string()),
+  r"__[[:alnum:]_']*" => GradualExpr::Hole(<>.to_string(), None),
 };
 
 Id: Variable = <r"[[:alpha:]_][[:alnum:]_']*"> => <>.to_string();

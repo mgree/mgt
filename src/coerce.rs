@@ -49,7 +49,11 @@ impl CoercionInsertion {
 
                 (ExplicitExpr::coerce(e, g, g_ann.clone()), g_ann)
             }
-            GradualExpr::Hole(name) => (ExplicitExpr::Hole(name), GradualType::Dyn()),
+            GradualExpr::Hole(name, m) => {
+                let g = m.try_gradual().expect("malformed annotation");
+
+                (ExplicitExpr::Hole(name, g.clone()), g)
+            }
             GradualExpr::App(e1, e2) => {
                 let (e1, g1) = self.make_explicit(ctx, *e1);
                 let (e2, g2) = self.make_explicit(ctx, *e2);
@@ -205,6 +209,25 @@ mod test {
         has_no_coercions(r#"\x. x + "hi""#);
         has_no_coercions(r"let id = \x. x in id 12");
         has_no_coercions(r"let id = \x. x in if true then false else id false");
+
+        has_no_coercions("__ + 1");
+        has_no_coercions("__ + \"hi\"");
+        has_no_coercions("(\\x. x * 1) __should_be_int");
+    }
+
+    #[test]
+    fn exact_holes() {
+        let (e, g) = unique_coercion("__num + 1");
+
+        assert_eq!(g, GradualType::int());
+        assert_eq!(
+            e,
+            ExplicitExpr::bop(
+                ExplicitBOp::PlusInt,
+                ExplicitExpr::Hole("__num".into(), GradualType::int()),
+                ExplicitExpr::Const(Constant::Int(1))
+            )
+        );
     }
 
     #[test]

@@ -72,7 +72,7 @@ impl TargetExpr {
             GradualExpr::Lam(x, t, e) => GradualExpr::lam(x, t.eliminate(elim), e.eliminate(elim)),
             GradualExpr::App(e1, e2) => GradualExpr::app(e1.eliminate(elim), e2.eliminate(elim)),
             GradualExpr::Ann(e, t) => GradualExpr::ann(e.eliminate(elim), t.eliminate(elim)),
-            GradualExpr::Hole(name) => GradualExpr::Hole(name),
+            GradualExpr::Hole(name, t) => GradualExpr::Hole(name, t.eliminate(elim)),
             GradualExpr::If(e1, e2, e3) => {
                 GradualExpr::if_(e1.eliminate(elim), e2.eliminate(elim), e3.eliminate(elim))
             }
@@ -654,10 +654,14 @@ impl TypeInference {
 
                 Some((GradualExpr::ann(e, m), m_ann))
             }
-            GradualExpr::Hole(name) => Some((
-                GradualExpr::Hole(name.clone()),
-                MigrationalType::Var(self.fresh_variable()),
-            )),
+            GradualExpr::Hole(name, t) => {
+                if let Some(t) = t {
+                    warn!("unexpected typed hole {} : {}", name, t);
+                }
+                let m = self.freshen_annotation(t);
+
+                Some((GradualExpr::Hole(name.clone(), m.clone()), m))
+            }
             GradualExpr::App(e_fun, e_arg) => {
                 let (e_fun, m_fun) = self.generate_constraints(ctx.clone(), e_fun)?;
                 let (e_arg, m_arg) = self.generate_constraints(ctx, e_arg)?;
@@ -759,7 +763,7 @@ impl TypeInference {
                 match op.signature() {
                     BOpSignature::Simple(op) => {
                         let (g_dom, g_cod) = op.signature();
-                        let m_dom : MigrationalType = g_dom.into();
+                        let m_dom: MigrationalType = g_dom.into();
 
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
@@ -777,8 +781,8 @@ impl TypeInference {
                     BOpSignature::Overloaded { dyn_op, overloads } => {
                         let mut op = dyn_op;
                         let (g_dom, g_cod) = op.signature().into();
-                        let mut m_dom : MigrationalType = g_dom.into();
-                        let mut m_cod : MigrationalType = g_cod.into();
+                        let mut m_dom: MigrationalType = g_dom.into();
+                        let mut m_cod: MigrationalType = g_cod.into();
 
                         let mut cs = Constraints::epsilon();
 

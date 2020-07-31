@@ -124,7 +124,7 @@ pub enum GradualExpr<T, U, B> {
     Var(Variable),
     Lam(Variable, T, Box<Self>),
     Ann(Box<GradualExpr<T, U, B>>, T),
-    Hole(String),
+    Hole(String, T),
     App(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
     If(
         Box<GradualExpr<T, U, B>>,
@@ -171,7 +171,7 @@ pub enum ExplicitExpr {
     Const(Constant),
     Var(Variable),
     Lam(Variable, GradualType, Box<Self>),
-    Hole(String),
+    Hole(String, GradualType),
     Coerce(Box<ExplicitExpr>, Coercion),
     App(Box<ExplicitExpr>, Box<ExplicitExpr>),
     If(Box<ExplicitExpr>, Box<ExplicitExpr>, Box<ExplicitExpr>),
@@ -241,7 +241,7 @@ impl<T, U, B> GradualExpr<T, U, B> {
             GradualExpr::Lam(x, t, e) => GradualExpr::lam(x, f(t), e.map_types(f)),
             GradualExpr::App(e1, e2) => GradualExpr::app(e1.map_types(f), e2.map_types(f)),
             GradualExpr::Ann(e, t) => GradualExpr::ann(e.map_types(f), f(t)),
-            GradualExpr::Hole(name) => GradualExpr::Hole(name),
+            GradualExpr::Hole(name, t) => GradualExpr::Hole(name, f(t)),
             GradualExpr::If(e1, e2, e3) => {
                 GradualExpr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f))
             }
@@ -262,7 +262,7 @@ impl<T, U, B> GradualExpr<T, U, B> {
 
     pub fn is_compound(&self) -> bool {
         match self {
-            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_) => false,
+            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _) => false,
             _ => true,
         }
     }
@@ -309,7 +309,14 @@ impl SourceExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            GradualExpr::Hole(name) => pp.text(name),
+            GradualExpr::Hole(name, None) => pp.text(name),
+            GradualExpr::Hole(name, Some(t)) => pp
+                .text(name)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .group(),
             GradualExpr::Ann(e, None) => e.pretty(pp),
             GradualExpr::Ann(e, Some(t)) => e
                 .pretty(pp)
@@ -490,8 +497,9 @@ impl ExplicitBOp {
 impl TargetExpr {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            GradualExpr::Const(_) | GradualExpr::Var(_) | GradualExpr::Hole(_) => HashSet::new(),
+            GradualExpr::Const(_) | GradualExpr::Var(_) => HashSet::new(),
             GradualExpr::Lam(_x, t, e) => t.choices().union(e.choices()),
+            GradualExpr::Hole(_, t) => t.choices(),
             GradualExpr::Ann(e, t) => e.choices().union(t.choices()),
             GradualExpr::App(e1, e2) => e1.choices().union(e2.choices()),
             GradualExpr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
@@ -529,7 +537,13 @@ impl TargetExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            GradualExpr::Hole(name) => pp.text(name),
+            GradualExpr::Hole(name, t) => pp
+                .text(name)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .group(),
             GradualExpr::Ann(e, t) => e
                 .pretty(pp)
                 .append(pp.space())
@@ -730,7 +744,7 @@ impl ExplicitExpr {
 
     pub fn is_compound(&self) -> bool {
         match self {
-            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_) => false,
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => false,
             _ => true,
         }
     }
@@ -744,7 +758,7 @@ impl ExplicitExpr {
 
     pub fn coercions(self) -> Vec<Coercion> {
         match self {
-            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_) => vec![],
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => vec![],
             ExplicitExpr::Lam(_, _, e) | ExplicitExpr::UOp(_, e) => e.coercions(),
             ExplicitExpr::Coerce(e, c) => {
                 let mut cs = e.coercions();
@@ -796,7 +810,13 @@ impl ExplicitExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            ExplicitExpr::Hole(name) => pp.text(name),
+            ExplicitExpr::Hole(name, t) => pp
+                .text(name)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.line())
+                .append(t.pretty(pp))
+                .group(),
             ExplicitExpr::Coerce(e, c) => e
                 .pretty(pp)
                 .append(pp.space())
@@ -1922,12 +1942,12 @@ mod test {
         se_round_trip("__x", "__x");
 
         match SourceExpr::parse("__").unwrap() {
-            GradualExpr::Hole(name) => assert_eq!(name, "__"),
+            GradualExpr::Hole(name, None) => assert_eq!(name, "__"),
             e => panic!("expected hole, got {}", e),
         };
 
         match SourceExpr::parse("__x").unwrap() {
-            GradualExpr::Hole(name) => assert_eq!(name, "__x"),
+            GradualExpr::Hole(name, None) => assert_eq!(name, "__x"),
             e => panic!("expected hole, got {}", e),
         };
 
