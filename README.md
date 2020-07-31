@@ -96,7 +96,8 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 - Other language features
   + Ensure that choices don't show up in the final, eliminated AST
     - [ ] Using tests, or...
-    - [ ] `eliminate` operation that changes types to really have no choice left (would need more than one `Expr`, trait)
+    - [ ] `eliminate` operation that changes types to really have no choice left
+          (would need more than one `Expr`, trait)
   + [ ] Let polymorphism and type schemes (need to separate unification
         variables and true type variables). First cut: just have `Ctx` track
         type schemes, instantiating at every variable. Most things will be
@@ -111,10 +112,29 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Dynamizer (from `SourceExpr`)
 
+- [ ] Understand top-level weirdness. `if true then (true : ?) else (0 : ?)`
+      will type check just fine in both lax and strict regimes.  Coercion
+      insertion will tag both branches as bool, but the migrational inference
+      says the whole thing has either type bool or int, depending. At present,
+      this crashes on an assertion in main. If you put it in a context, e.g.,
+      `false && ...`, then the right coercions will be generated and everything
+      is fine.
+
+      Annotating one branch seems to work fine. It seems like you could keep 
+      more information in an if about which return type you'd like it to be.
+      Simply putting in annotations doens't quite cut it, because elimination
+      will leave one side ill-typed: in the migration where the whole 
+      conditional has type `int`, the `true : int` annotation you get will break
+      things.
+
+      It's a bad situation. On the one hand, coercion insertion doesn't give you
+      the exact inferred type. On the other hand, the inferred type sucks!
+
 # Acknowledgments
 
 Conversations with [Arjun Guha](https://twitter.com/arjunguha), [Colin
-Gordon](https://twitter.com/csgordon/), and [Ron
-Garcia](https://twitter.com/rg9119) were helpful.
+Gordon](https://twitter.com/csgordon/), [Ron
+Garcia](https://twitter.com/rg9119), and [Jens
+Palsberg](http://web.cs.ucla.edu/~palsberg/) were helpful.
 [@jorendorff](https://twitter.com/jorendorff) gave a tip on concrete syntax.
   
