@@ -103,6 +103,12 @@ other bits of the inference. If you want something to be `?`, write `assume foo
         monomorphic, but assumes can give us polymorphism. Operation resolution
         may need to yield type schemes rather than types, too
 
+- [ ] Implement Rastogi et al.'s "The Ins and Outs of Gradual Type Inference".
+
+- [ ] Interpreter
+
+- [ ] Dynamizer (from `SourceExpr`)
+
 # Acknowledgments
 
 Conversations with [Arjun Guha](https://twitter.com/arjunguha), [Colin
