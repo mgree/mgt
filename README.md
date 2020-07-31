@@ -105,6 +105,8 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Implement Rastogi et al.'s "The Ins and Outs of Gradual Type Inference".
 
+- [ ] Herder-style scoring?
+
 - [ ] Interpreter
 
 - [ ] Dynamizer (from `SourceExpr`)
