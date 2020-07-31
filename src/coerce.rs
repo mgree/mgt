@@ -1,5 +1,8 @@
 use im_rc::HashMap;
 
+use log::error;
+
+use crate::infer::BOpSignature;
 use crate::syntax::*;
 
 // Gamma
@@ -157,6 +160,188 @@ impl CoercionInsertion {
 
         ci.make_explicit(&Ctx::empty(), e)
     }
+
+    fn dynamize(&self, ctx: &Ctx, e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
+        match e {
+            GradualExpr::Const(c) => Some((ExplicitExpr::Const(c.clone()), c.into())),
+            GradualExpr::Var(x) => {
+                let g = ctx.lookup(&x)?.clone();
+                Some((ExplicitExpr::Var(x), g))
+            }
+            GradualExpr::Lam(x, dom, e) => {
+                let dom = dom.unwrap_or(GradualType::Dyn());
+                let (e, cod) = self.dynamize(&ctx.extend(x.clone(), dom.clone()), *e)?;
+
+                Some((
+                    ExplicitExpr::lam(x, dom.clone(), e),
+                    GradualType::fun(dom, cod),
+                ))
+            }
+            GradualExpr::Ann(e, g) => {
+                let g_ann = g.unwrap_or(GradualType::Dyn());
+
+                let (e, g) = self.dynamize(ctx, *e)?;
+
+                Some((ExplicitExpr::coerce(e, g, g_ann.clone()), g_ann))
+            }
+            GradualExpr::Hole(name, g) => {
+                let g = g.unwrap_or(GradualType::Dyn());
+
+                Some((ExplicitExpr::Hole(name, g.clone()), g))
+            }
+            GradualExpr::App(e1, e2) => {
+                let (e1, g1) = self.dynamize(ctx, *e1)?;
+                let (e2, g2) = self.dynamize(ctx, *e2)?;
+
+                let (g11, g12) = match g1.clone() {
+                    GradualType::Fun(g11, g12) => (*g11, *g12),
+                    GradualType::Dyn() => (GradualType::Dyn(), GradualType::Dyn()),
+                    g => {
+                        error!("applied non-function: {} : {}", e1, g);
+                        return None;
+                    }
+                };
+
+                Some((
+                    ExplicitExpr::app(
+                        ExplicitExpr::coerce(e1, g1, GradualType::fun(g11.clone(), g12.clone())),
+                        ExplicitExpr::coerce(e2, g2, g11),
+                    ),
+                    g12,
+                ))
+            }
+            GradualExpr::If(e1, e2, e3) => {
+                let (e1, g1) = self.dynamize(ctx, *e1)?;
+                let (e2, g2) = self.dynamize(ctx, *e2)?;
+                let (e3, g3) = self.dynamize(ctx, *e3)?;
+
+                let g = g2.join(&g3);
+
+                if !g1.consistent(&GradualType::bool()) {
+                    error!("condition on non-bool: {}", e1);
+                    return None;
+                }
+
+                Some((
+                    ExplicitExpr::if_(
+                        ExplicitExpr::coerce(e1, g1, GradualType::bool()),
+                        ExplicitExpr::coerce(e2, g2, g.clone()),
+                        ExplicitExpr::coerce(e3, g3, g.clone()),
+                    ),
+                    g,
+                ))
+            }
+            GradualExpr::Let(x, g, e1, e2) => {
+                let (e1, g1) = self.dynamize(ctx, *e1)?;
+
+                let g1_ann = g.unwrap_or(GradualType::Dyn());
+
+                if !g1.consistent(&g1_ann) {
+                    error!(
+                        "annotation {} inconsistent with inferred type {} of {}",
+                        g1_ann, g1, e1
+                    );
+                    return None;
+                }
+
+                let (e2, g2) = self.dynamize(&ctx.extend(x.clone(), g1_ann.clone()), *e2)?;
+
+                Some((
+                    ExplicitExpr::let_(x, g1_ann.clone(), ExplicitExpr::coerce(e1, g1, g1_ann), e2),
+                    g2,
+                ))
+            }
+            GradualExpr::LetRec(defns, e2) => {
+                let mut ctx = ctx.clone();
+                for (x, g, _) in defns.iter() {
+                    ctx = ctx.extend(x.clone(), g.clone().unwrap_or(GradualType::Dyn()));
+                }
+
+                let defns = defns
+                    .into_iter()
+                    .map(|(x, g1_ann, e1)| {
+                        let (e1, g1) = self.dynamize(&ctx, e1)?;
+
+                        let g1_ann = g1_ann.unwrap_or(GradualType::Dyn());
+
+                        if !g1.consistent(&g1_ann) {
+                            error!(
+                                "annotation {} inconsistent with inferred type {} of {}",
+                                g1_ann, g1, e1
+                            );
+                            return None;
+                        }
+
+                        Some((x, g1_ann.clone(), ExplicitExpr::coerce(e1, g1, g1_ann)))
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+
+                let (e2, g2) = self.dynamize(&ctx, *e2)?;
+
+                Some((ExplicitExpr::letrec(defns, e2), g2))
+            }
+            GradualExpr::UOp(op, e) => {
+                let (e, g) = self.dynamize(ctx, *e)?;
+
+                let op = op.explicit();
+                let (g_dom, g_cod) = op.signature();
+
+                if !g_dom.consistent(&g) {
+                    error!(
+                        "operation {} expects {}, applied to {} : {}",
+                        op, g_dom, g, e
+                    );
+                    return None;
+                }
+
+                Some((
+                    ExplicitExpr::uop(op, ExplicitExpr::coerce(e, g, g_dom)),
+                    g_cod,
+                ))
+            }
+            GradualExpr::BOp(op, e1, e2) => {
+                let (e1, g1) = self.dynamize(ctx, *e1)?;
+                let (e2, g2) = self.dynamize(ctx, *e2)?;
+
+                let op = match op.explicit() {
+                    BOpSignature::Simple(op) => op,
+                    BOpSignature::Overloaded { dyn_op, .. } => dyn_op,
+                };
+                let (g_dom, g_cod) = op.signature();
+
+                if !g_dom.consistent(&g1) {
+                    error!(
+                        "operation {} expects {}, first argument {} : {}",
+                        op, g_dom, g1, e1
+                    );
+                    return None;
+                }
+
+                if !g_dom.consistent(&g2) {
+                    error!(
+                        "operation {} expects {}, second argument {} : {}",
+                        op, g_dom, g2, e2
+                    );
+                    return None;
+                }
+
+                Some((
+                    ExplicitExpr::bop(
+                        op,
+                        ExplicitExpr::coerce(e1, g1, g_dom.clone()),
+                        ExplicitExpr::coerce(e2, g2, g_dom),
+                    ),
+                    g_cod,
+                ))
+            }
+        }
+    }
+
+    pub fn run_source(e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
+        let ci = CoercionInsertion {};
+
+        ci.dynamize(&Ctx::empty(), e)
+    }
 }
 
 #[cfg(test)]
@@ -252,4 +437,40 @@ mod test {
             )
         );
     }
+
+    fn rejected(s: &str) {
+        let e = SourceExpr::parse(s).unwrap();
+
+        match CoercionInsertion::run_source(e) {
+            None => (),
+            Some((e, g)) => panic!("expected failure, got {} : {}", e, g),
+        }
+    }
+
+    #[test]
+    fn statically_rejected() {
+        rejected("true false");
+        rejected("if 0 then 1 else true");
+        rejected("if 0 then 1 else 1");
+        rejected("(\\x.x) * 1");
+    }
+
+    fn accepted(s: &str) {
+        let e = SourceExpr::parse(s).unwrap();
+
+        match CoercionInsertion::run_source(e.clone()) {
+            None => panic!("expected success, but couldn't type {}", e),
+            Some((_e, _g)) => (),
+        }
+
+        // TODO check that e : g
+    }
+
+    #[test]
+    fn statically_accepted_surprisingly() {
+        accepted("if 0 + 1 then 1 else true");
+        accepted("(\\x.x) == (\\y. y)");
+        accepted("(\\x.x) == \"hi\"");
+    }
+
 }

@@ -499,7 +499,7 @@ impl SourceUOp {
     /// Returns the sole possibility for a unary operation.
     ///
     /// TODO with overloaded ones, we need UOpSignature, like below
-    fn explicit(&self) -> ExplicitUOp {
+    pub fn explicit(&self) -> ExplicitUOp {
         match self {
             SourceUOp::Negate => ExplicitUOp::Negate,
             SourceUOp::Not => ExplicitUOp::Not,
@@ -508,7 +508,7 @@ impl SourceUOp {
 }
 
 /// Different binary operation signatures.
-enum BOpSignature {
+pub enum BOpSignature {
     /// Used when any consistent type is okay. Only for non-overloaded operations.
     Simple(ExplicitBOp),
     Overloaded {
@@ -518,7 +518,7 @@ enum BOpSignature {
 }
 
 impl SourceBOp {
-    fn signature(&self) -> BOpSignature {
+    pub fn explicit(&self) -> BOpSignature {
         match self {
             SourceBOp::Plus => BOpSignature::Overloaded {
                 dyn_op: ExplicitBOp::PlusDyn,
@@ -760,7 +760,7 @@ impl TypeInference {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
 
-                match op.signature() {
+                match op.explicit() {
                     BOpSignature::Simple(op) => {
                         let (g_dom, g_cod) = op.signature();
                         let m_dom: MigrationalType = g_dom.into();
