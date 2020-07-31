@@ -23,7 +23,7 @@ pub enum BaseType {
 pub struct TypeVariable(pub(super) usize);
 
 /// G
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GradualType {
     Base(BaseType),
     Var(TypeVariable),
@@ -157,7 +157,7 @@ pub enum GroundType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Coercion {
-    Id,
+    Id(GradualType),
     /// gamma!
     Tag(GroundType),
     /// gamma?
@@ -713,7 +713,7 @@ impl ExplicitExpr {
 
     pub fn coerce(e: Self, src: GradualType, tgt: GradualType) -> Self {
         match Coercion::new(src, tgt) {
-            Coercion::Id => e,
+            Coercion::Id(_) => e,
             c => ExplicitExpr::Coerce(Box::new(e), c),
         }
     }
@@ -943,10 +943,10 @@ impl Display for ExplicitExpr {
 impl Coercion {
     pub fn new(src: GradualType, tgt: GradualType) -> Self {
         if src == tgt {
-            return Coercion::Id;
+            return Coercion::Id(src);
         }
 
-        match (src, tgt) {
+        let c = match (src, tgt) {
             (GradualType::Base(b), GradualType::Dyn()) => Coercion::Tag(GroundType::Base(b)),
             (GradualType::Dyn(), GradualType::Base(b)) => Coercion::Check(GroundType::Base(b)),
             (src @ GradualType::Fun(_, _), GradualType::Dyn()) => Coercion::seq(
@@ -968,17 +968,50 @@ impl Coercion {
             }
             (src, tgt) => {
                 error!("bad coercion from {} to {}, generating id", src, tgt);
-                Coercion::Id
+                Coercion::Id(src)
+            }
+        };
+
+        assert!(c.well_typed());
+
+        c
+    }
+
+    pub fn types(&self) -> Option<(GradualType, GradualType)> {
+        match self {
+            Coercion::Id(g) => Some((g.clone(), g.clone())),
+            Coercion::Tag(b) => Some((GradualType::from(*b), GradualType::Dyn())),
+            Coercion::Check(b) => Some((GradualType::Dyn(), GradualType::from(*b))),
+            Coercion::Fun(c1, c2) => {
+                let (g21, g11) = c1.types()?;
+                let (g12, g22) = c2.types()?;
+
+                Some((GradualType::fun(g11, g12), GradualType::fun(g21, g22)))
+            }
+            Coercion::Seq(c1, c2) => {
+                let (g1, g12) = c1.types()?;
+                let (g21, g2) = c2.types()?;
+
+                if g12 == g21 {
+                    Some((g1, g2))
+                } else {
+                    error!("ill typed sequence: {} != {}", g12, g21);
+                    None
+                }
             }
         }
     }
 
+    pub fn well_typed(&self) -> bool {
+        self.types().is_some()
+    }
+
     fn seq(c1: Self, c2: Self) -> Self {
         match (c1, c2) {
-            (Coercion::Id, c) | (c, Coercion::Id) => c,
+            (Coercion::Id(_), c) | (c, Coercion::Id(_)) => c,
             (Coercion::Tag(b1), Coercion::Check(b2)) => {
                 if b1 == b2 {
-                    Coercion::Id
+                    Coercion::Id(b1.into())
                 } else {
                     let c =
                         Coercion::Seq(Box::new(Coercion::Tag(b1)), Box::new(Coercion::Check(b2)));
@@ -989,7 +1022,7 @@ impl Coercion {
             (Coercion::Check(b1), Coercion::Tag(b2)) => {
                 // TODO make this flaggable?
                 if b1 == b2 {
-                    Coercion::Id
+                    Coercion::Id(b1.into())
                 } else {
                     let c =
                         Coercion::Seq(Box::new(Coercion::Check(b1)), Box::new(Coercion::Tag(b2)));
@@ -1003,7 +1036,7 @@ impl Coercion {
 
     fn fun(c1: Self, c2: Self) -> Self {
         match (c1, c2) {
-            (Coercion::Id, Coercion::Id) => Coercion::Id,
+            (Coercion::Id(g1), Coercion::Id(g2)) => Coercion::Id(GradualType::fun(g1, g2)),
             (c1, c2) => Coercion::Fun(Box::new(c1), Box::new(c2)),
         }
     }
@@ -1011,7 +1044,7 @@ impl Coercion {
     fn is_compound(&self) -> bool {
         match self {
             Coercion::Fun(_, _) | Coercion::Seq(_, _) => true,
-            Coercion::Id | Coercion::Check(_) | Coercion::Tag(_) => false,
+            Coercion::Id(_) | Coercion::Check(_) | Coercion::Tag(_) => false,
         }
     }
 
@@ -1022,7 +1055,7 @@ impl Coercion {
         A: Clone,
     {
         match self {
-            Coercion::Id => pp.text("ɩ"),
+            Coercion::Id(g) => pp.text("ɩ").append(g.pretty(pp).brackets()),
             Coercion::Check(g) => pp.as_string(g).append(pp.text("?")),
             Coercion::Tag(g) => pp.as_string(g).append(pp.text("!")),
             Coercion::Fun(c1, c2) => {
@@ -1523,6 +1556,15 @@ impl From<Constant> for GroundType {
             Constant::Bool(_) => GroundType::Base(BaseType::Bool),
             Constant::Int(_) => GroundType::Base(BaseType::Int),
             Constant::String(_) => GroundType::Base(BaseType::String),
+        }
+    }
+}
+
+impl From<GroundType> for GradualType {
+    fn from(g: GroundType) -> Self {
+        match g {
+            GroundType::Base(b) => GradualType::Base(b),
+            GroundType::Fun => GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
         }
     }
 }
