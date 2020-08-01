@@ -1,6 +1,6 @@
 use im_rc::HashMap;
 
-use log::{warn, error};
+use log::{error, warn};
 
 use crate::infer::BOpSignature;
 use crate::syntax::*;
@@ -132,10 +132,7 @@ impl CoercionInsertion {
 
                 let (g_dom, g_cod) = op.signature();
 
-                (
-                    ExplicitExpr::uop(op, self.coerce(e, &g, &g_dom)),
-                    g_cod,
-                )
+                (ExplicitExpr::uop(op, self.coerce(e, &g, &g_dom)), g_cod)
             }
             GradualExpr::BOp(op, e1, e2) => {
                 let (e1, g1) = self.make_explicit(ctx, *e1);
@@ -294,10 +291,7 @@ impl CoercionInsertion {
                     return None;
                 }
 
-                Some((
-                    ExplicitExpr::uop(op, self.coerce(e, &g, &g_dom)),
-                    g_cod,
-                ))
+                Some((ExplicitExpr::uop(op, self.coerce(e, &g, &g_dom)), g_cod))
             }
             GradualExpr::BOp(op, e1, e2) => {
                 let (e1, g1) = self.dynamize(ctx, *e1)?;
@@ -349,17 +343,8 @@ impl CoercionInsertion {
 
     fn coercion(&self, src: &GradualType, tgt: &GradualType) -> Coercion {
         let c = {
-            if !src.consistent(tgt) { // TODO flag for this
-                warn!(
-                    "Coercion between inconsistent types {} and {} will fail; going through ?",
-                    src, tgt
-                );
-                Coercion::seq(
-                    self.coercion(src, &GradualType::Dyn()),
-                    self.coercion(&GradualType::Dyn(), tgt),
-                )
-            } else if src == tgt {
-                Coercion::Id(src.clone())
+            if src == tgt {
+                Coercion::Id(IdType::Trivial, src.clone())
             } else {
                 match (src, tgt) {
                     (GradualType::Base(b), GradualType::Dyn()) => {
@@ -386,8 +371,16 @@ impl CoercionInsertion {
                         Coercion::fun(self.coercion(g21, g11), self.coercion(g12, g22))
                     }
                     (src, tgt) => {
-                        error!("bad coercion from {} to {}, generating id", src, tgt);
-                        Coercion::Id(src.clone())
+                        // TODO flag to disable this behavior
+                        assert!(!src.consistent(tgt));
+                        warn!(
+                            "Coercion between inconsistent types {} and {} will fail; going through ?",
+                            src, tgt
+                        );
+                        Coercion::seq(
+                            self.coercion(src, &GradualType::Dyn()),
+                            self.coercion(&GradualType::Dyn(), tgt),
+                        )
                     }
                 }
             }
@@ -563,7 +556,7 @@ mod test {
             coerce("? -> int", "?"),
             Coercion::seq(
                 Coercion::fun(
-                    Coercion::Id(GradualType::Dyn()),
+                    Coercion::Id(IdType::Trivial, GradualType::Dyn()),
                     Coercion::Tag(GroundType::Base(BaseType::Int))
                 ),
                 Coercion::Tag(GroundType::Fun)
@@ -576,7 +569,7 @@ mod test {
             Coercion::seq(
                 Coercion::seq(
                     Coercion::fun(
-                        Coercion::Id(GradualType::Dyn()),
+                        Coercion::Id(IdType::Trivial, GradualType::Dyn()),
                         Coercion::Tag(GroundType::Base(BaseType::Int))
                     ),
                     Coercion::Tag(GroundType::Fun)
