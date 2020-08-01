@@ -108,9 +108,14 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Herder-style scoring?
 
-- [ ] Interpreter
+- [ ] Interpreter (for testing)
 
-- [ ] Dynamizer (from `SourceExpr`)
+- [ ] Compiler (to OCaml, for performance testing)
+      + [ ] Simple runtime
+      + [ ] Textual translation (FFI seems like too much)
+
+- [x] Dynamizer (from `SourceExpr`)
+      + [ ] resolve if issues
 
 - [ ] Understand top-level weirdness. `if true then (true : ?) else (0 : ?)`
       will type check just fine in both lax and strict regimes.  Coercion
