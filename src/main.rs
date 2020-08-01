@@ -27,8 +27,11 @@ fn main() {
                 .help("Sets the level of verbosity"),
         )
         .arg(Arg::with_name("STRICT_IFS")
-                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type dyn (defaults to off)")
+                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type dyn (conflicts with SAFE_ONLY; defaults to off)")
                  .long("strict-ifs"))
+        .arg(Arg::with_name("SAFE_ONLY")
+                 .help("When set, we will generate coercions between inconsistent types (default to off)")
+                 .long("safe-only"))
         .get_matches();
 
     let verbosity = match config.occurrences_of("v") {
@@ -43,6 +46,11 @@ fn main() {
     let mut options = Options::default();
 
     options.strict_ifs = config.is_present("STRICT_IFS");
+    options.safe_only = config.is_present("SAFE_ONLY");
+    
+    if options.safe_only && options.strict_ifs {
+        warn!("Running with both --strict-ifs and --safe-only may break compilation.");
+    }
 
     let input_source = config.value_of("INPUT").expect("input source");
 
@@ -64,7 +72,7 @@ fn main() {
     });
 
     let mut ti = TypeInference::new(options);
-    let (e, m, ves) = ti.run(Ctx::empty(), &e).unwrap_or_else(|| {
+    let (e, m, ves) = ti.run(&e).unwrap_or_else(|| {
         error!("Constraint generation failed");
         std::process::exit(3);
     });
@@ -77,6 +85,8 @@ fn main() {
         std::process::exit(1);
     }
 
+    let ci = CoercionInsertion::new(options);
+
     for (i, ve) in ves.iter().enumerate() {
         if ves.len() > 1 {
             info!("Eliminator #{}: #{}", i + 1, ve);
@@ -87,7 +97,7 @@ fn main() {
         let e = e.clone().eliminate(&ve);
         let m = m.clone().eliminate(&ve);
 
-        let (e, g) = CoercionInsertion::run(e);
+        let (e, g) = ci.run(e);
         assert_eq!(m, g.into());
 
         println!("{}\n: {}", e, m);
@@ -157,6 +167,16 @@ mod test {
     #[test]
     fn strict_if_annotated() {
         succeeds(vec!["--strict-ifs"], "if true then true : ? else 0 : ?");
+    }
+
+    #[test]
+    fn lax_if_annotated_safe_only() {
+        fails(vec!["--safe-only"], "if true then true : ? else 0 : ?");
+    }
+
+    #[test]
+    fn strict_if_annotated_safe_only() {
+        fails(vec!["--safe-only", "--strict-ifs"], "if true then true : ? else 0 : ?");
     }
 
     #[test]

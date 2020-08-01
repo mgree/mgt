@@ -721,7 +721,7 @@ impl ExplicitExpr {
     pub fn coerce(e: Self, c: Coercion) -> Self {
         match c {
             Coercion::Id(IdType::Unsafe, _) => e, // TODO flaggable?
-            Coercion::Id(_, _) => e, 
+            Coercion::Id(_, _) => e,
             c => ExplicitExpr::Coerce(Box::new(e), c),
         }
     }
@@ -959,6 +959,15 @@ impl IdType {
 }
 
 impl Coercion {
+    pub fn is_safe(&self) -> bool {
+        match self {
+            Coercion::Id(IdType::Unsafe, _) => false,
+            Coercion::Id(_, _) => true,
+            Coercion::Check(_) | Coercion::Tag(_) => true,
+            Coercion::Fun(c1, c2) | Coercion::Seq(c1, c2) => c1.is_safe() && c2.is_safe(),
+        }
+    }
+
     pub fn types(&self) -> Option<(GradualType, GradualType)> {
         match self {
             Coercion::Id(_, g) => Some((g.clone(), g.clone())),
@@ -1002,7 +1011,6 @@ impl Coercion {
                 }
             }
             (Coercion::Check(b1), Coercion::Tag(b2)) => {
-                // TODO make this flaggable?
                 if b1 == b2 {
                     info!(
                         "applied (unsafe) ψ optimization to skip check/tag on {}",
@@ -1022,7 +1030,9 @@ impl Coercion {
 
     pub(crate) fn fun(c1: Self, c2: Self) -> Self {
         match (c1, c2) {
-            (Coercion::Id(t1, g1), Coercion::Id(t2, g2)) => Coercion::Id(t1.join(t2), GradualType::fun(g1, g2)),
+            (Coercion::Id(t1, g1), Coercion::Id(t2, g2)) => {
+                Coercion::Id(t1.join(t2), GradualType::fun(g1, g2))
+            }
             (c1, c2) => Coercion::Fun(Box::new(c1), Box::new(c2)),
         }
     }

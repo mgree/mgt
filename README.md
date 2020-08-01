@@ -114,27 +114,6 @@ other bits of the inference. If you want something to be `?`, write `assume foo
       + [ ] Simple runtime
       + [ ] Textual translation (FFI seems like too much)
 
-- [x] Dynamizer (from `SourceExpr`)
-      + [ ] resolve if issues
-
-- [ ] Understand top-level weirdness. `if true then (true : ?) else (0 : ?)`
-      will type check just fine in both lax and strict regimes.  Coercion
-      insertion will tag both branches as bool, but the migrational inference
-      says the whole thing has either type bool or int, depending. At present,
-      this crashes on an assertion in main. If you put it in a context, e.g.,
-      `false && ...`, then the right coercions will be generated and everything
-      is fine.
-
-      Annotating one branch seems to work fine. It seems like you could keep 
-      more information in an if about which return type you'd like it to be.
-      Simply putting in annotations doens't quite cut it, because elimination
-      will leave one side ill-typed: in the migration where the whole 
-      conditional has type `int`, the `true : int` annotation you get will break
-      things.
-
-      It's a bad situation. On the one hand, coercion insertion doesn't give you
-      the exact inferred type. On the other hand, the inferred type sucks!
-
 # Acknowledgments
 
 Conversations with [Arjun Guha](https://twitter.com/arjunguha), [Colin

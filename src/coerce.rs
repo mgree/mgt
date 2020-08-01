@@ -1,3 +1,4 @@
+use crate::options::Options;
 use im_rc::HashMap;
 
 use log::{error, warn};
@@ -23,9 +24,15 @@ impl Ctx {
     }
 }
 
-pub struct CoercionInsertion {}
+pub struct CoercionInsertion {
+    pub options: Options,
+}
 
 impl CoercionInsertion {
+    pub fn new(options: Options) -> Self {
+        CoercionInsertion { options }
+    }
+
     /// should only be called on an eliminated e
     fn make_explicit(&self, ctx: &Ctx, e: TargetExpr) -> (ExplicitExpr, GradualType) {
         assert!(e.choices().is_empty());
@@ -152,10 +159,14 @@ impl CoercionInsertion {
         }
     }
 
-    pub fn run(e: TargetExpr) -> (ExplicitExpr, GradualType) {
-        let ci = CoercionInsertion {};
+    pub fn run(&self, e: TargetExpr) -> (ExplicitExpr, GradualType) {
+        self.make_explicit(&Ctx::empty(), e)
+    }
 
-        ci.make_explicit(&Ctx::empty(), e)
+    pub fn explicit(e: TargetExpr) -> (ExplicitExpr, GradualType) {
+        let ci = CoercionInsertion::new(Options::default());
+
+        ci.run(e)
     }
 
     fn dynamize(&self, ctx: &Ctx, e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
@@ -331,14 +342,20 @@ impl CoercionInsertion {
         }
     }
 
-    pub fn run_source(e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
-        let ci = CoercionInsertion {};
+    pub fn run_source(&self, e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
+        self.dynamize(&Ctx::empty(), e)
+    }
 
-        ci.dynamize(&Ctx::empty(), e)
+    pub fn dynamic(e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
+        let ci = CoercionInsertion::new(Options::default());
+
+        ci.run_source(e)
     }
 
     fn coerce(&self, e: ExplicitExpr, src: &GradualType, tgt: &GradualType) -> ExplicitExpr {
-        ExplicitExpr::coerce(e, self.coercion(src, tgt))
+        let c = self.coercion(src, tgt);
+        // TODO could check safety here
+        ExplicitExpr::coerce(e, c)
     }
 
     fn coercion(&self, src: &GradualType, tgt: &GradualType) -> Coercion {
@@ -371,16 +388,18 @@ impl CoercionInsertion {
                         Coercion::fun(self.coercion(g21, g11), self.coercion(g12, g22))
                     }
                     (src, tgt) => {
-                        // TODO flag to disable this behavior
                         assert!(!src.consistent(tgt));
-                        warn!(
-                            "Coercion between inconsistent types {} and {} will fail; going through ?",
-                            src, tgt
-                        );
-                        Coercion::seq(
-                            self.coercion(src, &GradualType::Dyn()),
-                            self.coercion(&GradualType::Dyn(), tgt),
-                        )
+
+                        if self.options.safe_only {
+                            panic!("Coercion between inconsistent types {} and {} is guaranteed to fail; bailing. Set --allow-unsafe to continue.",
+                            src, tgt);
+                        } else {
+                            warn!("Coercion between inconsistent types {} and {} will fail; going through ?", src, tgt);
+                            Coercion::seq(
+                                self.coercion(src, &GradualType::Dyn()),
+                                self.coercion(&GradualType::Dyn(), tgt),
+                            )
+                        }
                     }
                 }
             }
@@ -410,7 +429,7 @@ mod test {
             assert!(e.choices().is_empty());
             assert!(m.choices().is_empty());
 
-            let (e, g) = CoercionInsertion::run(e);
+            let (e, g) = CoercionInsertion::explicit(e);
             assert_eq!(m, g.into());
 
             assert!(e.coercions().is_empty());
@@ -424,7 +443,7 @@ mod test {
         let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
-        let (e, g) = CoercionInsertion::run(e.eliminate(ve));
+        let (e, g) = CoercionInsertion::explicit(e.eliminate(ve));
 
         assert_eq!(m, g.clone().into());
 
@@ -468,7 +487,7 @@ mod test {
     #[test]
     fn overloaded_plus_coercions() {
         let (e, g) = unique_coercion("1 + true");
-        let ci = CoercionInsertion {};
+        let ci = CoercionInsertion::new(Options::default());
 
         assert_eq!(g, GradualType::Dyn());
         assert_eq!(
@@ -492,7 +511,7 @@ mod test {
     fn rejected(s: &str) {
         let e = SourceExpr::parse(s).unwrap();
 
-        match CoercionInsertion::run_source(e) {
+        match CoercionInsertion::dynamic(e) {
             None => (),
             Some((e, g)) => panic!("expected failure, got {} : {}", e, g),
         }
@@ -509,7 +528,7 @@ mod test {
     fn accepted(s: &str) {
         let e = SourceExpr::parse(s).unwrap();
 
-        match CoercionInsertion::run_source(e.clone()) {
+        match CoercionInsertion::dynamic(e.clone()) {
             None => panic!("expected success, but couldn't type {}", e),
             Some((_e, _g)) => (),
         }
@@ -526,8 +545,9 @@ mod test {
     }
 
     fn coerce(s1: &str, s2: &str) -> Coercion {
-        // Coercion::new has a bunch of nice asserts already
-        let ci = CoercionInsertion {};
+        let ci = CoercionInsertion::new(Options::default());
+
+        // has a number of nice asserts already
         ci.coercion(
             &GradualType::parse(s1).unwrap(),
             &GradualType::parse(s2).unwrap(),

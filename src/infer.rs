@@ -9,6 +9,7 @@ use im_rc::HashSet;
 use log::{debug, error, trace, warn};
 
 use crate::syntax::*;
+use crate::options::Options;
 
 /// d.1 or d.2
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -478,23 +479,6 @@ impl Display for Subst {
     }
 }
 
-/// Configuration options for type inference
-pub struct Options {
-    /// How should conditional branches of different types be treated?
-    ///
-    /// Consider `if b then 5 else false`. Campora et al. would simply reject
-    /// this program, but it can reasonably be typed at `?`. With `strict_ifs`
-    /// set, we behave like Campora et al. Without it, the program will have
-    /// type `?`.
-    pub strict_ifs: bool,
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Options { strict_ifs: false }
-    }
-}
-
 impl SourceUOp {
     /// Returns the sole possibility for a unary operation.
     ///
@@ -583,7 +567,7 @@ pub struct TypeInference {
 }
 
 impl TypeInference {
-    pub fn new(options: Options) -> TypeInference {
+    pub fn new(options: Options) -> Self {
         TypeInference {
             options,
             next_variable: 0,
@@ -1157,10 +1141,9 @@ impl TypeInference {
 
     pub fn run(
         &mut self,
-        ctx: Ctx,
         e: &SourceExpr,
     ) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
-        let (e, m) = self.generate_constraints(ctx, e)?;
+        let (e, m) = self.generate_constraints(Ctx::empty(), e)?;
 
         debug!("Generated constraints:");
         debug!("  e = {}", e);
@@ -1207,7 +1190,7 @@ impl TypeInference {
     pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
         let mut ti = TypeInference::new(Options::default());
 
-        ti.run(Ctx::empty(), e)
+        ti.run(e)
     }
 }
 
@@ -1244,7 +1227,7 @@ mod test {
         options.strict_ifs = true;
         let mut ti = TypeInference::new(options);
 
-        ti.run(Ctx::empty(), &GradualExpr::parse(s).unwrap())
+        ti.run(&GradualExpr::parse(s).unwrap())
     }
 
     fn identity() -> SourceExpr {
