@@ -2,6 +2,8 @@ use std::cmp::PartialEq;
 use std::fmt::Display;
 use std::hash::Hash;
 
+use log::{error, info, warn};
+
 use im_rc::HashSet;
 
 pub const DEFAULT_WIDTH: usize = 80;
@@ -9,7 +11,7 @@ pub const DEFAULT_WIDTH: usize = 80;
 lalrpop_mod!(parser);
 
 /// gamma
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BaseType {
     Bool,
     Int,
@@ -21,7 +23,7 @@ pub enum BaseType {
 pub struct TypeVariable(pub(super) usize);
 
 /// G
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GradualType {
     Base(BaseType),
     Var(TypeVariable),
@@ -88,13 +90,13 @@ pub enum SourceBOp {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TargetUOp {
+pub enum ExplicitUOp {
     Not,
     Negate,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TargetBOp {
+pub enum ExplicitBOp {
     PlusInt,
     PlusString,
     PlusDyn,
@@ -109,7 +111,7 @@ pub enum TargetBOp {
     EqualDyn,
     LessThan,
     LessThanEqual,
-    Choice(Variation, Box<TargetBOp>, Box<TargetBOp>),
+    Choice(Variation, Box<ExplicitBOp>, Box<ExplicitBOp>),
 }
 
 /// x
@@ -117,105 +119,164 @@ pub type Variable = String;
 
 /// e (ITGL)
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr<T, U, B> {
+pub enum GradualExpr<T, U, B> {
     Const(Constant),
     Var(Variable),
     Lam(Variable, T, Box<Self>),
-    Ann(Box<Expr<T, U, B>>, T),
-    Hole(String),
-    App(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
-    If(Box<Expr<T, U, B>>, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
-    Let(Variable, T, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
-    LetRec(Vec<(Variable, T, Expr<T, U, B>)>, Box<Expr<T, U, B>>),
-    UOp(U, Box<Expr<T, U, B>>),
-    BOp(B, Box<Expr<T, U, B>>, Box<Expr<T, U, B>>),
+    Ann(Box<GradualExpr<T, U, B>>, T),
+    Hole(String, T),
+    App(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    If(
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+    ),
+    Let(
+        Variable,
+        T,
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+    ),
+    LetRec(
+        Vec<(Variable, T, GradualExpr<T, U, B>)>,
+        Box<GradualExpr<T, U, B>>,
+    ),
+    UOp(U, Box<GradualExpr<T, U, B>>),
+    BOp(B, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
 }
 
-pub type SourceExpr = Expr<Option<GradualType>, SourceUOp, SourceBOp>;
-pub type TargetExpr = Expr<MigrationalType, TargetUOp, TargetBOp>;
+pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
+pub type TargetExpr = GradualExpr<MigrationalType, ExplicitUOp, ExplicitBOp>;
 
-impl<T, U, B> Expr<T, U, B> {
+/// gamma
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroundType {
+    Base(BaseType),
+    Fun,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdType {
+    Trivial,
+    Safe,
+    Unsafe,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Coercion {
+    Id(IdType, GradualType),
+    /// gamma!
+    Tag(GroundType),
+    /// gamma?
+    Check(GroundType),
+    Fun(Box<Coercion>, Box<Coercion>),
+    Seq(Box<Coercion>, Box<Coercion>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExplicitExpr {
+    Const(Constant),
+    Var(Variable),
+    Lam(Variable, GradualType, Box<Self>),
+    Hole(String, GradualType),
+    Coerce(Box<ExplicitExpr>, Coercion),
+    App(Box<ExplicitExpr>, Box<ExplicitExpr>),
+    If(Box<ExplicitExpr>, Box<ExplicitExpr>, Box<ExplicitExpr>),
+    Let(Variable, GradualType, Box<ExplicitExpr>, Box<ExplicitExpr>),
+    LetRec(
+        Vec<(Variable, GradualType, ExplicitExpr)>,
+        Box<ExplicitExpr>,
+    ),
+    UOp(ExplicitUOp, Box<ExplicitExpr>),
+    BOp(ExplicitBOp, Box<ExplicitExpr>, Box<ExplicitExpr>),
+}
+
+impl<T, U, B> GradualExpr<T, U, B> {
     pub fn bool(b: bool) -> Self {
-        Expr::Const(Constant::Bool(b))
+        GradualExpr::Const(Constant::Bool(b))
     }
 
     pub fn int(n: isize) -> Self {
-        Expr::Const(Constant::Int(n))
+        GradualExpr::Const(Constant::Int(n))
     }
 
     pub fn lam(v: Variable, t: T, e: Self) -> Self {
-        Expr::Lam(v, t, Box::new(e))
+        GradualExpr::Lam(v, t, Box::new(e))
     }
 
     pub fn lams(args: Vec<(String, T)>, e: Self) -> Self {
         args.into_iter()
             .rev()
-            .fold(e, |e, (x, t)| Expr::lam(x, t, e))
+            .fold(e, |e, (x, t)| GradualExpr::lam(x, t, e))
     }
 
     pub fn ann(e: Self, t: T) -> Self {
-        Expr::Ann(Box::new(e), t)
+        GradualExpr::Ann(Box::new(e), t)
     }
 
     pub fn app(e1: Self, e2: Self) -> Self {
-        Expr::App(Box::new(e1), Box::new(e2))
+        GradualExpr::App(Box::new(e1), Box::new(e2))
     }
 
     pub fn if_(e1: Self, e2: Self, e3: Self) -> Self {
-        Expr::If(Box::new(e1), Box::new(e2), Box::new(e3))
+        GradualExpr::If(Box::new(e1), Box::new(e2), Box::new(e3))
     }
 
     pub fn let_(x: Variable, t: T, e1: Self, e2: Self) -> Self {
-        Expr::Let(x, t, Box::new(e1), Box::new(e2))
+        GradualExpr::Let(x, t, Box::new(e1), Box::new(e2))
     }
 
     pub fn letrec(defns: Vec<(Variable, T, Self)>, e2: Self) -> Self {
-        Expr::LetRec(defns, Box::new(e2))
+        GradualExpr::LetRec(defns, Box::new(e2))
     }
 
     pub fn uop(op: U, e: Self) -> Self {
-        Expr::UOp(op, Box::new(e))
+        GradualExpr::UOp(op, Box::new(e))
     }
 
     pub fn bop(op: B, e1: Self, e2: Self) -> Self {
-        Expr::BOp(op, Box::new(e1), Box::new(e2))
+        GradualExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 
-    pub fn map_types<F, S>(self, f: &F) -> Expr<S, U, B>
+    pub fn map_types<F, S>(self, f: &F) -> GradualExpr<S, U, B>
     where
         F: Fn(T) -> S,
     {
         match self {
-            Expr::Const(c) => Expr::Const(c),
-            Expr::Var(x) => Expr::Var(x),
-            Expr::Lam(x, t, e) => Expr::lam(x, f(t), e.map_types(f)),
-            Expr::App(e1, e2) => Expr::app(e1.map_types(f), e2.map_types(f)),
-            Expr::Ann(e, t) => Expr::ann(e.map_types(f), f(t)),
-            Expr::Hole(name) => Expr::Hole(name),
-            Expr::If(e1, e2, e3) => Expr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f)),
-            Expr::Let(x, t, e1, e2) => Expr::let_(x, f(t), e1.map_types(f), e2.map_types(f)),
-            Expr::LetRec(defns, e2) => Expr::letrec(
+            GradualExpr::Const(c) => GradualExpr::Const(c),
+            GradualExpr::Var(x) => GradualExpr::Var(x),
+            GradualExpr::Lam(x, t, e) => GradualExpr::lam(x, f(t), e.map_types(f)),
+            GradualExpr::App(e1, e2) => GradualExpr::app(e1.map_types(f), e2.map_types(f)),
+            GradualExpr::Ann(e, t) => GradualExpr::ann(e.map_types(f), f(t)),
+            GradualExpr::Hole(name, t) => GradualExpr::Hole(name, f(t)),
+            GradualExpr::If(e1, e2, e3) => {
+                GradualExpr::if_(e1.map_types(f), e2.map_types(f), e3.map_types(f))
+            }
+            GradualExpr::Let(x, t, e1, e2) => {
+                GradualExpr::let_(x, f(t), e1.map_types(f), e2.map_types(f))
+            }
+            GradualExpr::LetRec(defns, e2) => GradualExpr::letrec(
                 defns
                     .into_iter()
                     .map(|(v, t, e1)| (v, f(t), e1.map_types(f)))
                     .collect(),
                 e2.map_types(f),
             ),
-            Expr::UOp(op, e) => Expr::uop(op, e.map_types(f)),
-            Expr::BOp(op, e1, e2) => Expr::bop(op, e1.map_types(f), e2.map_types(f)),
+            GradualExpr::UOp(op, e) => GradualExpr::uop(op, e.map_types(f)),
+            GradualExpr::BOp(op, e1, e2) => GradualExpr::bop(op, e1.map_types(f), e2.map_types(f)),
         }
     }
 
     pub fn is_compound(&self) -> bool {
         match self {
-            Expr::Var(_) | Expr::Const(_) => false,
+            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _) => false,
             _ => true,
         }
     }
 
     pub fn is_app(&self) -> bool {
         match self {
-            Expr::App(_, _) => true,
+            GradualExpr::App(_, _) => true,
             _ => false,
         }
     }
@@ -235,16 +296,16 @@ impl SourceExpr {
         A: Clone,
     {
         match self {
-            Expr::Var(x) => pp.text(x),
-            Expr::Const(c) => pp.as_string(c),
-            Expr::Lam(x, None, e) => pp
+            GradualExpr::Var(x) => pp.text(x),
+            GradualExpr::Const(c) => pp.as_string(c),
+            GradualExpr::Lam(x, None, e) => pp
                 .text("\\")
                 .append(pp.text(x))
                 .append(pp.text("."))
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            Expr::Lam(x, Some(t), e) => pp
+            GradualExpr::Lam(x, Some(t), e) => pp
                 .text("\\")
                 .append(pp.text(x))
                 .append(pp.space())
@@ -255,16 +316,23 @@ impl SourceExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            Expr::Hole(name) => pp.text(name),
-            Expr::Ann(e, None) => e.pretty(pp),
-            Expr::Ann(e, Some(t)) => e
+            GradualExpr::Hole(name, None) => pp.text(name),
+            GradualExpr::Hole(name, Some(t)) => pp
+                .text(name)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .group(),
+            GradualExpr::Ann(e, None) => e.pretty(pp),
+            GradualExpr::Ann(e, Some(t)) => e
                 .pretty(pp)
                 .append(pp.space())
                 .append(pp.text(":"))
                 .append(pp.space())
                 .append(t.pretty(pp))
                 .group(),
-            Expr::App(e1, e2) => {
+            GradualExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
                 let mut d2 = e2.pretty(pp);
 
@@ -278,7 +346,7 @@ impl SourceExpr {
 
                 d1.append(pp.line()).append(d2).group()
             }
-            Expr::If(e1, e2, e3) => {
+            GradualExpr::If(e1, e2, e3) => {
                 let d_cond = pp
                     .text("if")
                     .append(pp.space())
@@ -301,7 +369,7 @@ impl SourceExpr {
 
                 pp.concat(vec![d_cond, d_then, d_else])
             }
-            Expr::Let(x, t, e1, e2) => {
+            GradualExpr::Let(x, t, e1, e2) => {
                 let d_annot = if let Some(t) = t {
                     pp.intersperse(vec![pp.text(":"), t.pretty(pp), pp.text("=")], pp.space())
                 } else {
@@ -323,7 +391,7 @@ impl SourceExpr {
                 )
                 .group()
             }
-            Expr::LetRec(defns, e2) => {
+            GradualExpr::LetRec(defns, e2) => {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
@@ -354,15 +422,16 @@ impl SourceExpr {
                     .append(e2.pretty(pp))
             }
             // TODO proper pretty printing with precedence
-            Expr::UOp(op, e) => pp
-                .as_string(op)
-                .append(pp.space())
-                .append(if e.is_compound() {
-                    e.pretty(pp).parens()
-                } else {
-                    e.pretty(pp)
-                }),
-            Expr::BOp(op, e1, e2) => pp.intersperse(
+            GradualExpr::UOp(op, e) => {
+                pp.as_string(op)
+                    .append(pp.space())
+                    .append(if e.is_compound() {
+                        e.pretty(pp).parens()
+                    } else {
+                        e.pretty(pp)
+                    })
+            }
+            GradualExpr::BOp(op, e1, e2) => pp.intersperse(
                 vec![
                     if e1.is_compound() {
                         e1.pretty(pp).parens()
@@ -390,25 +459,25 @@ impl Display for SourceExpr {
     }
 }
 
-impl TargetUOp {
+impl ExplicitUOp {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            TargetUOp::Negate => HashSet::new(),
-            TargetUOp::Not => HashSet::new(),
+            ExplicitUOp::Negate => HashSet::new(),
+            ExplicitUOp::Not => HashSet::new(),
         }
     }
 }
 
-impl TargetBOp {
+impl ExplicitBOp {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            TargetBOp::Choice(d, op1, op2) => op1.choices().union(op2.choices()).update(d),
+            ExplicitBOp::Choice(d, op1, op2) => op1.choices().union(op2.choices()).update(d),
             _ => HashSet::new(),
         }
     }
 
     pub fn choice(d: Variation, op1: Self, op2: Self) -> Self {
-        TargetBOp::Choice(
+        ExplicitBOp::Choice(
             d,
             Box::new(op1.select(d, Side::Left)),
             Box::new(op2.select(d, Side::Right)),
@@ -417,14 +486,14 @@ impl TargetBOp {
 
     pub fn select(&self, d: Variation, side: Side) -> Self {
         match self {
-            TargetBOp::Choice(d2, op1, op2) => {
+            ExplicitBOp::Choice(d2, op1, op2) => {
                 if d == *d2 {
                     match side {
                         Side::Left => op1.select(d, side),
                         Side::Right => op2.select(d, side),
                     }
                 } else {
-                    TargetBOp::choice(*d2, op1.select(d, side), op2.select(d, side))
+                    ExplicitBOp::choice(*d2, op1.select(d, side), op2.select(d, side))
                 }
             }
             _ => self.clone(),
@@ -435,20 +504,21 @@ impl TargetBOp {
 impl TargetExpr {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
-            Expr::Const(_) | Expr::Var(_) | Expr::Hole(_) => HashSet::new(),
-            Expr::Lam(_x, t, e) => t.choices().union(e.choices()),
-            Expr::Ann(e, t) => e.choices().union(t.choices()),
-            Expr::App(e1, e2) => e1.choices().union(e2.choices()),
-            Expr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
-            Expr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
-            Expr::LetRec(defns, e2) => {
+            GradualExpr::Const(_) | GradualExpr::Var(_) => HashSet::new(),
+            GradualExpr::Lam(_x, t, e) => t.choices().union(e.choices()),
+            GradualExpr::Hole(_, t) => t.choices(),
+            GradualExpr::Ann(e, t) => e.choices().union(t.choices()),
+            GradualExpr::App(e1, e2) => e1.choices().union(e2.choices()),
+            GradualExpr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
+            GradualExpr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
+            GradualExpr::LetRec(defns, e2) => {
                 let ds = defns
                     .into_iter()
                     .map(|(_x, t, e1)| t.choices().union(e1.choices()));
                 HashSet::unions(ds).union(e2.choices())
             }
-            Expr::UOp(op, e) => op.choices().union(e.choices()),
-            Expr::BOp(op, e1, e2) => {
+            GradualExpr::UOp(op, e) => op.choices().union(e.choices()),
+            GradualExpr::BOp(op, e1, e2) => {
                 HashSet::unions(vec![op.choices(), e1.choices(), e2.choices()])
             }
         }
@@ -461,9 +531,9 @@ impl TargetExpr {
         A: Clone,
     {
         match self {
-            Expr::Var(x) => pp.text(x),
-            Expr::Const(c) => pp.as_string(c),
-            Expr::Lam(x, t, e) => pp
+            GradualExpr::Var(x) => pp.text(x),
+            GradualExpr::Const(c) => pp.as_string(c),
+            GradualExpr::Lam(x, t, e) => pp
                 .text("\\")
                 .append(pp.text(x))
                 .append(pp.space())
@@ -474,15 +544,21 @@ impl TargetExpr {
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
-            Expr::Hole(name) => pp.text(name),
-            Expr::Ann(e, t) => e
+            GradualExpr::Hole(name, t) => pp
+                .text(name)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .group(),
+            GradualExpr::Ann(e, t) => e
                 .pretty(pp)
                 .append(pp.space())
                 .append(pp.text(":"))
                 .append(pp.space())
                 .append(t.pretty(pp))
                 .group(),
-            Expr::App(e1, e2) => {
+            GradualExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
                 let mut d2 = e2.pretty(pp);
 
@@ -496,7 +572,7 @@ impl TargetExpr {
 
                 d1.append(pp.line()).append(d2.nest(2)).group()
             }
-            Expr::If(e1, e2, e3) => {
+            GradualExpr::If(e1, e2, e3) => {
                 let d_cond = pp
                     .text("if")
                     .append(pp.space())
@@ -516,7 +592,7 @@ impl TargetExpr {
 
                 pp.concat(vec![d_cond, d_then, d_else]).group()
             }
-            Expr::Let(x, t, e1, e2) => {
+            GradualExpr::Let(x, t, e1, e2) => {
                 let d_bind = pp
                     .intersperse(
                         vec![
@@ -537,7 +613,7 @@ impl TargetExpr {
                 .append(pp.hardline())
                 .append(e2.pretty(pp))
             }
-            Expr::LetRec(defns, e2) => {
+            GradualExpr::LetRec(defns, e2) => {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
@@ -561,15 +637,16 @@ impl TargetExpr {
                     .append(e2.pretty(pp))
             }
             // TODO proper pretty printing with precedence
-            Expr::UOp(op, e) => pp
-                .as_string(op)
-                .append(pp.space())
-                .append(if e.is_compound() {
-                    e.pretty(pp).parens()
-                } else {
-                    e.pretty(pp)
-                }),
-            Expr::BOp(op, e1, e2) => pp.intersperse(
+            GradualExpr::UOp(op, e) => {
+                pp.as_string(op)
+                    .append(pp.space())
+                    .append(if e.is_compound() {
+                        e.pretty(pp).parens()
+                    } else {
+                        e.pretty(pp)
+                    })
+            }
+            GradualExpr::BOp(op, e1, e2) => pp.intersperse(
                 vec![
                     if e1.is_compound() {
                         e1.pretty(pp).parens()
@@ -613,7 +690,423 @@ impl Display for BaseType {
     }
 }
 
+impl Display for GroundType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GroundType::Base(b) => b.fmt(f),
+            GroundType::Fun => write!(f, "fun"),
+        }
+    }
+}
+
+impl ExplicitExpr {
+    pub fn bool(b: bool) -> Self {
+        ExplicitExpr::Const(Constant::Bool(b))
+    }
+
+    pub fn int(n: isize) -> Self {
+        ExplicitExpr::Const(Constant::Int(n))
+    }
+
+    pub fn lam(v: Variable, g: GradualType, e: Self) -> Self {
+        ExplicitExpr::Lam(v, g, Box::new(e))
+    }
+
+    pub fn lams(args: Vec<(String, GradualType)>, e: Self) -> Self {
+        args.into_iter()
+            .rev()
+            .fold(e, |e, (x, g)| ExplicitExpr::lam(x, g, e))
+    }
+
+    pub fn coerce(e: Self, c: Coercion) -> Self {
+        match c {
+            Coercion::Id(IdType::Unsafe, _) => e, // TODO flaggable?
+            Coercion::Id(_, _) => e,
+            c => ExplicitExpr::Coerce(Box::new(e), c),
+        }
+    }
+
+    pub fn app(e1: Self, e2: Self) -> Self {
+        ExplicitExpr::App(Box::new(e1), Box::new(e2))
+    }
+
+    pub fn if_(e1: Self, e2: Self, e3: Self) -> Self {
+        ExplicitExpr::If(Box::new(e1), Box::new(e2), Box::new(e3))
+    }
+
+    pub fn let_(x: Variable, g: GradualType, e1: Self, e2: Self) -> Self {
+        ExplicitExpr::Let(x, g, Box::new(e1), Box::new(e2))
+    }
+
+    pub fn letrec(defns: Vec<(Variable, GradualType, Self)>, e2: Self) -> Self {
+        ExplicitExpr::LetRec(defns, Box::new(e2))
+    }
+
+    pub fn uop(op: ExplicitUOp, e: Self) -> Self {
+        ExplicitExpr::UOp(op, Box::new(e))
+    }
+
+    pub fn bop(op: ExplicitBOp, e1: Self, e2: Self) -> Self {
+        ExplicitExpr::BOp(op, Box::new(e1), Box::new(e2))
+    }
+
+    pub fn is_compound(&self) -> bool {
+        match self {
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_app(&self) -> bool {
+        match self {
+            ExplicitExpr::App(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn coercions(self) -> Vec<Coercion> {
+        match self {
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => vec![],
+            ExplicitExpr::Lam(_, _, e) | ExplicitExpr::UOp(_, e) => e.coercions(),
+            ExplicitExpr::Coerce(e, c) => {
+                let mut cs = e.coercions();
+                cs.push(c.clone());
+                cs
+            }
+            ExplicitExpr::App(e1, e2)
+            | ExplicitExpr::Let(_, _, e1, e2)
+            | ExplicitExpr::BOp(_, e1, e2) => {
+                let mut cs = e1.coercions();
+                cs.extend(e2.coercions());
+                cs
+            }
+            ExplicitExpr::If(e1, e2, e3) => {
+                let mut cs = e1.coercions();
+                cs.extend(e2.coercions());
+                cs.extend(e3.coercions());
+                cs
+            }
+            ExplicitExpr::LetRec(defns, e2) => {
+                let mut cs = e2.coercions();
+
+                for (_, _, e1) in defns.into_iter() {
+                    cs.extend(e1.coercions());
+                }
+
+                cs
+            }
+        }
+    }
+
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            ExplicitExpr::Var(x) => pp.text(x),
+            ExplicitExpr::Const(c) => pp.as_string(c),
+            ExplicitExpr::Lam(x, t, e) => pp
+                .text("\\")
+                .append(pp.text(x))
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.space())
+                .append(t.pretty(pp))
+                .append(pp.text("."))
+                .append(pp.line())
+                .append(e.pretty(pp).nest(2))
+                .group(),
+            ExplicitExpr::Hole(name, t) => pp
+                .text(name)
+                .append(pp.space())
+                .append(pp.text(":"))
+                .append(pp.line())
+                .append(t.pretty(pp))
+                .group(),
+            ExplicitExpr::Coerce(e, c) => c
+                .pretty(pp)
+                .brackets()
+                .group()
+                .append(pp.line())
+                .append(e.pretty(pp).nest(2))
+                .group(),
+            ExplicitExpr::App(e1, e2) => {
+                let mut d1 = e1.pretty(pp);
+                let mut d2 = e2.pretty(pp);
+
+                if e1.is_compound() && !e1.is_app() {
+                    d1 = d1.parens();
+                }
+
+                if e2.is_compound() {
+                    d2 = d2.parens();
+                }
+
+                d1.append(pp.line()).append(d2.nest(2)).group()
+            }
+            ExplicitExpr::If(e1, e2, e3) => {
+                let d_cond = pp
+                    .text("if")
+                    .append(pp.space())
+                    .append(e1.pretty(pp).nest(2))
+                    .append(pp.line());
+
+                let d_then = pp
+                    .text("then")
+                    .append(pp.line())
+                    .append(e2.pretty(pp).nest(2))
+                    .append(pp.line());
+
+                let d_else = pp
+                    .text("else")
+                    .append(pp.line())
+                    .append(e3.pretty(pp).nest(2));
+
+                pp.concat(vec![d_cond, d_then, d_else]).group()
+            }
+            ExplicitExpr::Let(x, t, e1, e2) => {
+                let d_bind = pp
+                    .intersperse(
+                        vec![
+                            pp.text("let"),
+                            pp.text(x),
+                            pp.text(":"),
+                            t.pretty(pp),
+                            pp.text("="),
+                        ],
+                        pp.space(),
+                    )
+                    .group();
+
+                pp.intersperse(
+                    vec![d_bind, e1.pretty(pp).nest(2), pp.text("in")],
+                    pp.line(),
+                )
+                .append(pp.hardline())
+                .append(e2.pretty(pp))
+            }
+            ExplicitExpr::LetRec(defns, e2) => {
+                let letrec = pp.text("let rec").append(pp.space());
+
+                let bindings = pp.intersperse(
+                    defns.into_iter().map(|(x, t, e1)| {
+                        pp.intersperse(
+                            vec![pp.text(x), pp.text(":"), t.pretty(pp), pp.text("=")],
+                            pp.space(),
+                        )
+                        .group()
+                        .append(pp.line())
+                        .append(e1.pretty(pp).nest(2))
+                    }),
+                    pp.text("and").enclose(pp.hardline(), pp.hardline()),
+                );
+
+                letrec
+                    .append(bindings)
+                    .append(pp.hardline())
+                    .append(pp.text("in"))
+                    .append(pp.line())
+                    .append(e2.pretty(pp))
+            }
+            // TODO proper pretty printing with precedence
+            ExplicitExpr::UOp(op, e) => {
+                pp.as_string(op)
+                    .append(pp.space())
+                    .append(if e.is_compound() {
+                        e.pretty(pp).parens()
+                    } else {
+                        e.pretty(pp)
+                    })
+            }
+            ExplicitExpr::BOp(op, e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.as_string(op),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.space(),
+            ),
+        }
+    }
+}
+
+impl Display for ExplicitExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
+    }
+}
+
+impl IdType {
+    pub fn join(self, other: Self) -> Self {
+        match (self, other) {
+            (IdType::Trivial, t) | (t, IdType::Trivial) => t,
+            (IdType::Safe, t) | (t, IdType::Safe) => t,
+            (IdType::Unsafe, IdType::Unsafe) => IdType::Unsafe,
+        }
+    }
+}
+
+impl Coercion {
+    pub fn is_safe(&self) -> bool {
+        match self {
+            Coercion::Id(IdType::Unsafe, _) => false,
+            Coercion::Id(_, _) => true,
+            Coercion::Check(_) | Coercion::Tag(_) => true,
+            Coercion::Fun(c1, c2) | Coercion::Seq(c1, c2) => c1.is_safe() && c2.is_safe(),
+        }
+    }
+
+    pub fn types(&self) -> Option<(GradualType, GradualType)> {
+        match self {
+            Coercion::Id(_, g) => Some((g.clone(), g.clone())),
+            Coercion::Tag(b) => Some((GradualType::from(*b), GradualType::Dyn())),
+            Coercion::Check(b) => Some((GradualType::Dyn(), GradualType::from(*b))),
+            Coercion::Fun(c1, c2) => {
+                let (g21, g11) = c1.types()?;
+                let (g12, g22) = c2.types()?;
+
+                Some((GradualType::fun(g11, g12), GradualType::fun(g21, g22)))
+            }
+            Coercion::Seq(c1, c2) => {
+                let (g1, g12) = c1.types()?;
+                let (g21, g2) = c2.types()?;
+
+                if g12 == g21 {
+                    Some((g1, g2))
+                } else {
+                    error!("ill typed sequence: {} != {}", g12, g21);
+                    None
+                }
+            }
+        }
+    }
+
+    pub fn well_typed(&self) -> bool {
+        self.types().is_some()
+    }
+
+    pub fn seq(c1: Self, c2: Self) -> Self {
+        match (c1, c2) {
+            (Coercion::Id(_, _), c) | (c, Coercion::Id(_, _)) => c,
+            (Coercion::Tag(b1), Coercion::Check(b2)) => {
+                if b1 == b2 {
+                    Coercion::Id(IdType::Safe, b1.into())
+                } else {
+                    let c =
+                        Coercion::Seq(Box::new(Coercion::Tag(b1)), Box::new(Coercion::Check(b2)));
+                    warn!("bound-to-fail coercion: {}", c);
+                    c
+                }
+            }
+            (Coercion::Check(b1), Coercion::Tag(b2)) => {
+                if b1 == b2 {
+                    info!(
+                        "applied (unsafe) ψ optimization to skip check/tag on {}",
+                        b1
+                    );
+                    Coercion::Id(IdType::Unsafe, b1.into())
+                } else {
+                    let c =
+                        Coercion::Seq(Box::new(Coercion::Check(b1)), Box::new(Coercion::Tag(b2)));
+                    warn!("absurd/ill-typed coercion: {}", c);
+                    c
+                }
+            }
+            (c1, c2) => Coercion::Seq(Box::new(c1), Box::new(c2)),
+        }
+    }
+
+    pub(crate) fn fun(c1: Self, c2: Self) -> Self {
+        match (c1, c2) {
+            (Coercion::Id(t1, g1), Coercion::Id(t2, g2)) => {
+                Coercion::Id(t1.join(t2), GradualType::fun(g1, g2))
+            }
+            (c1, c2) => Coercion::Fun(Box::new(c1), Box::new(c2)),
+        }
+    }
+
+    fn is_compound(&self) -> bool {
+        match self {
+            Coercion::Fun(_, _) | Coercion::Seq(_, _) => true,
+            Coercion::Id(_, _) | Coercion::Check(_) | Coercion::Tag(_) => false,
+        }
+    }
+
+    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            Coercion::Id(_, g) => pp.text("ɩ").append(g.pretty(pp).brackets()),
+            Coercion::Check(g) => pp.as_string(g).append(pp.text("?")),
+            Coercion::Tag(g) => pp.as_string(g).append(pp.text("!")),
+            Coercion::Fun(c1, c2) => {
+                let d1 = c1.pretty(pp).group();
+
+                let d1 = if c1.is_compound() { d1.parens() } else { d1 };
+
+                let d2 = c2.pretty(pp).group();
+                let d2 = if c2.is_compound() { d2.parens() } else { d2 };
+
+                d1.append(pp.space())
+                    .append(pp.text("↝"))
+                    .append(pp.line())
+                    .append(d2)
+                    .group()
+            }
+            Coercion::Seq(c1, c2) => {
+                let d1 = c1.pretty(pp).group();
+
+                let d1 = if c1.is_compound() { d1.parens() } else { d1 };
+
+                let d2 = c2.pretty(pp).group();
+                let d2 = if c2.is_compound() { d2.parens() } else { d2 };
+
+                d1.append(pp.space())
+                    .append(pp.text(";"))
+                    .append(pp.line())
+                    .append(d2)
+                    .group()
+            }
+        }
+    }
+}
+
+impl Display for Coercion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pp = pretty::BoxAllocator;
+        let doc = self.pretty::<_, ()>(&pp);
+        doc.1.render_fmt(DEFAULT_WIDTH, f)
+    }
+}
+
 impl GradualType {
+    pub fn bool() -> Self {
+        GradualType::Base(BaseType::Bool)
+    }
+
+    pub fn int() -> Self {
+        GradualType::Base(BaseType::Int)
+    }
+
+    pub fn string() -> Self {
+        GradualType::Base(BaseType::String)
+    }
+
     pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
         parser::TypeParser::new()
             .parse(s)
@@ -691,6 +1184,23 @@ impl GradualType {
                 assert_eq!(g1, g2, "meet is only defined on consistent types");
                 g1.clone()
             }
+        }
+    }
+
+    pub fn join(&self, other: &GradualType) -> GradualType {
+        match (self, other) {
+            (g1, g2) if g1 == g2 => g1.clone(),
+            (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
+                GradualType::fun(g11.join(g21), g12.join(g22))
+            }
+            (GradualType::Base(b1), GradualType::Base(b2)) => {
+                if b1 == b2 {
+                    GradualType::Base(*b1)
+                } else {
+                    GradualType::Dyn()
+                }
+            }
+            (_g1, _g2) => GradualType::Dyn(),
         }
     }
 
@@ -967,6 +1477,21 @@ impl MigrationalType {
             }
         }
     }
+
+    pub fn try_gradual(&self) -> Option<GradualType> {
+        match self {
+            MigrationalType::Choice(_, _, _) => None,
+            MigrationalType::Base(b) => Some(GradualType::Base(b.clone())),
+            MigrationalType::Var(a) => Some(GradualType::Var(*a)),
+            MigrationalType::Dyn() => Some(GradualType::Dyn()),
+            MigrationalType::Fun(m1, m2) => {
+                let g1 = m1.try_gradual()?;
+                let g2 = m2.try_gradual()?;
+
+                Some(GradualType::fun(g1, g2))
+            }
+        }
+    }
 }
 
 impl Display for MigrationalType {
@@ -1017,6 +1542,35 @@ impl From<&Constant> for MigrationalType {
             Constant::Bool(_) => MigrationalType::bool(),
             Constant::Int(_) => MigrationalType::int(),
             Constant::String(_) => MigrationalType::string(),
+        }
+    }
+}
+
+impl From<Constant> for GroundType {
+    fn from(c: Constant) -> Self {
+        match c {
+            Constant::Bool(_) => GroundType::Base(BaseType::Bool),
+            Constant::Int(_) => GroundType::Base(BaseType::Int),
+            Constant::String(_) => GroundType::Base(BaseType::String),
+        }
+    }
+}
+
+impl From<GroundType> for GradualType {
+    fn from(g: GroundType) -> Self {
+        match g {
+            GroundType::Base(b) => GradualType::Base(b),
+            GroundType::Fun => GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
+        }
+    }
+}
+
+impl From<Constant> for GradualType {
+    fn from(c: Constant) -> Self {
+        match c {
+            Constant::Bool(_) => GradualType::Base(BaseType::Bool),
+            Constant::Int(_) => GradualType::Base(BaseType::Int),
+            Constant::String(_) => GradualType::Base(BaseType::String),
         }
     }
 }
@@ -1089,34 +1643,34 @@ impl Display for SourceBOp {
     }
 }
 
-impl Display for TargetUOp {
+impl Display for ExplicitUOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            TargetUOp::Not => "!",
-            TargetUOp::Negate => "-",
+            ExplicitUOp::Not => "!",
+            ExplicitUOp::Negate => "-",
         };
         write!(f, "{}", s)
     }
 }
 
-impl Display for TargetBOp {
+impl Display for ExplicitBOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            TargetBOp::PlusInt => "+i",
-            TargetBOp::PlusString => "+s",
-            TargetBOp::PlusDyn => "+?",
-            TargetBOp::Minus => "-",
-            TargetBOp::Times => "*",
-            TargetBOp::Divide => "/",
-            TargetBOp::And => "&&",
-            TargetBOp::Or => "||",
-            TargetBOp::EqualBool => "==b",
-            TargetBOp::EqualInt => "==i",
-            TargetBOp::EqualString => "==s",
-            TargetBOp::EqualDyn => "==?",
-            TargetBOp::LessThan => "<",
-            TargetBOp::LessThanEqual => "<=",
-            TargetBOp::Choice(d, op1, op2) => return write!(f, "{}<{}, {}>", d, op1, op2),
+            ExplicitBOp::PlusInt => "+i",
+            ExplicitBOp::PlusString => "+s",
+            ExplicitBOp::PlusDyn => "+?",
+            ExplicitBOp::Minus => "-",
+            ExplicitBOp::Times => "*",
+            ExplicitBOp::Divide => "/",
+            ExplicitBOp::And => "&&",
+            ExplicitBOp::Or => "||",
+            ExplicitBOp::EqualBool => "==b",
+            ExplicitBOp::EqualInt => "==i",
+            ExplicitBOp::EqualString => "==s",
+            ExplicitBOp::EqualDyn => "==?",
+            ExplicitBOp::LessThan => "<",
+            ExplicitBOp::LessThanEqual => "<=",
+            ExplicitBOp::Choice(d, op1, op2) => return write!(f, "{}<{}, {}>", d, op1, op2),
         };
         write!(f, "{}", s)
     }
@@ -1141,20 +1695,24 @@ mod test {
     fn expr_id() {
         assert_eq!(
             SourceExpr::parse("\\x. x").unwrap(),
-            Expr::lam("x".into(), None, Expr::Var("x".into()))
+            GradualExpr::lam("x".into(), None, GradualExpr::Var("x".into()))
         );
 
         assert_eq!(
             SourceExpr::parse("\\x:?. x").unwrap(),
-            Expr::lam("x".into(), Some(GradualType::Dyn()), Expr::Var("x".into()))
+            GradualExpr::lam(
+                "x".into(),
+                Some(GradualType::Dyn()),
+                GradualExpr::Var("x".into())
+            )
         );
 
         assert_eq!(
             SourceExpr::parse("\\x:bool. x").unwrap(),
-            Expr::lam(
+            GradualExpr::lam(
                 "x".into(),
                 Some(BaseType::Bool.into()),
-                Expr::Var("x".into())
+                GradualExpr::Var("x".into())
             )
         );
     }
@@ -1163,22 +1721,22 @@ mod test {
     fn expr_app() {
         assert_eq!(
             SourceExpr::parse("true false 5").unwrap(),
-            Expr::app(
-                Expr::app(
-                    Expr::Const(Constant::Bool(true)),
-                    Expr::Const(Constant::Bool(false))
+            GradualExpr::app(
+                GradualExpr::app(
+                    GradualExpr::Const(Constant::Bool(true)),
+                    GradualExpr::Const(Constant::Bool(false))
                 ),
-                Expr::Const(Constant::Int(5))
+                GradualExpr::Const(Constant::Int(5))
             )
         );
 
         assert_eq!(
             SourceExpr::parse("true (false 5)").unwrap(),
-            Expr::app(
-                Expr::Const(Constant::Bool(true)),
-                Expr::app(
-                    Expr::Const(Constant::Bool(false)),
-                    Expr::Const(Constant::Int(5))
+            GradualExpr::app(
+                GradualExpr::Const(Constant::Bool(true)),
+                GradualExpr::app(
+                    GradualExpr::Const(Constant::Bool(false)),
+                    GradualExpr::Const(Constant::Int(5))
                 ),
             )
         );
@@ -1200,13 +1758,13 @@ mod test {
     fn expr_neg() {
         assert_eq!(
             SourceExpr::parse("\\b:bool. if b then false else true").unwrap(),
-            Expr::lam(
+            GradualExpr::lam(
                 "b".into(),
                 Some(BaseType::Bool.into()),
-                Expr::if_(
-                    Expr::Var("b".into()),
-                    Expr::Const(Constant::Bool(false)),
-                    Expr::Const(Constant::Bool(true))
+                GradualExpr::if_(
+                    GradualExpr::Var("b".into()),
+                    GradualExpr::Const(Constant::Bool(false)),
+                    GradualExpr::Const(Constant::Bool(true))
                 )
             )
         );
@@ -1217,7 +1775,7 @@ mod test {
         assert!(SourceExpr::parse("22").is_ok());
         assert_eq!(
             SourceExpr::parse("47").unwrap(),
-            Expr::Const(Constant::Int(47))
+            GradualExpr::Const(Constant::Int(47))
         );
         assert!(SourceExpr::parse("(22)").is_ok());
         assert!(SourceExpr::parse("((((22))))").is_ok());
@@ -1229,15 +1787,15 @@ mod test {
     fn const_bool() {
         assert_eq!(
             SourceExpr::parse("true").unwrap(),
-            Expr::Const(Constant::Bool(true))
+            GradualExpr::Const(Constant::Bool(true))
         );
         assert_eq!(
             SourceExpr::parse("false").unwrap(),
-            Expr::Const(Constant::Bool(false))
+            GradualExpr::Const(Constant::Bool(false))
         );
         assert_eq!(
             SourceExpr::parse("FALSE").unwrap(),
-            Expr::Var("FALSE".to_string())
+            GradualExpr::Var("FALSE".to_string())
         );
     }
 
@@ -1422,22 +1980,22 @@ mod test {
         se_round_trip("__x", "__x");
 
         match SourceExpr::parse("__").unwrap() {
-            Expr::Hole(name) => assert_eq!(name, "__"),
+            GradualExpr::Hole(name, None) => assert_eq!(name, "__"),
             e => panic!("expected hole, got {}", e),
         };
 
         match SourceExpr::parse("__x").unwrap() {
-            Expr::Hole(name) => assert_eq!(name, "__x"),
+            GradualExpr::Hole(name, None) => assert_eq!(name, "__x"),
             e => panic!("expected hole, got {}", e),
         };
 
         match SourceExpr::parse("a__x").unwrap() {
-            Expr::Var(name) => assert_eq!(name, "a__x"),
+            GradualExpr::Var(name) => assert_eq!(name, "a__x"),
             e => panic!("expected var, got {}", e),
         };
 
         match SourceExpr::parse("_x").unwrap() {
-            Expr::Var(name) => assert_eq!(name, "_x"),
+            GradualExpr::Var(name) => assert_eq!(name, "_x"),
             e => panic!("expected var, got {}", e),
         };
     }
@@ -1446,6 +2004,9 @@ mod test {
     fn strings() {
         se_round_trip(r#""hello there""#, r#""hello there""#);
         se_round_trip(r#"\x. "hello there""#, r#"\x. "hello there""#);
-        se_round_trip(r#"\x:string. "hello there""#, r#"\x : string. "hello there""#);
+        se_round_trip(
+            r#"\x:string. "hello there""#,
+            r#"\x : string. "hello there""#,
+        );
     }
 }

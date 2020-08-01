@@ -96,17 +96,29 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 - Other language features
   + Ensure that choices don't show up in the final, eliminated AST
     - [ ] Using tests, or...
-    - [ ] `eliminate` operation that changes types to really have no choice left (would need more than one `Expr`, trait)
+    - [ ] `eliminate` operation that changes types to really have no choice left
+          (would need more than one `Expr`, trait)
   + [ ] Let polymorphism and type schemes (need to separate unification
         variables and true type variables). First cut: just have `Ctx` track
         type schemes, instantiating at every variable. Most things will be
         monomorphic, but assumes can give us polymorphism. Operation resolution
         may need to yield type schemes rather than types, too
 
+- [ ] Implement Rastogi et al.'s "The Ins and Outs of Gradual Type Inference".
+
+- [ ] Herder-style scoring?
+
+- [ ] Interpreter (for testing)
+
+- [ ] Compiler (to OCaml, for performance testing)
+      + [ ] Simple runtime
+      + [ ] Textual translation (FFI seems like too much)
+
 # Acknowledgments
 
 Conversations with [Arjun Guha](https://twitter.com/arjunguha), [Colin
-Gordon](https://twitter.com/csgordon/), and [Ron
-Garcia](https://twitter.com/rg9119) were helpful.
+Gordon](https://twitter.com/csgordon/), [Ron
+Garcia](https://twitter.com/rg9119), and [Jens
+Palsberg](http://web.cs.ucla.edu/~palsberg/) were helpful.
 [@jorendorff](https://twitter.com/jorendorff) gave a tip on concrete syntax.
   
