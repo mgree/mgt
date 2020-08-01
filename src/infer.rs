@@ -695,7 +695,7 @@ impl TypeInference {
                 self.add_pattern(pi_res);
                 self.add_constraints(c_res);
 
-                Some((GradualExpr::if_(e_cond, e_then, e_else), m_res))
+                Some((GradualExpr::if_(e_cond, GradualExpr::ann(e_then, m_res.clone()), GradualExpr::ann(e_else, m_res.clone())), m_res))
             }
             GradualExpr::Let(x, t, e_def, e_body) => {
                 let (e_def, m_def) = self.generate_constraints(ctx.clone(), e_def)?;

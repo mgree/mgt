@@ -150,6 +150,16 @@ mod test {
     }
 
     #[test]
+    fn lax_if_annotated() {
+        succeeds(vec![], "if true then true : ? else 0 : ?");
+    }
+
+    #[test]
+    fn strict_if_annotated() {
+        succeeds(vec!["--strict-ifs"], "if true then true : ? else 0 : ?");
+    }
+
+    #[test]
     fn parse_error() {
         fails(vec![], "\\x.");
     }
