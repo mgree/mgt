@@ -1,6 +1,6 @@
 use im_rc::HashMap;
 
-use log::error;
+use log::{warn, error};
 
 use crate::infer::BOpSignature;
 use crate::syntax::*;
@@ -50,7 +50,7 @@ impl CoercionInsertion {
 
                 let (e, g) = self.make_explicit(ctx, *e);
 
-                (ExplicitExpr::coerce(e, g, g_ann.clone()), g_ann)
+                (self.coerce(e, &g, &g_ann), g_ann)
             }
             GradualExpr::Hole(name, m) => {
                 let g = m.try_gradual().expect("malformed annotation");
@@ -69,8 +69,8 @@ impl CoercionInsertion {
 
                 (
                     ExplicitExpr::app(
-                        ExplicitExpr::coerce(e1, g1, GradualType::fun(g11.clone(), g12.clone())),
-                        ExplicitExpr::coerce(e2, g2, g11),
+                        self.coerce(e1, &g1, &GradualType::fun(g11.clone(), g12.clone())),
+                        self.coerce(e2, &g2, &g11),
                     ),
                     g12,
                 )
@@ -84,9 +84,9 @@ impl CoercionInsertion {
 
                 (
                     ExplicitExpr::if_(
-                        ExplicitExpr::coerce(e1, g1, GradualType::bool()),
-                        ExplicitExpr::coerce(e2, g2, g.clone()),
-                        ExplicitExpr::coerce(e3, g3, g.clone()),
+                        self.coerce(e1, &g1, &GradualType::bool()),
+                        self.coerce(e2, &g2, &g),
+                        self.coerce(e3, &g3, &g),
                     ),
                     g,
                 )
@@ -99,7 +99,7 @@ impl CoercionInsertion {
                 let (e2, g2) = self.make_explicit(&ctx.extend(x.clone(), g1_ann.clone()), *e2);
 
                 (
-                    ExplicitExpr::let_(x, g1_ann.clone(), ExplicitExpr::coerce(e1, g1, g1_ann), e2),
+                    ExplicitExpr::let_(x, g1_ann.clone(), self.coerce(e1, &g1, &g1_ann), e2),
                     g2,
                 )
             }
@@ -119,7 +119,7 @@ impl CoercionInsertion {
 
                         let g1_ann = m.try_gradual().expect("malformed letrec annotation");
 
-                        (x, g1_ann.clone(), ExplicitExpr::coerce(e1, g1, g1_ann))
+                        (x, g1_ann.clone(), self.coerce(e1, &g1, &g1_ann))
                     })
                     .collect();
 
@@ -133,7 +133,7 @@ impl CoercionInsertion {
                 let (g_dom, g_cod) = op.signature();
 
                 (
-                    ExplicitExpr::uop(op, ExplicitExpr::coerce(e, g, g_dom)),
+                    ExplicitExpr::uop(op, self.coerce(e, &g, &g_dom)),
                     g_cod,
                 )
             }
@@ -146,8 +146,8 @@ impl CoercionInsertion {
                 (
                     ExplicitExpr::bop(
                         op,
-                        ExplicitExpr::coerce(e1, g1, g_dom.clone()),
-                        ExplicitExpr::coerce(e2, g2, g_dom),
+                        self.coerce(e1, &g1, &g_dom),
+                        self.coerce(e2, &g2, &g_dom),
                     ),
                     g_cod,
                 )
@@ -182,7 +182,7 @@ impl CoercionInsertion {
 
                 let (e, g) = self.dynamize(ctx, *e)?;
 
-                Some((ExplicitExpr::coerce(e, g, g_ann.clone()), g_ann))
+                Some((self.coerce(e, &g, &g_ann), g_ann))
             }
             GradualExpr::Hole(name, g) => {
                 let g = g.unwrap_or(GradualType::Dyn());
@@ -204,8 +204,8 @@ impl CoercionInsertion {
 
                 Some((
                     ExplicitExpr::app(
-                        ExplicitExpr::coerce(e1, g1, GradualType::fun(g11.clone(), g12.clone())),
-                        ExplicitExpr::coerce(e2, g2, g11),
+                        self.coerce(e1, &g1, &GradualType::fun(g11.clone(), g12.clone())),
+                        self.coerce(e2, &g2, &g11),
                     ),
                     g12,
                 ))
@@ -224,9 +224,9 @@ impl CoercionInsertion {
 
                 Some((
                     ExplicitExpr::if_(
-                        ExplicitExpr::coerce(e1, g1, GradualType::bool()),
-                        ExplicitExpr::coerce(e2, g2, g.clone()),
-                        ExplicitExpr::coerce(e3, g3, g.clone()),
+                        self.coerce(e1, &g1, &GradualType::bool()),
+                        self.coerce(e2, &g2, &g),
+                        self.coerce(e3, &g3, &g),
                     ),
                     g,
                 ))
@@ -247,7 +247,7 @@ impl CoercionInsertion {
                 let (e2, g2) = self.dynamize(&ctx.extend(x.clone(), g1_ann.clone()), *e2)?;
 
                 Some((
-                    ExplicitExpr::let_(x, g1_ann.clone(), ExplicitExpr::coerce(e1, g1, g1_ann), e2),
+                    ExplicitExpr::let_(x, g1_ann.clone(), self.coerce(e1, &g1, &g1_ann), e2),
                     g2,
                 ))
             }
@@ -272,7 +272,7 @@ impl CoercionInsertion {
                             return None;
                         }
 
-                        Some((x, g1_ann.clone(), ExplicitExpr::coerce(e1, g1, g1_ann)))
+                        Some((x, g1_ann.clone(), self.coerce(e1, &g1, &g1_ann)))
                     })
                     .collect::<Option<Vec<_>>>()?;
 
@@ -295,7 +295,7 @@ impl CoercionInsertion {
                 }
 
                 Some((
-                    ExplicitExpr::uop(op, ExplicitExpr::coerce(e, g, g_dom)),
+                    ExplicitExpr::uop(op, self.coerce(e, &g, &g_dom)),
                     g_cod,
                 ))
             }
@@ -328,8 +328,8 @@ impl CoercionInsertion {
                 Some((
                     ExplicitExpr::bop(
                         op,
-                        ExplicitExpr::coerce(e1, g1, g_dom.clone()),
-                        ExplicitExpr::coerce(e2, g2, g_dom),
+                        self.coerce(e1, &g1, &g_dom),
+                        self.coerce(e2, &g2, &g_dom),
                     ),
                     g_cod,
                 ))
@@ -341,6 +341,63 @@ impl CoercionInsertion {
         let ci = CoercionInsertion {};
 
         ci.dynamize(&Ctx::empty(), e)
+    }
+
+    fn coerce(&self, e: ExplicitExpr, src: &GradualType, tgt: &GradualType) -> ExplicitExpr {
+        ExplicitExpr::coerce(e, self.coercion(src, tgt))
+    }
+
+    fn coercion(&self, src: &GradualType, tgt: &GradualType) -> Coercion {
+        let c = {
+            if !src.consistent(tgt) { // TODO flag for this
+                warn!(
+                    "Coercion between inconsistent types {} and {} will fail; going through ?",
+                    src, tgt
+                );
+                Coercion::seq(
+                    self.coercion(src, &GradualType::Dyn()),
+                    self.coercion(&GradualType::Dyn(), tgt),
+                )
+            } else if src == tgt {
+                Coercion::Id(src.clone())
+            } else {
+                match (src, tgt) {
+                    (GradualType::Base(b), GradualType::Dyn()) => {
+                        Coercion::Tag(GroundType::Base(*b))
+                    }
+                    (GradualType::Dyn(), GradualType::Base(b)) => {
+                        Coercion::Check(GroundType::Base(*b))
+                    }
+                    (src @ GradualType::Fun(_, _), GradualType::Dyn()) => Coercion::seq(
+                        self.coercion(
+                            src,
+                            &GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
+                        ),
+                        Coercion::Tag(GroundType::Fun),
+                    ),
+                    (GradualType::Dyn(), src @ GradualType::Fun(_, _)) => Coercion::seq(
+                        Coercion::Check(GroundType::Fun),
+                        self.coercion(
+                            &GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
+                            src,
+                        ),
+                    ),
+                    (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
+                        Coercion::fun(self.coercion(g21, g11), self.coercion(g12, g22))
+                    }
+                    (src, tgt) => {
+                        error!("bad coercion from {} to {}, generating id", src, tgt);
+                        Coercion::Id(src.clone())
+                    }
+                }
+            }
+        };
+
+        let (g_src, g_tgt) = c.types().expect("well typed coercion");
+        assert_eq!(src, &g_src);
+        assert_eq!(tgt, &g_tgt);
+
+        c
     }
 }
 
@@ -418,21 +475,22 @@ mod test {
     #[test]
     fn overloaded_plus_coercions() {
         let (e, g) = unique_coercion("1 + true");
+        let ci = CoercionInsertion {};
 
         assert_eq!(g, GradualType::Dyn());
         assert_eq!(
             e,
             ExplicitExpr::bop(
                 ExplicitBOp::PlusDyn,
-                ExplicitExpr::coerce(
+                ci.coerce(
                     ExplicitExpr::Const(Constant::Int(1)),
-                    GradualType::int(),
-                    GradualType::Dyn()
+                    &GradualType::int(),
+                    &GradualType::Dyn()
                 ),
-                ExplicitExpr::coerce(
+                ci.coerce(
                     ExplicitExpr::Const(Constant::Bool(true)),
-                    GradualType::bool(),
-                    GradualType::Dyn()
+                    &GradualType::bool(),
+                    &GradualType::Dyn()
                 ),
             )
         );
@@ -476,7 +534,8 @@ mod test {
 
     fn coerce(s1: &str, s2: &str) -> Coercion {
         // Coercion::new has a bunch of nice asserts already
-        Coercion::new(
+        let ci = CoercionInsertion {};
+        ci.coercion(
             &GradualType::parse(s1).unwrap(),
             &GradualType::parse(s2).unwrap(),
         )
