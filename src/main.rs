@@ -27,17 +27,26 @@ fn main() {
                 .help("Sets the level of verbosity"),
         )
         .arg(Arg::with_name("STRICT_IFS")
-                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type dyn (conflicts with SAFE_ONLY; defaults to off)")
+                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type `?` (may conflict with --safe-only; defaults to off)")
                  .long("strict-ifs"))
         .arg(Arg::with_name("SAFE_ONLY")
                  .help("When set, we will generate coercions between inconsistent types (default to off)")
                  .long("safe-only"))
+        .arg(Arg::with_name("ALGORITHM")
+                 .help("The type inference algorithm to use (defaults to campora)")
+                 .long("algorithm")
+                 .short("a")
+                 .number_of_values(1)
+                 .possible_value("campora")
+                 .possible_value("dynamic")
+                 .default_value("campora"))
         .get_matches();
 
     let verbosity = match config.occurrences_of("v") {
-        0 => log::LevelFilter::Info,
-        1 => log::LevelFilter::Debug,
-        2 | _ => log::LevelFilter::Trace,
+        0 => log::LevelFilter::Warn,
+        1 => log::LevelFilter::Info,
+        2 => log::LevelFilter::Debug,
+        3 | _ => log::LevelFilter::Trace,
     };
     env_logger::Builder::from_default_env()
         .filter(None, verbosity)
@@ -47,7 +56,6 @@ fn main() {
 
     options.strict_ifs = config.is_present("STRICT_IFS");
     options.safe_only = config.is_present("SAFE_ONLY");
-    
     if options.safe_only && options.strict_ifs {
         warn!("Running with both --strict-ifs and --safe-only may break compilation.");
     }
@@ -71,6 +79,18 @@ fn main() {
         std::process::exit(2);
     });
 
+    let algorithm = match config.value_of("ALGORITHM").expect("no algorithm specified") {
+        "campora" => campora,
+        "dynamic" => dynamic,
+        s => panic!("Invalid algorithm '{}'", s),
+    };
+
+    algorithm(options, e);
+
+    std::process::exit(0);
+}
+
+fn campora(options: Options, e: SourceExpr) {
     let mut ti = TypeInference::new(options);
     let (e, m, ves) = ti.run(&e).unwrap_or_else(|| {
         error!("Constraint generation failed");
@@ -97,13 +117,21 @@ fn main() {
         let e = e.clone().eliminate(&ve);
         let m = m.clone().eliminate(&ve);
 
-        let (e, g) = ci.run(e);
+        let (e, g) = ci.explicit(e);
         assert_eq!(m, g.into());
 
         println!("{}\n: {}", e, m);
     }
+}
 
-    std::process::exit(0);
+fn dynamic(options: Options, e: SourceExpr) {
+    let ci = CoercionInsertion::new(options);
+    let (e, g) = ci.dynamic(e).unwrap_or_else(|| {
+        error!("Coercion insertion failed");
+        std::process::exit(3);
+    });
+
+    println!("{}\n: {}", e, g);
 }
 
 #[cfg(test)]
@@ -147,11 +175,14 @@ mod test {
     #[test]
     fn id() {
         succeeds(vec![], "\\x. x");
+        succeeds(vec!["-a", "campora"], "\\x. x");
+        succeeds(vec!["-a", "dynamic"], "\\x. x");
     }
 
     #[test]
     fn lax_if() {
         succeeds(vec![], "if true then false else 5");
+        succeeds(vec!["-a", "dynamic"], "if true then false else 5");
     }
 
     #[test]
@@ -172,20 +203,30 @@ mod test {
     #[test]
     fn lax_if_annotated_safe_only() {
         fails(vec!["--safe-only"], "if true then true : ? else 0 : ?");
+        succeeds(vec!["-a", "dynamic"], "if true then true : ? else 0 : ?");
     }
 
     #[test]
     fn strict_if_annotated_safe_only() {
-        fails(vec!["--safe-only", "--strict-ifs"], "if true then true : ? else 0 : ?");
+        fails(
+            vec!["--safe-only", "--strict-ifs"],
+            "if true then true : ? else 0 : ?",
+        );
     }
 
     #[test]
     fn parse_error() {
         fails(vec![], "\\x.");
+        fails(vec!["-a", "campora"], "\\x.");
+        fails(vec!["-a", "dynamic"], "\\x.");
     }
 
     #[test]
     fn type_error() {
         fails(vec![], "true true");
+        fails(vec!["-a", "campora"], "true true");
+        fails(vec!["-a", "dynamic"], "true true");
+        fails(vec!["--algorithm", "campora"], "true true");
+        fails(vec!["--algorithm", "dynamic"], "true true");
     }
 }

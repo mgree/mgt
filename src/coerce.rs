@@ -159,14 +159,8 @@ impl CoercionInsertion {
         }
     }
 
-    pub fn run(&self, e: TargetExpr) -> (ExplicitExpr, GradualType) {
+    pub fn explicit(&self, e: TargetExpr) -> (ExplicitExpr, GradualType) {
         self.make_explicit(&Ctx::empty(), e)
-    }
-
-    pub fn explicit(e: TargetExpr) -> (ExplicitExpr, GradualType) {
-        let ci = CoercionInsertion::new(Options::default());
-
-        ci.run(e)
     }
 
     fn dynamize(&self, ctx: &Ctx, e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
@@ -342,14 +336,8 @@ impl CoercionInsertion {
         }
     }
 
-    pub fn run_source(&self, e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
+    pub fn dynamic(&self, e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
         self.dynamize(&Ctx::empty(), e)
-    }
-
-    pub fn dynamic(e: SourceExpr) -> Option<(ExplicitExpr, GradualType)> {
-        let ci = CoercionInsertion::new(Options::default());
-
-        ci.run_source(e)
     }
 
     fn coerce(&self, e: ExplicitExpr, src: &GradualType, tgt: &GradualType) -> ExplicitExpr {
@@ -422,6 +410,8 @@ mod test {
     fn has_no_coercions(s: &str) {
         let (e, m, ves) = TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap();
 
+        let ci = CoercionInsertion::new(Options::default());
+
         for ve in ves.iter() {
             let e = e.clone().eliminate(ve);
             let m = m.clone().eliminate(ve);
@@ -429,7 +419,7 @@ mod test {
             assert!(e.choices().is_empty());
             assert!(m.choices().is_empty());
 
-            let (e, g) = CoercionInsertion::explicit(e);
+            let (e, g) = ci.explicit(e);
             assert_eq!(m, g.into());
 
             assert!(e.coercions().is_empty());
@@ -443,7 +433,8 @@ mod test {
         let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
 
-        let (e, g) = CoercionInsertion::explicit(e.eliminate(ve));
+        let ci = CoercionInsertion::new(Options::default());
+        let (e, g) = ci.explicit(e.eliminate(ve));
 
         assert_eq!(m, g.clone().into());
 
@@ -510,8 +501,9 @@ mod test {
 
     fn rejected(s: &str) {
         let e = SourceExpr::parse(s).unwrap();
+        let ci = CoercionInsertion::new(Options::default());
 
-        match CoercionInsertion::dynamic(e) {
+        match ci.dynamic(e) {
             None => (),
             Some((e, g)) => panic!("expected failure, got {} : {}", e, g),
         }
@@ -527,8 +519,9 @@ mod test {
 
     fn accepted(s: &str) {
         let e = SourceExpr::parse(s).unwrap();
+        let ci = CoercionInsertion::new(Options::default());
 
-        match CoercionInsertion::dynamic(e.clone()) {
+        match ci.dynamic(e.clone()) {
             None => panic!("expected success, but couldn't type {}", e),
             Some((_e, _g)) => (),
         }
