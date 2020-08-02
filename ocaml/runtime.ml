@@ -64,3 +64,5 @@ let bop_equaldyn : dyn -> dyn -> bool = fun d1 d2 ->
         not (truthy d1 || truthy d2) || 
         try i = int_of_string s
         with Failure _ -> false
+
+(* TODO bop_plusdyn *)
