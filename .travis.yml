@@ -32,7 +32,7 @@ cache:
 
 before_install:
   - bash -ex .travis-ocaml.sh
-  - opam install ocamlfind dune
+  - opam install -y ocamlfind dune
   - (cd ocaml; opam pin add -y .)
 
 script:
