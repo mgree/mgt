@@ -34,4 +34,7 @@ before_install:
   - bash -ex .travis-ocaml.sh
   - opam install dune
   - (cd ocaml; opam pin add -y .)
-  - eval `opam config env`
+
+script:
+  - cargo build --verbose --all
+  - opam exec -- cargo test --verbose --all
