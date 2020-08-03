@@ -30,8 +30,17 @@ fn main() {
                  .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type `?` (may conflict with --safe-only; defaults to off)")
                  .long("strict-ifs"))
         .arg(Arg::with_name("SAFE_ONLY")
-                 .help("When set, we will generate coercions between inconsistent types (default to off)")
+                 .help("When set, refuses to generate coercions between inconsistent types")
                  .long("safe-only"))
+        .arg(Arg::with_name("COMPILATION_MODE")
+                 .help("Determines whether to infer types, compile, or compile and run.")
+                 .long("mode")
+                 .short("m")
+                 .number_of_values(1)
+                 .possible_value("infer")
+                 .possible_value("compile")
+                 .possible_value("run")
+                 .default_value("infer"))
         .arg(Arg::with_name("ALGORITHM")
                  .help("The type inference algorithm to use (defaults to campora)")
                  .long("algorithm")
@@ -56,25 +65,33 @@ fn main() {
 
     options.strict_ifs = config.is_present("STRICT_IFS");
     options.safe_only = config.is_present("SAFE_ONLY");
+    options.compile = match config.value_of("COMPILATION_MODE") {
+        Some("infer") | None => CompilationMode::InferOnly,
+        Some("compile") => CompilationMode::CompileOnly,
+        Some("run") => CompilationMode::CompileAndRun,
+        Some(mode) => panic!("Invalid compilation mode {}.", mode),
+    };
     if options.safe_only && options.strict_ifs {
         warn!("Running with both --strict-ifs and --safe-only may break compilation.");
     }
 
     let input_source = config.value_of("INPUT").expect("input source");
 
-    let workdir = tempfile::TempDir::new_in(".").expect("make temporary working directory");
-
     let mut input = String::new();
     let res = if input_source == "-" {
-
-        options.basename = Some(
-            workdir
-                .into_path()
-                .join("stdin")
-                .to_string_lossy()
-                .to_owned()
-                .to_string(),
-        );
+        if options.compile != CompilationMode::InferOnly {
+            let workdir = tempfile::TempDir::new_in(".").expect("make temporary working directory");
+            options.basename = Some(
+                workdir
+                    .into_path()
+                    .join("stdin")
+                    .to_string_lossy()
+                    .to_owned()
+                    .to_string(),
+            );
+        } else {
+            options.basename = None;
+        }
 
         std::io::stdin().read_to_string(&mut input)
     } else {
@@ -107,13 +124,22 @@ fn main() {
     };
 
     let ocaml = OCamlCompiler::new(options.clone());
+    let mode = options.compile;
     for (e, g) in algorithm(options, e).into_iter() {
         println!("\n{}\n:\n{}", e, g);
-        let exe = ocaml.compile(e);
-        let _ = ocaml.run(exe);
-    }
 
-    // TODO maybe delete workdir...
+        match mode {
+            CompilationMode::InferOnly => (),
+            CompilationMode::CompileOnly => {
+                let _ = ocaml.compile(e);
+                ()
+            }
+            CompilationMode::CompileAndRun => {
+                let exe = ocaml.compile(e);
+                let _ = ocaml.run(exe);
+            }
+        }
+    }
 
     std::process::exit(0);
 }
@@ -251,5 +277,15 @@ mod test {
         fails(vec!["-a", "dynamic"], "true true");
         fails(vec!["--algorithm", "campora"], "true true");
         fails(vec!["--algorithm", "dynamic"], "true true");
+    }
+
+    #[test]
+    fn compile_id() {
+        succeeds(vec!["-m", "compile"], "\\x. x");
+    }
+
+    #[test]
+    fn run_lax_if() {
+        succeeds(vec!["-m", "run"], "if true then 1 else false");
     }
 }

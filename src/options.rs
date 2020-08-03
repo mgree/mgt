@@ -34,6 +34,11 @@ pub struct Options {
     /// you the exact inferred type. On the other hand, the inferred type sucks!
     pub safe_only: bool,
 
+    /// Whether to just infer types, infer types and compile with the OCaml
+    /// optimizing native compiler, or infer, compile, and run. Defaults to
+    /// `CompilationMode::CompileAndRun`.
+    pub compile: CompilationMode,
+
     /// Name to use as the base for compilation. Defaults to the input filename
     /// before any `.mgt` extension (or other extension).
     /// 
@@ -41,11 +46,19 @@ pub struct Options {
     pub basename: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CompilationMode {
+    InferOnly,
+    CompileOnly,
+    CompileAndRun,
+}
+
 impl Default for Options {
     fn default() -> Self {
         Options {
             strict_ifs: false,
             safe_only: true,
+            compile: CompilationMode::InferOnly,
             basename: None,
         }
     }
