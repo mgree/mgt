@@ -41,6 +41,9 @@ impl OCamlCompiler {
             .output()
             .expect("located ocamlfind");
 
+        // debug path
+        let _ = Command::new("sh").args(&["-c", "echo $PATH"]).status().expect("current path");
+
         let ocamlfind = std::str::from_utf8(&ocamlfind.stdout).expect("valid utf-8 path");
         info!("using ocamlfind in {}", &ocamlfind);
 
