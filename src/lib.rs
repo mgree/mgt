@@ -17,3 +17,5 @@ pub use coerce::CoercionInsertion;
 
 pub mod ocaml;
 
+pub use ocaml::OCamlCompiler;
+

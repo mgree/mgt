@@ -62,10 +62,28 @@ fn main() {
 
     let input_source = config.value_of("INPUT").expect("input source");
 
+    let workdir = tempfile::TempDir::new_in(".").expect("make temporary working directory");
+
     let mut input = String::new();
     let res = if input_source == "-" {
+
+        options.basename = Some(
+            workdir
+                .into_path()
+                .join("stdin")
+                .to_string_lossy()
+                .to_owned()
+                .to_string(),
+        );
+
         std::io::stdin().read_to_string(&mut input)
     } else {
+        let parts: Vec<_> = input_source.rsplitn(2, '.').collect();
+        options.basename = Some(if parts.len() == 2 {
+            parts[1].into()
+        } else {
+            parts[0].into()
+        });
         File::open(input_source).and_then(|mut f| f.read_to_string(&mut input))
     };
 
@@ -79,19 +97,29 @@ fn main() {
         std::process::exit(2);
     });
 
-    let algorithm = match config.value_of("ALGORITHM").expect("no algorithm specified") {
+    let algorithm = match config
+        .value_of("ALGORITHM")
+        .expect("no algorithm specified")
+    {
         "campora" => campora,
         "dynamic" => dynamic,
         s => panic!("Invalid algorithm '{}'", s),
     };
 
-    algorithm(options, e);
+    let ocaml = OCamlCompiler::new(options.clone());
+    for (e, g) in algorithm(options, e).into_iter() {
+        println!("\n{}\n:\n{}", e, g);
+        let exe = ocaml.compile(e);
+        let _ = ocaml.run(exe);
+    }
+
+    // TODO maybe delete workdir...
 
     std::process::exit(0);
 }
 
-fn campora(options: Options, e: SourceExpr) {
-    let mut ti = TypeInference::new(options);
+fn campora(options: Options, e: SourceExpr) -> Vec<(ExplicitExpr, GradualType)> {
+    let mut ti = TypeInference::new(options.clone());
     let (e, m, ves) = ti.run(&e).unwrap_or_else(|| {
         error!("Constraint generation failed");
         std::process::exit(3);
@@ -107,31 +135,26 @@ fn campora(options: Options, e: SourceExpr) {
 
     let ci = CoercionInsertion::new(options);
 
-    for (i, ve) in ves.iter().enumerate() {
-        if ves.len() > 1 {
-            info!("Eliminator #{}: #{}", i + 1, ve);
-        } else {
-            info!("Eliminator: #{}", ve);
-        }
+    ves.iter()
+        .map(|ve| {
+            let e = e.clone().eliminate(&ve);
+            let m = m.clone().eliminate(&ve);
 
-        let e = e.clone().eliminate(&ve);
-        let m = m.clone().eliminate(&ve);
-
-        let (e, g) = ci.explicit(e);
-        assert_eq!(m, g.into());
-
-        println!("{}\n: {}", e, m);
-    }
+            let (e, g) = ci.explicit(e);
+            assert_eq!(m, g.clone().into());
+            (e, g)
+        })
+        .collect()
 }
 
-fn dynamic(options: Options, e: SourceExpr) {
+fn dynamic(options: Options, e: SourceExpr) -> Vec<(ExplicitExpr, GradualType)> {
     let ci = CoercionInsertion::new(options);
     let (e, g) = ci.dynamic(e).unwrap_or_else(|| {
         error!("Coercion insertion failed");
         std::process::exit(3);
     });
 
-    println!("{}\n: {}", e, g);
+    vec![(e, g)]
 }
 
 #[cfg(test)]

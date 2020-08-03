@@ -1,5 +1,5 @@
 /// Configuration options
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Options {
     /// How should conditional branches of different types be treated?
     ///
@@ -33,6 +33,12 @@ pub struct Options {
     /// It's a bad situation. On the one hand, coercion insertion doesn't give
     /// you the exact inferred type. On the other hand, the inferred type sucks!
     pub safe_only: bool,
+
+    /// Name to use as the base for compilation. Defaults to the input filename
+    /// before any `.mgt` extension (or other extension).
+    /// 
+    /// When reading from STDIN, we use temporary files.
+    pub basename: Option<String>,
 }
 
 impl Default for Options {
@@ -40,6 +46,7 @@ impl Default for Options {
         Options {
             strict_ifs: false,
             safe_only: true,
+            basename: None,
         }
     }
 }
