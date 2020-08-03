@@ -23,6 +23,12 @@ let string_of_tag : tag -> string = function
     | TString -> "string"
     | TFun -> "fun"
 
+let string_of_dyn : dyn -> string = function
+    | Bool b -> if b then "true" else "false"
+    | Int i -> string_of_int i
+    | String s -> s
+    | Fun _ -> "<procedure>"
+
 let check_bool : dyn -> bool = function
     | Bool b -> b
     | v -> raise (Coercion_failure(TBool, v))
@@ -65,4 +71,14 @@ let bop_equaldyn : dyn -> dyn -> bool = fun d1 d2 ->
         try i = int_of_string s
         with Failure _ -> false
 
-(* TODO bop_plusdyn *)
+let int_of_bool b = if b then 1 else 0
+
+let bop_plusdyn : dyn -> dyn -> dyn = fun d1 d2 ->
+    match (d1, d2) with
+    | (Int i1, Int i2) -> Int (i1 + i2)
+    | (Bool b1, Bool b2) -> Int (int_of_bool b1 + int_of_bool b2)
+    | (String s1, String s2) -> String (s1 ^ s2)
+    | (Fun _, _) | (_, Fun _) -> failwith "please don't try to add functions, it hurts"
+    | (v, String s) -> String (string_of_dyn v ^ s)
+    | (String s, v) -> String (s ^ string_of_dyn v)
+    | (Bool b, Int i) | (Int i, Bool b) -> Int (i + int_of_bool b)
