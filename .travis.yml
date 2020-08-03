@@ -1,7 +1,8 @@
 branches:
   only:
   - main
-  
+  - ocaml
+
 dist: xenial
 
 os:
@@ -21,4 +22,11 @@ jobs:
     - rust: nightly
   fast_finish: true
 
-cache: cargo
+cache: 
+  - cargo
+  directories:
+    - $HOME/.opam
+
+before_install:
+  - bash -ex .travis-ocaml.sh
+  - (cd ocaml; opam pin add -y .)
