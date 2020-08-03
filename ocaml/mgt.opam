@@ -4,7 +4,7 @@ version: "0.1"
 synopsis: "Coercion-based runtime for gradual types"
 maintainer: "Michael Greenberg <michael.greenberg@pomona.edu>"
 authors: "Michael Greenberg <michael.greenberg@pomona.edu>"
-license: "BSD"
+license: "GPL-3.0-only"
 homepage: "https://github.com/mgree/mgt"
 bug-reports: "https://github.com/mgree/mgt/issues"
 depends: [
