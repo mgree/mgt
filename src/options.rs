@@ -39,11 +39,8 @@ pub struct Options {
     /// `CompilationMode::CompileAndRun`.
     pub compile: CompilationMode,
 
-    /// Name to use as the base for compilation. Defaults to the input filename
-    /// before any `.mgt` extension (or other extension).
-    /// 
-    /// When reading from STDIN, we use temporary files.
-    pub basename: Option<String>,
+    /// Name to use as the base for compilation.
+    pub basename: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -59,7 +56,15 @@ impl Default for Options {
             strict_ifs: false,
             safe_only: true,
             compile: CompilationMode::InferOnly,
-            basename: None,
+            basename: String::from("mgt_input"),
         }
+    }
+}
+
+impl Options {
+    pub fn file_ext(&self, ext: &str) -> String { // TODO change to Path?
+        let mut name = self.basename.clone();
+        name.push_str(ext);
+        name
     }
 }

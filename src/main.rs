@@ -79,28 +79,16 @@ fn main() {
 
     let mut input = String::new();
     let res = if input_source == "-" {
-        if options.compile != CompilationMode::InferOnly {
-            let workdir = tempfile::TempDir::new_in(".").expect("make temporary working directory");
-            options.basename = Some(
-                workdir
-                    .into_path()
-                    .join("stdin")
-                    .to_string_lossy()
-                    .to_owned()
-                    .to_string(),
-            );
-        } else {
-            options.basename = None;
-        }
+        options.basename = "stdin".into();
 
         std::io::stdin().read_to_string(&mut input)
     } else {
         let parts: Vec<_> = input_source.rsplitn(2, '.').collect();
-        options.basename = Some(if parts.len() == 2 {
+        options.basename = if parts.len() == 2 {
             parts[1].into()
         } else {
             parts[0].into()
-        });
+        };
         File::open(input_source).and_then(|mut f| f.read_to_string(&mut input))
     };
 
@@ -123,18 +111,18 @@ fn main() {
         s => panic!("Invalid algorithm '{}'", s),
     };
 
-    let ocaml = OCamlCompiler::new(options.clone());
-    let mode = options.compile;
-    for (e, g) in algorithm(options, e).into_iter() {
+    for (e, g) in algorithm(options.clone(), e).into_iter() {
         println!("\n{}\n:\n{}", e, g);
 
-        match mode {
+        match options.compile {
             CompilationMode::InferOnly => (),
             CompilationMode::CompileOnly => {
+                let ocaml = OCamlCompiler::new(options.clone());
                 let _ = ocaml.compile(e);
                 ()
             }
             CompilationMode::CompileAndRun => {
+                let ocaml = OCamlCompiler::new(options.clone());
                 let exe = ocaml.compile(e);
                 let _ = ocaml.run(exe);
             }

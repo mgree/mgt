@@ -37,4 +37,4 @@ before_install:
 
 script:
   - cargo build --verbose --all
-  - opam exec -- cargo test --verbose --all
+  - eval `opam env` && cargo test --verbose --all

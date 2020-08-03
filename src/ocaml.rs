@@ -8,31 +8,22 @@ use crate::syntax::*;
 
 pub struct OCamlCompiler {
     pub options: Options,
+    workdir: tempfile::TempDir,
 }
 
 impl OCamlCompiler {
     pub fn new(options: Options) -> Self {
-        OCamlCompiler { options }
+        OCamlCompiler {
+            options,
+            workdir: tempfile::TempDir::new_in(".")
+                .expect("allocating working directory for ocamlopt"),
+        }
     }
 
     fn file_ext(&self, ext: &str) -> String {
-        match &self.options.basename {
-            Some(name) => {
-                let mut name = name.clone();
-                name.push_str(ext);
-                name
-            }
-            None => {
-                let file = tempfile::Builder::new()
-                    .suffix(ext)
-                    .tempfile_in(".")
-                    .expect("temporary file");
-
-                let (_, path) = file.keep().expect("persist temporary file");
-
-                path.to_string_lossy().to_owned().to_string()
-            }
-        }
+        let path = self.workdir.path().to_owned();
+        let path = path.join(self.options.file_ext(ext));
+        path.to_str().expect("converting path to UTF-8").to_string()
     }
 
     pub fn compile(&self, e: ExplicitExpr) -> String {
