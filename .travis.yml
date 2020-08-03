@@ -32,11 +32,9 @@ cache:
 
 before_install:
   - bash -ex .travis-ocaml.sh
-  - opam install dune
+  - opam install ocamlfind dune
   - (cd ocaml; opam pin add -y .)
 
 script:
   - cargo build --verbose --all
-  - echo $PATH
-  - eval `opam env` && echo $PATH
-  - eval `opam env` && cargo test --verbose --all
+  - opam exec -- cargo test --verbose --all

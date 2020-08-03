@@ -111,7 +111,8 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 - [ ] Compiler (to OCaml, for performance testing)
       + [x] Simple runtime
       + [x] Textual translation (FFI seems like too much)
-      + [ ] Rework to always use temporary directory, optionally persisting files
+      + [x] Rework to always use temporary directory
+      + [ ] Optionally persist files
       + [ ] Vary basenames per migration
 
 - [ ] Ensure that choices don't show up in the final, eliminated AST
