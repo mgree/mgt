@@ -34,3 +34,4 @@ before_install:
   - bash -ex .travis-ocaml.sh
   - opam install dune
   - (cd ocaml; opam pin add -y .)
+  - eval `opam config env`
