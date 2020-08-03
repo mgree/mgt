@@ -9,6 +9,7 @@ homepage: "https://github.com/mgree/mgt"
 bug-reports: "https://github.com/mgree/mgt/issues"
 depends: [
   "ocaml" {>= "4.0.7"}
+  "dune"  {>= "1.11.0"}
 ]
 build: [
   ["dune" "subst"] {pinned}
