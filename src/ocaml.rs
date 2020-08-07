@@ -3,20 +3,33 @@ use std::process::Command;
 
 use log::info;
 
-use crate::options::Options;
+use crate::options::CompilationOptions;
 use crate::syntax::*;
 
 pub struct OCamlCompiler {
-    pub options: Options,
+    pub options: CompilationOptions,
     workdir: tempfile::TempDir,
 }
 
 impl OCamlCompiler {
-    pub fn new(options: Options) -> Self {
+    pub fn new(options: CompilationOptions) -> Self {
         OCamlCompiler {
             options,
             workdir: tempfile::TempDir::new_in(".")
                 .expect("allocating working directory for ocamlopt"),
+        }
+    }
+
+    pub fn go(&self, e: ExplicitExpr) {
+        let exe = self.compile(e);
+
+        if self.options.persist {
+            std::fs::copy(exe.clone(), self.options.basename.clone())
+                .expect("couldn't persist executable");
+        }
+
+        if self.options.run {
+            let _ = self.run(exe);
         }
     }
 
@@ -40,9 +53,6 @@ impl OCamlCompiler {
             .arg("ocamlfind")
             .output()
             .expect("located ocamlfind");
-
-        // debug path
-        let _ = Command::new("sh").args(&["-c", "echo $PATH"]).status().expect("current path");
 
         let ocamlfind = std::str::from_utf8(&ocamlfind.stdout).expect("valid utf-8 path");
         info!("using ocamlfind in {}", &ocamlfind);

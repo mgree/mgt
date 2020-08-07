@@ -33,7 +33,7 @@ fn main() {
                  .help("When set, refuses to generate coercions between inconsistent types")
                  .long("safe-only"))
         .arg(Arg::with_name("COMPILATION_MODE")
-                 .help("Determines whether to infer types, compile, or compile and run.")
+                 .help("Determines whether to `infer` and show types, `compile` and persist an executable, or compile a transient executable and `run` it.")
                  .long("mode")
                  .short("m")
                  .number_of_values(1)
@@ -49,6 +49,15 @@ fn main() {
                  .possible_value("campora")
                  .possible_value("dynamic")
                  .default_value("campora"))
+        .arg(Arg::with_name("OUTPUT")
+                 .help("Sets the output file. If there are multiple eliminators, the files will be numbered.")
+                 .long("output")
+                 .short("o")
+                 .number_of_values(1))
+        .arg(Arg::with_name("TRANSIENT")
+                 .help("Prevents persistence of the generated executable.")
+                 .long("transient")
+                .conflicts_with("OUTPUT"))
         .get_matches();
 
     let verbosity = match config.occurrences_of("v") {
@@ -63,32 +72,63 @@ fn main() {
 
     let mut options = Options::default();
 
+    let input_source = config.value_of("INPUT").expect("input source");
+
     options.strict_ifs = config.is_present("STRICT_IFS");
     options.safe_only = config.is_present("SAFE_ONLY");
     options.compile = match config.value_of("COMPILATION_MODE") {
         Some("infer") | None => CompilationMode::InferOnly,
-        Some("compile") => CompilationMode::CompileOnly,
-        Some("run") => CompilationMode::CompileAndRun,
+        Some("compile") => CompilationMode::Compile(CompilationOptions::compile_only()),
+        Some("run") => CompilationMode::Compile(CompilationOptions::compile_and_run()),
         Some(mode) => panic!("Invalid compilation mode {}.", mode),
+    };
+    options.compile = match options.compile { // MMG weird idiom
+        CompilationMode::InferOnly => {
+            if config.is_present("OUTPUT") {
+                warn!("Setting `-o` in infer mode has no effect.");
+            }
+
+            if config.is_present("TRANSIENT") {
+                warn!("Setting `--transient` in infer mode has no effect.")
+            }
+
+            CompilationMode::InferOnly
+        }
+        CompilationMode::Compile(mut opts) => {
+            match config.value_of("OUTPUT") {
+                Some(basename) => {
+                    opts.persist = true;
+                    opts.basename = basename.into();
+                }
+                None => 
+                if input_source == "-" {
+                    opts.basename = "a.out".into();
+                    warn!("No output file specified for input on STDIN; using a.out.");
+                } else {
+                    let parts: Vec<_> = input_source.rsplitn(2, '.').collect();
+                    opts.basename = if parts.len() == 2 {
+                        parts[1].into()
+                    } else {
+                        parts[0].into()
+                    };
+                }
+            };
+
+            if config.is_present("TRANSIENT") {
+                opts.persist = false;
+            }
+
+            CompilationMode::Compile(opts)
+        }
     };
     if options.safe_only && options.strict_ifs {
         warn!("Running with both --strict-ifs and --safe-only may break compilation.");
     }
 
-    let input_source = config.value_of("INPUT").expect("input source");
-
     let mut input = String::new();
     let res = if input_source == "-" {
-        options.basename = "stdin".into();
-
         std::io::stdin().read_to_string(&mut input)
     } else {
-        let parts: Vec<_> = input_source.rsplitn(2, '.').collect();
-        options.basename = if parts.len() == 2 {
-            parts[1].into()
-        } else {
-            parts[0].into()
-        };
         File::open(input_source).and_then(|mut f| f.read_to_string(&mut input))
     };
 
@@ -114,17 +154,10 @@ fn main() {
     for (e, g) in algorithm(options.clone(), e).into_iter() {
         println!("\n{}\n:\n{}", e, g);
 
-        match options.compile {
+        match options.compile.clone() {
             CompilationMode::InferOnly => (),
-            CompilationMode::CompileOnly => {
-                let ocaml = OCamlCompiler::new(options.clone());
-                let _ = ocaml.compile(e);
-                ()
-            }
-            CompilationMode::CompileAndRun => {
-                let ocaml = OCamlCompiler::new(options.clone());
-                let exe = ocaml.compile(e);
-                let _ = ocaml.run(exe);
+            CompilationMode::Compile(opts) => {
+                OCamlCompiler::new(opts).go(e);
             }
         }
     }

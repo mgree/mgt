@@ -38,16 +38,22 @@ pub struct Options {
     /// optimizing native compiler, or infer, compile, and run. Defaults to
     /// `CompilationMode::CompileAndRun`.
     pub compile: CompilationMode,
-
-    /// Name to use as the base for compilation.
-    pub basename: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CompilationMode {
     InferOnly,
-    CompileOnly,
-    CompileAndRun,
+    Compile(CompilationOptions),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompilationOptions {
+    /// Whether or not to run the resulting executable.
+    pub run: bool,
+    /// Whether or not to save the resulting executable.
+    pub persist: bool,
+    /// The base output name to use.
+    pub basename: String,
 }
 
 impl Default for Options {
@@ -56,12 +62,27 @@ impl Default for Options {
             strict_ifs: false,
             safe_only: true,
             compile: CompilationMode::InferOnly,
-            basename: String::from("mgt_input"),
         }
     }
 }
 
-impl Options {
+impl CompilationOptions {
+    pub fn compile_only() -> Self {
+        CompilationOptions {
+            run: false,
+            persist: true,
+            basename: String::from("mgt_out"),
+        }
+    }
+
+    pub fn compile_and_run() -> Self {
+        CompilationOptions {
+            run: true,
+            persist: false,
+            basename: String::from("mgt_out"),
+        }
+    }
+
     pub fn file_ext(&self, ext: &str) -> String { // TODO change to Path?
         let mut name = self.basename.clone();
         name.push_str(ext);
