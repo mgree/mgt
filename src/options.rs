@@ -54,6 +54,8 @@ pub struct CompilationOptions {
     pub persist: bool,
     /// The base output name to use.
     pub basename: String,
+    /// The current variation name to use.
+    pub variation: String,
 }
 
 impl Default for Options {
@@ -71,7 +73,8 @@ impl CompilationOptions {
         CompilationOptions {
             run: false,
             persist: true,
-            basename: String::from("mgt_out"),
+            basename: "mgt_out".into(),
+            variation: "unknown".into(),
         }
     }
 
@@ -79,12 +82,15 @@ impl CompilationOptions {
         CompilationOptions {
             run: true,
             persist: false,
-            basename: String::from("mgt_out"),
+            basename: "mgt_out".into(),
+            variation: "unknown".into(),
         }
     }
 
     pub fn file_ext(&self, ext: &str) -> String { // TODO change to Path?
         let mut name = self.basename.clone();
+        name.push('_');
+        name.push_str(&self.variation);
         name.push_str(ext);
         name
     }

@@ -24,7 +24,9 @@ impl OCamlCompiler {
         let exe = self.compile(e);
 
         if self.options.persist {
-            std::fs::copy(exe.clone(), self.options.basename.clone())
+            let tgt = self.options.file_ext(".exe");
+            eprintln!("cp {} {}", exe, tgt);            
+            std::fs::copy(exe.clone(), tgt)
                 .expect("couldn't persist executable");
         }
 

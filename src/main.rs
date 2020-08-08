@@ -1,9 +1,11 @@
 extern crate mgt;
 
 use clap::{App, Arg};
+use std::hash::{Hash, Hasher};
 
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 
 use log::{error, info, warn};
 
@@ -82,7 +84,8 @@ fn main() {
         Some("run") => CompilationMode::Compile(CompilationOptions::compile_and_run()),
         Some(mode) => panic!("Invalid compilation mode {}.", mode),
     };
-    options.compile = match options.compile { // MMG weird idiom
+    options.compile = match options.compile {
+        // MMG weird idiom
         CompilationMode::InferOnly => {
             if config.is_present("OUTPUT") {
                 warn!("Setting `-o` in infer mode has no effect.");
@@ -100,17 +103,19 @@ fn main() {
                     opts.persist = true;
                     opts.basename = basename.into();
                 }
-                None => 
-                if input_source == "-" {
-                    opts.basename = "a.out".into();
-                    warn!("No output file specified for input on STDIN; using a.out.");
-                } else {
-                    let parts: Vec<_> = input_source.rsplitn(2, '.').collect();
-                    opts.basename = if parts.len() == 2 {
-                        parts[1].into()
+                None => {
+                    if input_source == "-" {
+                        opts.basename = "a.out".into();
+                        warn!("No output file specified for input on STDIN; using a.out.");
                     } else {
-                        parts[0].into()
-                    };
+                        match Path::new(input_source).file_stem() {
+                            None => warn!(
+                                "Couldn't form basename from {}, using '{}'.",
+                                input_source, opts.basename
+                            ),
+                            Some(basename) => opts.basename = basename.to_string_lossy().into(),
+                        };
+                    }
                 }
             };
 
@@ -151,15 +156,18 @@ fn main() {
         s => panic!("Invalid algorithm '{}'", s),
     };
 
+    eprintln!("options {:#?}", options.compile);
     // TODO have algorithm yield a unique code for each program
     // TODO have compiler just persist the whole damn directory
-    for (e, g) in algorithm(options.clone(), e).into_iter() {
+    for (variation, e, g) in algorithm(options.clone(), e).into_iter() {
         println!("\n{}\n:\n{}", e, g);
 
         match options.compile.clone() {
             CompilationMode::InferOnly => (),
             CompilationMode::Compile(opts) => {
-                OCamlCompiler::new(opts).go(e);
+                let compiler =                 OCamlCompiler::new(CompilationOptions { variation, ..opts });
+                compiler.go(e);
+                drop(compiler);
             }
         }
     }
@@ -167,7 +175,7 @@ fn main() {
     std::process::exit(0);
 }
 
-fn campora(options: Options, e: SourceExpr) -> Vec<(ExplicitExpr, GradualType)> {
+fn campora(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, GradualType)> {
     let mut ti = TypeInference::new(options.clone());
     let (e, m, ves) = ti.run(&e).unwrap_or_else(|| {
         error!("Constraint generation failed");
@@ -191,19 +199,23 @@ fn campora(options: Options, e: SourceExpr) -> Vec<(ExplicitExpr, GradualType)> 
 
             let (e, g) = ci.explicit(e);
             assert_eq!(m, g.clone().into());
-            (e, g)
+
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            ve.hash(&mut hasher);
+
+            (format!("{:x}", hasher.finish()), e, g)
         })
         .collect()
 }
 
-fn dynamic(options: Options, e: SourceExpr) -> Vec<(ExplicitExpr, GradualType)> {
+fn dynamic(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, GradualType)> {
     let ci = CoercionInsertion::new(options);
     let (e, g) = ci.dynamic(e).unwrap_or_else(|| {
         error!("Coercion insertion failed");
         std::process::exit(3);
     });
 
-    vec![(e, g)]
+    vec![("dynamic".into(), e, g)]
 }
 
 #[cfg(test)]
@@ -220,9 +232,11 @@ mod test {
         let mut args = args;
 
         // no args
+        eprintln!("arg-free");
         f(Assert::main_binary().with_args(&args).stdin(s));
 
         // explicit stdin
+        eprintln!("explicit stdin");
         args.push("-");
         f(Assert::main_binary().with_args(&args).stdin(s));
 
@@ -231,7 +245,10 @@ mod test {
         let mut file = tempfile::NamedTempFile::new().expect("make temporary file");
         file.write_all(s.as_bytes())
             .expect("couldn't write to temporary file");
-        args.push(file.path().to_str().unwrap());
+        let file_name = file.path().to_str().unwrap();
+        eprintln!("temporary file {}", file_name);
+
+        args.push(file_name);
 
         f(Assert::main_binary().with_args(&args));
     }
