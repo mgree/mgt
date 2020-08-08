@@ -157,7 +157,6 @@ fn main() {
     };
 
     eprintln!("options {:#?}", options.compile);
-    // TODO have algorithm yield a unique code for each program
     // TODO have compiler just persist the whole damn directory
     for (variation, e, g) in algorithm(options.clone(), e).into_iter() {
         println!("\n{}\n:\n{}", e, g);
@@ -165,7 +164,7 @@ fn main() {
         match options.compile.clone() {
             CompilationMode::InferOnly => (),
             CompilationMode::Compile(opts) => {
-                let compiler =                 OCamlCompiler::new(CompilationOptions { variation, ..opts });
+                let compiler = OCamlCompiler::new(CompilationOptions { variation, ..opts });
                 compiler.go(e);
                 drop(compiler);
             }
