@@ -151,6 +151,8 @@ fn main() {
         s => panic!("Invalid algorithm '{}'", s),
     };
 
+    // TODO have algorithm yield a unique code for each program
+    // TODO have compiler just persist the whole damn directory
     for (e, g) in algorithm(options.clone(), e).into_iter() {
         println!("\n{}\n:\n{}", e, g);
 
