@@ -189,11 +189,7 @@ fn main() {
                 }
                 Ok(md) if md.is_dir() => {
                     // copy everything over
-                    debug!(
-                        "Copying contents of {} to {}.",
-                        workpath,
-                        opts.path
-                    );
+                    debug!("Copying contents of {} to {}.", workpath, opts.path);
 
                     for entry in std::fs::read_dir(workpath).expect("persisting output directory") {
                         let src = entry.expect("persisting file (finding file)").path();
@@ -284,8 +280,10 @@ fn dynamic(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, Gradua
 #[cfg(test)]
 mod test {
     extern crate assert_cli;
+    extern crate serial_test;
 
     use assert_cli::Assert;
+    use serial_test::serial;
     use std::io::Write;
 
     fn run<F>(args: Vec<&str>, s: &str, f: F)
@@ -382,12 +380,49 @@ mod test {
         fails(vec!["--algorithm", "dynamic"], "true true");
     }
 
+    // MMG: all tests doing compilation should be marked `#[serial(dir)]`, where
+    // `dir` is the directory that will be used for compilation.
+
     #[test]
+    #[serial(mgt)]
     fn compile_id() {
         succeeds(vec!["-m", "compile"], "\\x. x");
         assert!(std::fs::metadata("mgt")
             .expect("compiled directory")
             .is_dir());
+        std::fs::remove_dir_all("mgt").expect("clean up output directory");
+    }
+
+    #[test]
+    #[serial(mgt_run)]
+    fn compile_run_id() {
+        succeeds(vec!["-m", "run", "-o", "mgt_run"], "\\x. x");
+        assert!(std::fs::metadata("mgt_run")
+            .expect("compiled directory")
+            .is_dir());
+        std::fs::remove_dir_all("mgt_run").expect("clean up output directory");
+    }
+
+    #[test]
+    #[serial(mgt_test)]
+    fn compile_id_output() {
+        succeeds(vec!["-m", "compile", "-o", "mgt_test"], "\\x. x");
+        assert!(std::fs::metadata("mgt_test")
+            .expect("compiled directory")
+            .is_dir());
+        std::fs::remove_dir_all("mgt_test").expect("clean up output directory");
+    }
+
+    #[test]
+    #[serial(mgt)]
+    fn compile_id_transient() {
+        succeeds(vec!["-m", "compile", "--transient"], "\\x. x");
+        assert_eq!(
+            std::fs::metadata("mgt")
+                .expect_err("no saved directory")
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
     }
 
     #[test]
