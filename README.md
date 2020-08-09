@@ -108,12 +108,8 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Interpreter (for testing)
 
-- [ ] Compiler (to OCaml, for performance testing)
-      + [x] Simple runtime
-      + [x] Textual translation (FFI seems like too much)
-      + [x] Rework to always use temporary directory
-      + [x] Optionally persist files
-      + [x] Vary basenames per migration
+- [ ] Better compiler output (save explicit code w/ comment indicating
+      variation, print result)
 
 - [ ] Ensure that choices don't show up in the final, eliminated AST
      + [ ] Using tests, or...
