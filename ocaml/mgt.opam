@@ -1,0 +1,17 @@
+opam-version: "2.0"
+name: "mgt"
+version: "0.1"
+synopsis: "Coercion-based runtime for gradual types"
+maintainer: "Michael Greenberg <michael.greenberg@pomona.edu>"
+authors: "Michael Greenberg <michael.greenberg@pomona.edu>"
+license: "GPL-3.0-only"
+homepage: "https://github.com/mgree/mgt"
+bug-reports: "https://github.com/mgree/mgt/issues"
+depends: [
+  "ocaml" {>= "4.0.7"}
+  "dune"  {>= "1.11.0"}
+]
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+]

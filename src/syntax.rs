@@ -1037,7 +1037,7 @@ impl Coercion {
         }
     }
 
-    fn is_compound(&self) -> bool {
+    pub(crate) fn is_compound(&self) -> bool {
         match self {
             Coercion::Fun(_, _) | Coercion::Seq(_, _) => true,
             Coercion::Id(_, _) | Coercion::Check(_) | Coercion::Tag(_) => false,

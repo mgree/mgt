@@ -11,6 +11,10 @@ type tag =
 
 exception Coercion_failure of tag * dyn
 
+exception Hole of string
+
+let hole : string -> 'a = fun s -> raise (Hole s)
+
 let tag_of : dyn -> tag = function
     | Bool _   -> TBool
     | Int _    -> TInt
@@ -46,6 +50,8 @@ let tag_bool : bool -> dyn = fun b -> Bool b
 let tag_int : int -> dyn = fun i -> Int i
 let tag_string : string -> dyn = fun s -> String s
 let tag_fun : (dyn -> dyn) -> dyn = fun f -> Fun f
+
+let coerce_id : 'a -> 'a = fun x -> x
 
 let coerce_fun : ('a21 -> 'a11) -> ('a12 -> 'a22) -> ('a11 -> 'a12) -> ('a21 -> 'a22) =
     fun c1 c2 -> fun f -> fun v -> c2 (f (c1 v))

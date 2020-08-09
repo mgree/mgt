@@ -109,15 +109,18 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 - [ ] Interpreter (for testing)
 
 - [ ] Compiler (to OCaml, for performance testing)
-      + [ ] Simple runtime
-      + [ ] Textual translation (FFI seems like too much)
+      + [x] Simple runtime
+      + [x] Textual translation (FFI seems like too much)
+      + [x] Rework to always use temporary directory
+      + [x] Optionally persist files
+      + [x] Vary basenames per migration
 
 - [ ] Ensure that choices don't show up in the final, eliminated AST
      + [ ] Using tests, or...
      + [ ] `eliminate` operation that changes types to really have no choice
            left (would need more than one `Expr`, trait)
 
-- [ ] Refactor pretty printing
+- [ ] Refactor pretty printing (separate trait, nicer arithmetic output)
 
 # Acknowledgments
 

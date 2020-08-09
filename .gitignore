@@ -4,3 +4,5 @@ target
 *~
 \#*
 .\#*
+a.out*
+.tmp*

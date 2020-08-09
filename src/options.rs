@@ -1,5 +1,7 @@
+use std::path::Path;
+
 /// Configuration options
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Options {
     /// How should conditional branches of different types be treated?
     ///
@@ -33,6 +35,29 @@ pub struct Options {
     /// It's a bad situation. On the one hand, coercion insertion doesn't give
     /// you the exact inferred type. On the other hand, the inferred type sucks!
     pub safe_only: bool,
+
+    /// Whether to just infer types, infer types and compile with the OCaml
+    /// optimizing native compiler, or infer, compile, and run. Defaults to
+    /// `CompilationMode::CompileAndRun`.
+    pub compile: CompilationMode,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CompilationMode {
+    InferOnly,
+    Compile(CompilationOptions),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompilationOptions {
+    /// Whether or not to run the resulting executable.
+    pub run: bool,
+    /// Whether or not to save the resulting executable.
+    pub persist: bool,
+    /// Output path.
+    pub path: String,
+    /// The base output name to use.
+    pub basename: String,
 }
 
 impl Default for Options {
@@ -40,6 +65,37 @@ impl Default for Options {
         Options {
             strict_ifs: false,
             safe_only: true,
+            compile: CompilationMode::InferOnly,
         }
+    }
+}
+
+impl CompilationOptions {
+    pub fn compile_only() -> Self {
+        CompilationOptions {
+            run: false,
+            persist: true,
+            path: "./mgt".into(),
+            basename: "out".into(),
+        }
+    }
+
+    pub fn compile_and_run() -> Self {
+        CompilationOptions {
+            run: true,
+            persist: false,
+            path: "./mgt".into(),
+            basename: "mgt_out".into(),
+        }
+    }
+
+    pub fn file_ext(&self, variation: &str, ext: &str) -> String {
+        let mut name = self.basename.clone();
+        name.push('_');
+        name.push_str(variation);
+        name.push_str(ext);
+
+        let path = Path::new(&self.path);
+        path.join(name).to_string_lossy().into()
     }
 }
