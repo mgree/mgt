@@ -1,3 +1,5 @@
+use std::path::Path;
+
 /// Configuration options
 #[derive(Clone)]
 pub struct Options {
@@ -52,10 +54,10 @@ pub struct CompilationOptions {
     pub run: bool,
     /// Whether or not to save the resulting executable.
     pub persist: bool,
+    /// Output path.
+    pub path: String,
     /// The base output name to use.
     pub basename: String,
-    /// The current variation name to use.
-    pub variation: String,
 }
 
 impl Default for Options {
@@ -73,8 +75,8 @@ impl CompilationOptions {
         CompilationOptions {
             run: false,
             persist: true,
-            basename: "mgt_out".into(),
-            variation: "unknown".into(),
+            path: "./mgt".into(),
+            basename: "out".into(),
         }
     }
 
@@ -82,16 +84,18 @@ impl CompilationOptions {
         CompilationOptions {
             run: true,
             persist: false,
+            path: "./mgt".into(),
             basename: "mgt_out".into(),
-            variation: "unknown".into(),
         }
     }
 
-    pub fn file_ext(&self, ext: &str) -> String { // TODO change to Path?
+    pub fn file_ext(&self, variation: &str, ext: &str) -> String {
         let mut name = self.basename.clone();
         name.push('_');
-        name.push_str(&self.variation);
+        name.push_str(variation);
         name.push_str(ext);
-        name
+
+        let path = Path::new(&self.path);
+        path.join(name).to_string_lossy().into()
     }
 }

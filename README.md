@@ -113,7 +113,7 @@ other bits of the inference. If you want something to be `?`, write `assume foo
       + [x] Textual translation (FFI seems like too much)
       + [x] Rework to always use temporary directory
       + [x] Optionally persist files
-      + [ ] Vary basenames per migration
+      + [x] Vary basenames per migration
 
 - [ ] Ensure that choices don't show up in the final, eliminated AST
      + [ ] Using tests, or...

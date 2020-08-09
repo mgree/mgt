@@ -8,44 +8,28 @@ use crate::syntax::*;
 
 pub struct OCamlCompiler {
     pub options: CompilationOptions,
-    workdir: tempfile::TempDir,
 }
 
 impl OCamlCompiler {
     pub fn new(options: CompilationOptions) -> Self {
         OCamlCompiler {
             options,
-            workdir: tempfile::TempDir::new_in(".")
-                .expect("allocating working directory for ocamlopt"),
         }
     }
 
-    pub fn go(&self, e: ExplicitExpr) {
-        let exe = self.compile(e);
-
-        if self.options.persist {
-            let tgt = self.options.file_ext(".exe");
-            eprintln!("cp {} {}", exe, tgt);            
-            std::fs::copy(exe.clone(), tgt)
-                .expect("couldn't persist executable");
-        }
+    pub fn go(&self, variation: &str, e: ExplicitExpr, g: GradualType) {
+        let exe = self.compile(variation, e, g);
 
         if self.options.run {
             let _ = self.run(exe);
         }
     }
 
-    fn file_ext(&self, ext: &str) -> String {
-        let path = self.workdir.path().to_owned();
-        let path = path.join(self.options.file_ext(ext));
-        path.to_str().expect("converting path to UTF-8").to_string()
-    }
-
-    pub fn compile(&self, e: ExplicitExpr) -> String {
+    pub fn compile(&self, variation: &str, e: ExplicitExpr, _g: GradualType) -> String {
         let pp = pretty::BoxAllocator;
         let ocaml = e.ocaml::<_, ()>(&pp);
 
-        let src_file = self.file_ext(".ml");
+        let src_file = self.options.file_ext(variation, ".ml");
         let mut src = std::fs::File::create(&src_file).expect("make source file");
         ocaml.1.render(80, &mut src).expect("write ocaml source");
         src.write("\n".as_bytes()).expect("write trailing newline");
@@ -59,7 +43,7 @@ impl OCamlCompiler {
         let ocamlfind = std::str::from_utf8(&ocamlfind.stdout).expect("valid utf-8 path");
         info!("using ocamlfind in {}", &ocamlfind);
 
-        let exe = self.file_ext(".exe");
+        let exe = self.options.file_ext(variation, ".exe");
         info!("writing executable in {}", exe);
 
         let res = Command::new("ocamlfind")

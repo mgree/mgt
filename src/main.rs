@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 use mgt::syntax::*;
 use mgt::*;
@@ -52,7 +52,7 @@ fn main() {
                  .possible_value("dynamic")
                  .default_value("campora"))
         .arg(Arg::with_name("OUTPUT")
-                 .help("Sets the output file. If there are multiple eliminators, the files will be numbered.")
+                 .help("Sets the output directory name. If there are multiple eliminators, the files will be given a unique code per eliminator.")
                  .long("output")
                  .short("o")
                  .number_of_values(1))
@@ -98,28 +98,27 @@ fn main() {
             CompilationMode::InferOnly
         }
         CompilationMode::Compile(mut opts) => {
-            match config.value_of("OUTPUT") {
-                Some(basename) => {
-                    opts.persist = true;
-                    opts.basename = basename.into();
-                }
-                None => {
-                    if input_source == "-" {
-                        opts.basename = "a.out".into();
-                        warn!("No output file specified for input on STDIN; using a.out.");
-                    } else {
-                        match Path::new(input_source).file_stem() {
-                            None => warn!(
-                                "Couldn't form basename from {}, using '{}'.",
-                                input_source, opts.basename
-                            ),
-                            Some(basename) => opts.basename = basename.to_string_lossy().into(),
-                        };
-                    }
-                }
-            };
+            if let Some(path) = config.value_of("OUTPUT") {
+                opts.persist = true;
+                opts.path = path.into();
+            }
+
+            if input_source == "-" {
+                opts.basename = "a.out".into();
+            } else {
+                match Path::new(input_source).file_stem() {
+                    None => warn!(
+                        "Couldn't form basename from {}, using '{}'.",
+                        input_source, opts.basename
+                    ),
+                    Some(basename) => opts.basename = basename.to_string_lossy().into(),
+                };
+            }
 
             if config.is_present("TRANSIENT") {
+                if config.is_present("OUTPUT") {
+                    warn!("Output directory was set, but so was --transient. Not saving the directory.");
+                }
                 opts.persist = false;
             }
 
@@ -156,18 +155,83 @@ fn main() {
         s => panic!("Invalid algorithm '{}'", s),
     };
 
-    eprintln!("options {:#?}", options.compile);
-    // TODO have compiler just persist the whole damn directory
-    for (variation, e, g) in algorithm(options.clone(), e).into_iter() {
-        println!("\n{}\n:\n{}", e, g);
+    let progs: Vec<(_, _, _)> = algorithm(options.clone(), e).into_iter().collect();
 
-        match options.compile.clone() {
-            CompilationMode::InferOnly => (),
-            CompilationMode::Compile(opts) => {
-                let compiler = OCamlCompiler::new(CompilationOptions { variation, ..opts });
-                compiler.go(e);
-                drop(compiler);
+    for (variation, e, g) in progs.iter() {
+        println!("\nPROGRAM {}\n{}\n:\n{}", variation, e, g);
+    }
+
+    eprintln!("options {:#?}", options.compile);
+    if let CompilationMode::Compile(opts) = options.compile {
+        let workdir =
+            tempfile::TempDir::new_in(".").expect("allocating working directory for ocamlopt");
+        let workpath: String = workdir.path().to_string_lossy().into();
+        debug!("Working in {}.", workpath);
+
+        let compiler = OCamlCompiler::new(CompilationOptions {
+            path: workpath.clone(),
+            ..opts.clone()
+        });
+
+        for (variation, e, g) in progs.into_iter() {
+            compiler.go(&variation, e, g);
+        }
+
+        if opts.persist {
+            debug!("Persisting to {}", opts.path);
+            match std::fs::metadata(&opts.path) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // perfect, overwrite
+                    let workdir = workdir.into_path();
+                    debug!("Renaming {} to {}.", workdir.to_string_lossy(), opts.path);
+
+                    std::fs::rename(workdir, opts.path).expect("persisting output directory");
+                }
+                Ok(md) if md.is_dir() => {
+                    // copy everything over
+                    debug!(
+                        "Copying contents of {} to {}.",
+                        workpath,
+                        opts.path
+                    );
+
+                    for entry in std::fs::read_dir(workpath).expect("persisting output directory") {
+                        let src = entry.expect("persisting file (finding file)").path();
+                        let tgt = Path::new(&opts.path)
+                            .join(src.file_name().expect("persisting file (finding name)"));
+
+                        if let Ok(_md) = tgt.metadata() {
+                            warn!("Overwriting {}.", tgt.to_string_lossy());
+                        }
+
+                        std::fs::rename(src, tgt).expect("persisting file (rename)");
+                    }
+
+                    drop(workdir);
+                }
+                Ok(_) => {
+                    let workdir = workdir.into_path();
+
+                    error!(
+                        "Couldn't persist to {}, file already exists and is not a directory. Leaving things in {}.",
+                        opts.path,
+                        workdir.to_string_lossy()
+                    );
+                    std::process::exit(4);
+                }
+                Err(e) => {
+                    let workdir = workdir.into_path();
+
+                    error!(
+                        "I/O error persisting directory: {}. Leaving things in {}.",
+                        e,
+                        workdir.to_string_lossy()
+                    );
+                    std::process::exit(5);
+                }
             }
+        } else {
+            drop(workdir);
         }
     }
 
@@ -321,6 +385,9 @@ mod test {
     #[test]
     fn compile_id() {
         succeeds(vec!["-m", "compile"], "\\x. x");
+        assert!(std::fs::metadata("mgt")
+            .expect("compiled directory")
+            .is_dir());
     }
 
     #[test]
