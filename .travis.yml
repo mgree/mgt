@@ -1,8 +1,7 @@
 branches:
   only:
   - main
-  - ocaml
-  
+
 dist: xenial
 
 os:
@@ -10,6 +9,9 @@ os:
   - linux
   - freebsd
 
+env:
+  - OCAML_VERSION=4.10
+    
 language: rust
 
 rust:
@@ -22,4 +24,16 @@ jobs:
     - rust: nightly
   fast_finish: true
 
-cache: cargo
+cache: 
+  - cargo
+  - directories:
+    - $HOME/.opam
+
+before_install:
+  - bash -ex .travis-ocaml.sh
+  - opam install -y ocamlfind dune
+  - (cd ocaml; opam pin add -y .)
+
+script:
+  - cargo build --verbose --all
+  - opam exec -- cargo test --verbose --all
