@@ -33,6 +33,20 @@ let string_of_dyn : dyn -> string = function
     | String s -> s
     | Fun _ -> "<procedure>"
 
+let is_bool : dyn -> bool = function
+    | Bool _b -> true
+    | _v -> false
+let is_int : dyn -> bool = function
+    | Int _i -> true
+    | _v -> false
+let is_string : dyn -> bool = function
+    | String _s -> true
+    | _v -> false    
+let is_fun : dyn -> bool = function
+    | Fun _f -> true
+    | _v -> false
+
+
 let check_bool : dyn -> bool = function
     | Bool b -> b
     | v -> raise (Coercion_failure(TBool, v))

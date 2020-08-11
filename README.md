@@ -94,7 +94,7 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 ## TODO
 
 - Language features
-  + [ ] Ground type predicates (`bool?`, `int?`, `string?`, `fun?`)
+  + [x] Ground type predicates (`bool?`, `int?`, `string?`, `fun?`)
   + [ ] Datatypes (start with lists, then generalize; cf. Henglein and Rehof)
   + [ ] Let polymorphism and type schemes (need to separate unification
         variables and true type variables). First cut: just have `Ctx` track

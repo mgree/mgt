@@ -106,6 +106,10 @@ impl ExplicitUOp {
         match self {
             ExplicitUOp::Not => "not",
             ExplicitUOp::Negate => "-",
+            ExplicitUOp::Is(GroundType::Base(BaseType::Bool)) => "Mgt.Runtime.is_bool",
+            ExplicitUOp::Is(GroundType::Base(BaseType::Int)) => "Mgt.Runtime.is_int",
+            ExplicitUOp::Is(GroundType::Base(BaseType::String)) => "Mgt.Runtime.is_string",
+            ExplicitUOp::Is(GroundType::Fun) => "Mgt.Runtime.is_fun",
         }
     }
 }

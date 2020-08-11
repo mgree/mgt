@@ -487,6 +487,7 @@ impl SourceUOp {
         match self {
             SourceUOp::Negate => ExplicitUOp::Negate,
             SourceUOp::Not => ExplicitUOp::Not,
+            SourceUOp::Is(g) => ExplicitUOp::Is(*g),
         }
     }
 }
@@ -532,6 +533,7 @@ impl ExplicitUOp {
         match self {
             ExplicitUOp::Negate => (GradualType::int(), GradualType::int()),
             ExplicitUOp::Not => (GradualType::bool(), GradualType::bool()),
+            ExplicitUOp::Is(_g) => (GradualType::Dyn(), GradualType::bool()),
         }
     }
 }
@@ -2150,6 +2152,15 @@ mod test {
             m => panic!("expected type variable, got {}", m),
         }
         assert!(e.eliminate(ve).choices().is_empty());
+    }
+
+    #[test]
+    fn type_predicates() {
+        let (_e, m) = infer_unique(r#"let x = "oh, " in if string? x then x + "hi" else x + 10"#);
+        assert_eq!(m, MigrationalType::string());
+
+        let (_e, m) = infer_unique(r#"let x = if true then "oh, " else false in if string? x then x + "hi" else x + 10"#);
+        assert_eq!(m, MigrationalType::Dyn());
     }
 
     #[test]

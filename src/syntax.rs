@@ -74,6 +74,7 @@ pub enum Constant {
 pub enum SourceUOp {
     Not,
     Negate,
+    Is(GroundType),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,6 +94,7 @@ pub enum SourceBOp {
 pub enum ExplicitUOp {
     Not,
     Negate,
+    Is(GroundType),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -464,6 +466,7 @@ impl ExplicitUOp {
         match self {
             ExplicitUOp::Negate => HashSet::new(),
             ExplicitUOp::Not => HashSet::new(),
+            ExplicitUOp::Is(_g) => HashSet::new(),
         }
     }
 }
@@ -1618,11 +1621,11 @@ impl Display for Side {
 
 impl Display for SourceUOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            SourceUOp::Not => "!",
-            SourceUOp::Negate => "-",
-        };
-        write!(f, "{}", s)
+        match self {
+            SourceUOp::Not => write!(f, "!"),
+            SourceUOp::Negate => write!(f, "-"),
+            SourceUOp::Is(g) => write!(f, "{}?", g),
+        }
     }
 }
 
@@ -1645,11 +1648,11 @@ impl Display for SourceBOp {
 
 impl Display for ExplicitUOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            ExplicitUOp::Not => "!",
-            ExplicitUOp::Negate => "-",
-        };
-        write!(f, "{}", s)
+        match self {
+            ExplicitUOp::Not => write!(f, "!"),
+            ExplicitUOp::Negate => write!(f, "-"),
+            ExplicitUOp::Is(g) => write!(f, "{}?", g),
+        }
     }
 }
 

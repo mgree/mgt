@@ -96,9 +96,17 @@ ExprApp: SourceExpr = {
 };
 
 ExprUnary: SourceExpr = {
-    "-" <ExprAtom> => GradualExpr::uop(SourceUOp::Negate, <>),
-    "!" <ExprAtom> => GradualExpr::uop(SourceUOp::Not, <>),
+    <op:UOp> <e:ExprAtom> => GradualExpr::uop(op, e),
     <ExprAtom>,
+}
+
+UOp: SourceUOp = {
+    "-" => SourceUOp::Negate,
+    "!" => SourceUOp::Not,
+    "bool?" => SourceUOp::Is(GroundType::Base(BaseType::Bool)),
+    "int?" => SourceUOp::Is(GroundType::Base(BaseType::Int)),
+    "string?" => SourceUOp::Is(GroundType::Base(BaseType::String)),
+    "fun?" => SourceUOp::Is(GroundType::Fun),
 }
 
 ExprAtom: SourceExpr = {
@@ -160,6 +168,10 @@ match {
     "bool",
     "int",
     "string",
+    "bool?",
+    "int?",
+    "string?",
+    "fun?",
     "if",
     "then",
     "else",
