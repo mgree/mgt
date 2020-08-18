@@ -102,6 +102,8 @@ other bits of the inference. If you want something to be `?`, write `assume foo
         monomorphic, but assumes can give us polymorphism. Operation resolution
         may need to yield type schemes rather than types, too
 
+- [ ] Abilitiy to use explicit operations like `+i` in the source language
+
 - [ ] Implement Rastogi et al.'s "The Ins and Outs of Gradual Type Inference".
 
 - [ ] Herder-style scoring?
