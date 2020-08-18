@@ -102,6 +102,8 @@ pub enum GradualExpr<T, U, B> {
     ),
     UOp(U, Box<GradualExpr<T, U, B>>),
     BOp(B, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    Nil(T),
+    Cons(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
 }
 
 pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
@@ -149,6 +151,8 @@ pub enum ExplicitExpr {
     ),
     UOp(ExplicitUOp, Box<ExplicitExpr>),
     BOp(ExplicitBOp, Box<ExplicitExpr>, Box<ExplicitExpr>),
+    Nil(GradualType),
+    Cons(Box<ExplicitExpr>, Box<ExplicitExpr>),
 }
 
 impl<T, U, B> GradualExpr<T, U, B> {
@@ -198,6 +202,10 @@ impl<T, U, B> GradualExpr<T, U, B> {
         GradualExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 
+    pub fn cons(e1: Self, e2: Self) -> Self {
+        GradualExpr::Cons(Box::new(e1), Box::new(e2))
+    }
+
     pub fn map_types<F, S>(self, f: &F) -> GradualExpr<S, U, B>
     where
         F: Fn(T) -> S,
@@ -224,6 +232,8 @@ impl<T, U, B> GradualExpr<T, U, B> {
             ),
             GradualExpr::UOp(op, e) => GradualExpr::uop(op, e.map_types(f)),
             GradualExpr::BOp(op, e1, e2) => GradualExpr::bop(op, e1.map_types(f), e2.map_types(f)),
+            GradualExpr::Nil(t) => GradualExpr::Nil(f(t)),
+            GradualExpr::Cons(e1, e2) => GradualExpr::cons(e1.map_types(f), e2.map_types(f)),
         }
     }
 
@@ -407,6 +417,24 @@ impl SourceExpr {
                 ],
                 pp.space(),
             ),
+            GradualExpr::Nil(_t) => pp.text("[]"),
+            // TODO identify concrete lists and pretty print accordingly
+            GradualExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
+            ),
         }
     }
 }
@@ -466,10 +494,11 @@ impl TargetExpr {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
             GradualExpr::Const(_) | GradualExpr::Var(_) => HashSet::new(),
-            GradualExpr::Lam(_x, t, e) => t.choices().union(e.choices()),
-            GradualExpr::Hole(_, t) => t.choices(),
-            GradualExpr::Ann(e, t) => e.choices().union(t.choices()),
-            GradualExpr::App(e1, e2) => e1.choices().union(e2.choices()),
+            GradualExpr::Lam(_, t, e) | GradualExpr::Ann(e, t) => t.choices().union(e.choices()),
+            GradualExpr::Hole(_, t) | GradualExpr::Nil(t) => t.choices(),
+            GradualExpr::App(e1, e2) | GradualExpr::Cons(e1, e2) => {
+                e1.choices().union(e2.choices())
+            }
             GradualExpr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
             GradualExpr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
             GradualExpr::LetRec(defns, e2) => {
@@ -623,6 +652,24 @@ impl TargetExpr {
                 ],
                 pp.space(),
             ),
+            GradualExpr::Nil(_t) => pp.text("[]"),
+            // TODO identify concrete lists and pretty print accordingly
+            GradualExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
+            ),
         }
     }
 }
@@ -712,6 +759,10 @@ impl ExplicitExpr {
         ExplicitExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 
+    pub fn cons(e1: Self, e2: Self) -> Self {
+        ExplicitExpr::Cons(Box::new(e1), Box::new(e2))
+    }
+
     pub fn is_compound(&self) -> bool {
         match self {
             ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => false,
@@ -728,7 +779,10 @@ impl ExplicitExpr {
 
     pub fn coercions(self) -> Vec<Coercion> {
         match self {
-            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => vec![],
+            ExplicitExpr::Var(_)
+            | ExplicitExpr::Const(_)
+            | ExplicitExpr::Hole(_, _)
+            | ExplicitExpr::Nil(_) => vec![],
             ExplicitExpr::Lam(_, _, e) | ExplicitExpr::UOp(_, e) => e.coercions(),
             ExplicitExpr::Coerce(e, c) => {
                 let mut cs = e.coercions();
@@ -736,6 +790,7 @@ impl ExplicitExpr {
                 cs
             }
             ExplicitExpr::App(e1, e2)
+            | ExplicitExpr::Cons(e1, e2)
             | ExplicitExpr::Let(_, _, e1, e2)
             | ExplicitExpr::BOp(_, e1, e2) => {
                 let mut cs = e1.coercions();
@@ -897,6 +952,24 @@ impl ExplicitExpr {
                     },
                 ],
                 pp.space(),
+            ),
+            ExplicitExpr::Nil(_t) => pp.text("[]"),
+            // TODO identify concrete lists and pretty print accordingly
+            ExplicitExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
             ),
         }
     }

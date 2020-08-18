@@ -328,6 +328,24 @@ impl ExplicitExpr {
                     pp.space(),
                 ),
             },
+            ExplicitExpr::Nil(_t) => pp.text("[]"),
+            // TODO identify concrete lists and pretty print accordingly
+            ExplicitExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
+            ),
         }
     }
 }

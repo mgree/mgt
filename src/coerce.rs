@@ -156,6 +156,27 @@ impl CoercionInsertion {
                     g_cod,
                 )
             }
+            GradualExpr::Nil(m) => {
+                let g = GradualType::list(m.try_gradual().expect("malformed annotation"));
+
+                (ExplicitExpr::Nil(g.clone()), g)
+            }
+            GradualExpr::Cons(e1, e2) => {
+                let (e1, g1) = self.make_explicit(ctx, *e1);
+                let (e2, g2) = self.make_explicit(ctx, *e2);
+
+                let g_elt = match &g2 {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g => panic!("cons-ed onto non-list: {} : {}", e2, g),
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+                (
+                    ExplicitExpr::cons(self.coerce(e1, &g1, &g_elt), self.coerce(e2, &g2, &g_list)),
+                    g_list,
+                )
+            }
         }
     }
 
@@ -331,6 +352,30 @@ impl CoercionInsertion {
                         self.coerce(e2, &g2, &g_dom),
                     ),
                     g_cod,
+                ))
+            }
+            GradualExpr::Nil(g) => {
+                let g = GradualType::list(g.unwrap_or(GradualType::Dyn()));
+
+                Some((ExplicitExpr::Nil(g.clone()), g))
+            }
+            GradualExpr::Cons(e1, e2) => {
+                let (e1, g1) = self.dynamize(ctx, *e1)?;
+                let (e2, g2) = self.dynamize(ctx, *e2)?;
+
+                let g_elt = match &g2 {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g2 => {
+                        error!("consed onto non-list {} : {}", e2, g2);
+                        return None;
+                    }
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+                Some((
+                    ExplicitExpr::cons(self.coerce(e1, &g1, &g_elt), self.coerce(e2, &g2, &g_list)),
+                    g_list,
                 ))
             }
         }

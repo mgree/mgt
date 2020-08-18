@@ -94,6 +94,8 @@ impl TargetExpr {
             GradualExpr::BOp(op, e1, e2) => {
                 GradualExpr::bop(op.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
             }
+            GradualExpr::Nil(t) => GradualExpr::Nil(t.eliminate(elim)),
+            GradualExpr::Cons(e1, e2) => GradualExpr::cons(e1.eliminate(elim), e2.eliminate(elim)),
         }
     }
 }
@@ -811,6 +813,27 @@ impl TypeInference {
                         Some((GradualExpr::bop(op, e1, e2), m_cod))
                     }
                 }
+            }
+            GradualExpr::Nil(t) => {
+                if let Some(t) = t {
+                    warn!("unexpected nil with annotation at {}", t);
+                }
+                let m = self.freshen_annotation(t);
+
+                Some((GradualExpr::Nil(m.clone()), m))
+            }
+            GradualExpr::Cons(e1, e2) => {
+                let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
+                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
+
+                let k = self.fresh_variable();
+                let m_elt = MigrationalType::Var(k);
+                let m_list = MigrationalType::list(m_elt.clone());
+
+                self.add_constraint(Constraint::Consistent(Pattern::Top(), m1, m_elt));
+                self.add_constraint(Constraint::Consistent(Pattern::Top(), m2, m_list.clone()));
+
+                Some((GradualExpr::cons(e1, e2), m_list))
             }
         }
     }
