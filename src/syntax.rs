@@ -1333,6 +1333,31 @@ mod test {
     }
 
     #[test]
+    fn types_list() {
+        assert_eq!(
+            GradualType::parse("[bool]").unwrap(),
+            GradualType::list(GradualType::bool())
+        );
+        assert_eq!(
+            GradualType::parse("[?]").unwrap(),
+            GradualType::list(GradualType::Dyn())
+        );
+        assert_eq!(
+            GradualType::parse("[\t[\nbool] ]").unwrap(),
+            GradualType::list(GradualType::list(GradualType::bool()))
+        );
+        assert_eq!(
+            GradualType::parse("[?->[bool]]").unwrap(),
+            GradualType::list(GradualType::fun(
+                GradualType::Dyn(),
+                GradualType::list(GradualType::bool())
+            ))
+        );
+
+        assert!(GradualType::parse("[bool").is_err());
+    }
+
+    #[test]
     fn types() {
         assert_eq!(
             GradualType::parse("bool->bool").unwrap(),
