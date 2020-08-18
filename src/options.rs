@@ -1,5 +1,7 @@
 use std::path::Path;
 
+pub const DEFAULT_WIDTH: usize = 80;
+
 /// Configuration options
 #[derive(Clone)]
 pub struct Options {

@@ -12,9 +12,7 @@ pub struct OCamlCompiler {
 
 impl OCamlCompiler {
     pub fn new(options: CompilationOptions) -> Self {
-        OCamlCompiler {
-            options,
-        }
+        OCamlCompiler { options }
     }
 
     pub fn go(&self, variation: &str, e: ExplicitExpr, g: GradualType) {
@@ -80,6 +78,12 @@ impl GradualType {
             GradualType::Dyn() => pp.text("Mgt.Runtime.dyn"),
             GradualType::Base(b) => pp.as_string(b),
             GradualType::Var(a) => pp.text(format!("'{}", a)),
+            GradualType::List(g) if g.is_compound() => g
+                .ocaml(pp)
+                .parens()
+                .append(pp.space())
+                .append(pp.text("list")),
+            GradualType::List(g) => g.ocaml(pp).append(pp.space()).append(pp.text("list")),
             GradualType::Fun(g1, g2) if g1.is_fun() => g1
                 .ocaml(pp)
                 .parens()
@@ -110,6 +114,7 @@ impl ExplicitUOp {
             ExplicitUOp::Is(GroundType::Base(BaseType::Int)) => "Mgt.Runtime.is_int",
             ExplicitUOp::Is(GroundType::Base(BaseType::String)) => "Mgt.Runtime.is_string",
             ExplicitUOp::Is(GroundType::Fun) => "Mgt.Runtime.is_fun",
+            ExplicitUOp::Is(GroundType::List) => "Mgt.Runtime.is_list",
         }
     }
 }

@@ -120,6 +120,10 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Refactor pretty printing (separate trait, nicer arithmetic output)
 
+## Optimization
+
+- [ ] Go by reference in inference, type checking, etc.?
+
 # Acknowledgments
 
 Conversations with [Arjun Guha](https://twitter.com/arjunguha), [Colin

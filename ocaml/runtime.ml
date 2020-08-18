@@ -8,6 +8,7 @@ type tag =
     | TInt : tag
     | TString : tag
     | TFun : tag
+    | TList : tag
 
 exception Coercion_failure of tag * dyn
 
@@ -26,6 +27,7 @@ let string_of_tag : tag -> string = function
     | TInt -> "int"
     | TString -> "string"
     | TFun -> "fun"
+    | TList -> "list"
 
 let string_of_dyn : dyn -> string = function
     | Bool b -> if b then "true" else "false"
@@ -45,7 +47,6 @@ let is_string : dyn -> bool = function
 let is_fun : dyn -> bool = function
     | Fun _f -> true
     | _v -> false
-
 
 let check_bool : dyn -> bool = function
     | Bool b -> b
