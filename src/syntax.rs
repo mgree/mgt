@@ -133,6 +133,7 @@ pub enum Coercion {
     Check(GroundType),
     Fun(Box<Coercion>, Box<Coercion>),
     Seq(Box<Coercion>, Box<Coercion>),
+    // TODO List coercion
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -253,6 +254,12 @@ impl<T, U, B> GradualExpr<T, U, B> {
 }
 
 impl SourceExpr {
+    pub fn list(elts: Vec<Self>) -> Self {
+        elts.into_iter()
+            .rev()
+            .fold(GradualExpr::Nil(None), |t, h| GradualExpr::cons(h, t))
+    }
+
     pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
         parser::ExprParser::new()
             .parse(s)
@@ -1362,6 +1369,28 @@ mod test {
                 )
             )
         );
+    }
+
+    #[test]
+    fn expr_list() {
+        assert!(SourceExpr::parse("[]").is_ok());
+        assert!(SourceExpr::parse("[ ]").is_ok());
+        assert!(SourceExpr::parse("1::[]").is_ok());
+        assert!(SourceExpr::parse("1::2::[]").is_ok());
+        assert!(SourceExpr::parse("1::(2::[])").is_ok());
+        assert!(SourceExpr::parse("x::y::z").is_ok());
+
+        assert!(SourceExpr::parse("[1;2]").is_ok());
+        assert_eq!(
+            SourceExpr::parse("[true;1]").unwrap(),
+            SourceExpr::cons(
+                SourceExpr::bool(true),
+                SourceExpr::cons(SourceExpr::int(1), SourceExpr::Nil(None))
+            )
+        );
+
+        assert!(SourceExpr::parse("x::y::").is_err());
+        assert!(SourceExpr::parse("::x::y").is_err());
     }
 
     #[test]

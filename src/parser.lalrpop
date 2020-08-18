@@ -71,12 +71,17 @@ ExprAnd: SourceExpr = {
 }
 
 ExprCompare: SourceExpr = {
-    <e1:ExprFactor> "==" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::Equal, e1, e2),
-    <e1:ExprFactor> "<" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThan, e1, e2),
-    <e1:ExprFactor> ">" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThan, e2, e1),
-    <e1:ExprFactor> "<=" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThanEqual, e1, e2),
-    <e1:ExprFactor> ">=" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThanEqual, e2, e1),
-    <ExprFactor>,
+    <e1:ExprCons> "==" <e2:ExprCons> => GradualExpr::bop(SourceBOp::Equal, e1, e2),
+    <e1:ExprCons> "<" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThan, e1, e2),
+    <e1:ExprCons> ">" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThan, e2, e1),
+    <e1:ExprCons> "<=" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThanEqual, e1, e2),
+    <e1:ExprCons> ">=" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThanEqual, e2, e1),
+    <ExprCons>,
+}
+
+ExprCons: SourceExpr = {
+    <e1:ExprFactor> "::" <e2:ExprCons> => GradualExpr::cons(e1, e2),
+    <ExprFactor>
 }
 
 ExprFactor: SourceExpr = {
@@ -121,6 +126,12 @@ Const: SourceExpr = {
     Num => GradualExpr::Const(Constant::Int(<>)),
     Bool => GradualExpr::Const(Constant::Bool(<>)),
     StrLit => GradualExpr::Const(Constant::String(<>)),
+    "[" "]" => GradualExpr::Nil(None),
+    "[" <elts:(<Expr> ";")*> <last:Expr> ";"? "]" => {
+        let mut elts = elts;
+        elts.push(last);
+        GradualExpr::list(elts)
+    }
 }
 
 Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
@@ -147,8 +158,10 @@ match {
     "->",
     "(",
     ")",
+    "::",
     "[",
     "]",
+    ";",
     "\\",
     ".",
     ":",
