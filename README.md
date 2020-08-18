@@ -103,6 +103,8 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Ability to use explicit operations like `+i` in the source language
 
+- [ ] Abilitiy to use explicit operations like `+i` in the source language
+
 - [ ] Implement Rastogi et al.'s "The Ins and Outs of Gradual Type Inference".
 
 - [ ] Herder-style scoring?
