@@ -172,6 +172,7 @@ impl CoercionInsertion {
                 };
 
                 let g_list = GradualType::list(g_elt.clone());
+
                 (
                     ExplicitExpr::cons(self.coerce(e1, &g1, &g_elt), self.coerce(e2, &g2, &g_list)),
                     g_list,
@@ -503,6 +504,15 @@ mod test {
         has_no_coercions("__ + 1");
         has_no_coercions("__ + \"hi\"");
         has_no_coercions("(\\x. x * 1) __should_be_int");
+    }
+
+    #[test]
+    fn statically_typed_list_no_coercions() {
+        has_no_coercions("[]");
+        has_no_coercions("1::[]");
+        has_no_coercions("true::false::true::[]");
+        has_no_coercions("[1;2;3;4]");
+        has_no_coercions(r#"["you"; "can't"; "make"; "me"; "do"; "anything"]"#);
     }
 
     #[test]

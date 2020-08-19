@@ -29,6 +29,7 @@ impl OCamlCompiler {
 
         let src_file = self.options.file_ext(variation, ".ml");
         let mut src = std::fs::File::create(&src_file).expect("make source file");
+        // TODO use _g to generate a function that produces output
         ocaml.1.render(80, &mut src).expect("write ocaml source");
         src.write("\n".as_bytes()).expect("write trailing newline");
         info!("ocaml source is in {}", src_file);

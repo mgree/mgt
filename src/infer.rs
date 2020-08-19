@@ -820,7 +820,7 @@ impl TypeInference {
                 }
                 let m = self.freshen_annotation(t);
 
-                Some((GradualExpr::Nil(m.clone()), m))
+                Some((GradualExpr::Nil(m.clone()), MigrationalType::list(m)))
             }
             GradualExpr::Cons(e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
