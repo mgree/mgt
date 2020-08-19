@@ -10,14 +10,6 @@ pub use crate::types::*;
 
 lalrpop_mod!(parser);
 
-impl GradualType {
-    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
-        parser::TypeParser::new()
-            .parse(s)
-            .map_err(|e| e.to_string())
-    }
-}
-
 /// c
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
@@ -133,7 +125,7 @@ pub enum Coercion {
     Check(GroundType),
     Fun(Box<Coercion>, Box<Coercion>),
     Seq(Box<Coercion>, Box<Coercion>),
-    // TODO List coercion
+    List(Box<Coercion>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -154,6 +146,14 @@ pub enum ExplicitExpr {
     BOp(ExplicitBOp, Box<ExplicitExpr>, Box<ExplicitExpr>),
     Nil(GradualType),
     Cons(Box<ExplicitExpr>, Box<ExplicitExpr>),
+}
+
+impl GradualType {
+    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
+        parser::TypeParser::new()
+            .parse(s)
+            .map_err(|e| e.to_string())
+    }
 }
 
 impl<T, U, B> GradualExpr<T, U, B> {
@@ -1007,6 +1007,7 @@ impl Coercion {
             Coercion::Id(_, _) => true,
             Coercion::Check(_) | Coercion::Tag(_) => true,
             Coercion::Fun(c1, c2) | Coercion::Seq(c1, c2) => c1.is_safe() && c2.is_safe(),
+            Coercion::List(c) => c.is_safe(),
         }
     }
 
@@ -1020,6 +1021,10 @@ impl Coercion {
                 let (g12, g22) = c2.types()?;
 
                 Some((GradualType::fun(g11, g12), GradualType::fun(g21, g22)))
+            }
+            Coercion::List(c) => {
+                let (g1, g2) = c.types()?;
+                Some((GradualType::list(g1), GradualType::list(g2)))
             }
             Coercion::Seq(c1, c2) => {
                 let (g1, g12) = c1.types()?;
@@ -1079,9 +1084,16 @@ impl Coercion {
         }
     }
 
+    pub(crate) fn list(c: Self) -> Self {
+        match c {
+            Coercion::Id(t, g) => Coercion::Id(t, GradualType::list(g)),
+            c => Coercion::List(Box::new(c)),
+        }
+    }
+
     pub(crate) fn is_compound(&self) -> bool {
         match self {
-            Coercion::Fun(_, _) | Coercion::Seq(_, _) => true,
+            Coercion::Fun(_, _) | Coercion::Seq(_, _) | Coercion::List(_) => true,
             Coercion::Id(_, _) | Coercion::Check(_) | Coercion::Tag(_) => false,
         }
     }
@@ -1110,6 +1122,7 @@ impl Coercion {
                     .append(d2)
                     .group()
             }
+            Coercion::List(c) => pp.text("list").append(c.pretty(pp).parens()),
             Coercion::Seq(c1, c2) => {
                 let d1 = c1.pretty(pp).group();
 

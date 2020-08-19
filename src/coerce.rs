@@ -411,21 +411,43 @@ impl CoercionInsertion {
                         ),
                         Coercion::Tag(GroundType::Fun),
                     ),
-                    (GradualType::Dyn(), src @ GradualType::Fun(_, _)) => Coercion::seq(
+                    (GradualType::Dyn(), tgt @ GradualType::Fun(_, _)) => Coercion::seq(
                         Coercion::Check(GroundType::Fun),
                         self.coercion(
                             &GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
-                            src,
+                            tgt,
                         ),
                     ),
                     (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
                         Coercion::fun(self.coercion(g21, g11), self.coercion(g12, g22))
                     }
+                    (src @ GradualType::List(_), GradualType::Dyn()) => Coercion::seq(
+                        self.coercion(src, &GradualType::list(GradualType::Dyn())),
+                        Coercion::Tag(GroundType::List),
+                    ),
+                    (GradualType::Dyn(), tgt @ GradualType::List(_)) => Coercion::seq(
+                        Coercion::Check(GroundType::List),
+                        self.coercion(&GradualType::list(GradualType::Dyn()), tgt),
+                    ),
+                    (GradualType::List(g1), GradualType::List(g2)) => {
+                        Coercion::list(self.coercion(g1, g2))
+                    }
+                    (GradualType::Var(a), tgt) => {
+                        panic!("Trying to coerce type variable {} to {}.", a, tgt)
+                    }
+                    (src, GradualType::Var(a)) => {
+                        panic!("Trying to coerce {} to type variable {}.", src, a)
+                    }
                     (src, tgt) => {
-                        assert!(!src.consistent(tgt));
+                        assert!(
+                            !src.consistent(tgt),
+                            "Bottomed out coerciong {} to {}, but the types are consistent.",
+                            src,
+                            tgt
+                        );
 
                         if self.options.safe_only {
-                            panic!("Coercion between inconsistent types {} and {} is guaranteed to fail; bailing. Set --allow-unsafe to continue.",
+                            panic!("Coercion between inconsistent types {} and {} is guaranteed to fail; bailing. Turn off --safe-only to continue.",
                             src, tgt);
                         } else {
                             warn!("Coercion between inconsistent types {} and {} will fail; going through ?", src, tgt);

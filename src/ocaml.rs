@@ -166,6 +166,13 @@ impl Coercion {
                 ],
                 pp.line(),
             ),
+            Coercion::List(c) => pp.intersperse(
+                vec![
+                    pp.text("Mgt.Runtime.coerce_list"),
+                    c.ocaml(pp).group().parens(),
+                ],
+                pp.line(),
+            ),
             Coercion::Seq(c1, c2) => pp.intersperse(
                 vec![
                     pp.text("Mgt.Runtime.coerce_seq"),

@@ -815,10 +815,14 @@ impl TypeInference {
                 }
             }
             GradualExpr::Nil(t) => {
-                if let Some(t) = t {
-                    warn!("unexpected nil with annotation at {}", t);
-                }
-                let m = self.freshen_annotation(t);
+                let g = match t {
+                    Some(g) => {
+                        warn!("unexpected nil with annotation at {}", g);
+                        g
+                    }
+                    None => &GradualType::Dyn(),
+                };
+                let m = self.freshen_gradual_type(g);
 
                 Some((GradualExpr::Nil(m.clone()), MigrationalType::list(m)))
             }
@@ -826,8 +830,9 @@ impl TypeInference {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
 
+                let d = self.fresh_variation();
                 let k = self.fresh_variable();
-                let m_elt = MigrationalType::Var(k);
+                let m_elt = MigrationalType::choice(d, MigrationalType::Dyn(), MigrationalType::Var(k));
                 let m_list = MigrationalType::list(m_elt.clone());
 
                 self.add_constraint(Constraint::Consistent(Pattern::Top(), m1, m_elt));

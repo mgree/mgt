@@ -257,7 +257,9 @@ fn campora(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, Gradua
             let m = m.clone().eliminate(&ve);
 
             let (e, g) = ci.explicit(e);
-            assert_eq!(m, g.clone().into());
+            if m != g.clone().into() {
+                error!("Eliminated type was {} but coerced typed was {}.", m, g);
+            }
 
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             ve.hash(&mut hasher);

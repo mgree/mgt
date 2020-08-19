@@ -118,6 +118,7 @@ impl GradualType {
             (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
                 g11.consistent(g21) && g12.consistent(g22)
             }
+            (GradualType::List(g1), GradualType::List(g2)) => g1.consistent(g2),
             (g1, g2) => g1 == g2,
         }
     }
