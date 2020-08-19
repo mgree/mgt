@@ -303,7 +303,11 @@ impl Display for Eliminator {
 #[derive(Clone, Debug)]
 pub enum Constraint {
     Consistent(Pattern, MigrationalType, MigrationalType),
-    Ground(Pattern, MigrationalType, BaseType), // TODO ultimately need our own notion of ground type
+    Static {
+        pi: Pattern,
+        src: MigrationalType,
+        tgt: GroundType,
+    },
     Choice(Variation, Constraints, Constraints),
 }
 
@@ -328,11 +332,11 @@ impl Constraint {
                     pp.line(),
                 )
                 .group(),
-            Constraint::Ground(pi, m, b) => pp.intersperse(
+            Constraint::Static { pi, src, tgt } => pp.intersperse(
                 vec![
-                    m.pretty(pp),
+                    src.pretty(pp),
                     pp.text("=").append(pi.pretty(pp)),
-                    pp.as_string(b),
+                    pp.as_string(tgt),
                 ],
                 pp.line(),
             ),
@@ -358,7 +362,11 @@ impl Constraint {
             Constraint::Consistent(pi, m1, m2) => {
                 Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
             }
-            Constraint::Ground(pi, m, b) => Constraint::Ground(pi, m.apply(theta), b),
+            Constraint::Static { pi, src, tgt } => Constraint::Static {
+                pi,
+                src: src.apply(theta),
+                tgt,
+            },
             Constraint::Choice(d, cs1, cs2) => {
                 Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta))
             }
@@ -796,8 +804,16 @@ impl TypeInference {
 
                             op = ExplicitBOp::choice(d, op, op2);
                             let cs2 = Constraints(vec![
-                                Constraint::Ground(Pattern::Top(), m1.clone(), b_dom2),
-                                Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
+                                Constraint::Static {
+                                    pi: Pattern::Top(),
+                                    src: m1.clone(),
+                                    tgt: GroundType::Base(b_dom2),
+                                },
+                                Constraint::Static {
+                                    pi: Pattern::Top(),
+                                    src: m2.clone(),
+                                    tgt: GroundType::Base(b_dom2),
+                                },
                             ]);
                             cs = Constraint::Choice(d, cs, cs2).into();
                             m_dom = MigrationalType::choice(
@@ -832,7 +848,8 @@ impl TypeInference {
 
                 let d = self.fresh_variation();
                 let k = self.fresh_variable();
-                let m_elt = MigrationalType::choice(d, MigrationalType::Dyn(), MigrationalType::Var(k));
+                let m_elt =
+                    MigrationalType::choice(d, MigrationalType::Dyn(), MigrationalType::Var(k));
                 let m_list = MigrationalType::list(m_elt.clone());
 
                 self.add_constraint(Constraint::Consistent(Pattern::Top(), m1, m_elt));
@@ -1186,25 +1203,64 @@ impl TypeInference {
                 let theta = self.merge(d, theta1, theta2);
                 (theta, Pattern::choice(d, pi1, pi2))
             }
-            Constraint::Ground(_pi, MigrationalType::Dyn(), _b) => (Subst::empty(), Pattern::Bot()),
-            Constraint::Ground(_pi, MigrationalType::Fun(_, _), _b)
-            | Constraint::Ground(_pi, MigrationalType::List(_), _b) => {
-                (Subst::empty(), Pattern::Bot())
-            }
-            Constraint::Ground(_pi, MigrationalType::Base(b1), b2) => {
-                (Subst::empty(), (b1 == b2).into())
-            }
-            Constraint::Ground(_pi, MigrationalType::Var(a), b) => (
+            Constraint::Static {
+                src: MigrationalType::Dyn(),
+                ..
+            } => (Subst::empty(), Pattern::Bot()),
+            Constraint::Static {
+                src: MigrationalType::Fun(_, _),
+                tgt: GroundType::Fun,
+                ..
+            } => (Subst::empty(), Pattern::Top()),
+            Constraint::Static {
+                src: MigrationalType::List(_),
+                tgt: GroundType::List,
+                ..
+            } => (Subst::empty(), Pattern::Top()),
+            Constraint::Static {
+                src: MigrationalType::Base(b1),
+                tgt: GroundType::Base(b2),
+                ..
+            } => (Subst::empty(), (b1 == b2).into()),
+            Constraint::Static {
+                src: MigrationalType::Var(a),
+                tgt: GroundType::Base(b),
+                ..
+            } => (
                 Subst::empty().extend(a, VariationalType::Base(b)),
                 Pattern::Top(),
             ),
-            Constraint::Ground(pi, MigrationalType::Choice(d, m1, m2), b) => {
-                let (theta1, pi1) = self.unify1(Constraint::Ground(pi.clone(), *m1, b));
-                let (theta2, pi2) = self.unify1(Constraint::Ground(pi, *m2, b));
+            Constraint::Static {
+                pi,
+                src: MigrationalType::Choice(d, m1, m2),
+                tgt,
+            } => {
+                let (theta1, pi1) = self.unify1(Constraint::Static {
+                    pi: pi.clone(),
+                    src: *m1,
+                    tgt: tgt.clone(),
+                });
+                let (theta2, pi2) = self.unify1(Constraint::Static { pi, src: *m2, tgt });
 
                 let theta = self.merge(d, theta1, theta2);
                 (theta, Pattern::choice(d, pi1, pi2))
             }
+            Constraint::Static {
+                src: MigrationalType::Fun(_, _),
+                ..
+            }
+            | Constraint::Static {
+                src: MigrationalType::List(_),
+                ..
+            }
+            | Constraint::Static {
+                src: MigrationalType::Var(_), // it'd be tempting to map it to list(?) or whatever, but that's not a variational type
+                ..
+            }
+            | Constraint::Static {
+                src: MigrationalType::Base(_),
+                ..
+            } => (Subst::empty(), Pattern::Bot()),
         }
     }
 
