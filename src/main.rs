@@ -256,6 +256,8 @@ fn campora(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, Gradua
             let e = e.clone().eliminate(&ve);
             let m = m.clone().eliminate(&ve);
 
+            info!("{}\n  : {}\n", e, m);
+
             let (e, g) = ci.explicit(e);
             if m != g.clone().into() {
                 error!("Eliminated type was {} but coerced typed was {}.", m, g);

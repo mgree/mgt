@@ -159,6 +159,11 @@ impl CoercionInsertion {
             GradualExpr::Nil(m) => {
                 let g = GradualType::list(m.try_gradual().expect("malformed annotation"));
 
+                log::debug!("nil @ {}", g);
+                if let GradualType::Var(_) = g {
+                    warn!("type variable nil...");
+                }
+
                 (ExplicitExpr::Nil(g.clone()), g)
             }
             GradualExpr::Cons(e1, e2) => {
@@ -612,6 +617,13 @@ mod test {
         accepted("(\\x.x) == (\\y. y)");
         accepted("(\\x.x) == \"hi\"");
         accepted("false && (if true then (true:?) else (0:?))");
+    }
+
+    #[test]
+    fn coerced_lists() {
+        accepted("[true; 1]");
+        accepted(r#"[1;2;3;4;"hi"]"#);
+        accepted(r#"0::false::(\s z. z)::""::[]"#);
     }
 
     fn coerce(s1: &str, s2: &str) -> Coercion {

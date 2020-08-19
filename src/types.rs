@@ -198,6 +198,21 @@ impl GradualType {
         }
     }
 
+    pub fn try_variational(&self) -> Option<VariationalType> {
+        match self {
+            GradualType::Dyn() => None,
+            GradualType::Base(b) => Some(VariationalType::Base(b.clone())),
+            GradualType::Var(a) => Some(VariationalType::Var(*a)),
+            GradualType::List(m) => Some(VariationalType::list(m.try_variational()?)),
+            GradualType::Fun(m1, m2) => {
+                let v1 = m1.try_variational()?;
+                let v2 = m2.try_variational()?;
+
+                Some(VariationalType::fun(v1, v2))
+            }
+        }
+    }
+
     pub fn is_fun(&self) -> bool {
         match self {
             GradualType::Fun(_, _) => true,

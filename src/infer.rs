@@ -306,7 +306,7 @@ pub enum Constraint {
     Static {
         pi: Pattern,
         src: MigrationalType,
-        tgt: GroundType,
+        tgt: VariationalType,
     },
     Choice(Variation, Constraints, Constraints),
 }
@@ -795,10 +795,9 @@ impl TypeInference {
                         for op2 in overloads.into_iter() {
                             let (g_dom2, g_cod2) = op2.signature();
 
-                            let b_dom2 = match g_dom2 {
-                                GradualType::Base(b) => b,
-                                m => panic!("expected base type in operation signature, got {}", m),
-                            };
+                            let v_dom2 = g_dom2.try_variational().expect(
+                                "expected variational (non-dynamic) type in operation signature",
+                            );
 
                             let d = self.fresh_variation().biased(Side::Right);
 
@@ -807,20 +806,16 @@ impl TypeInference {
                                 Constraint::Static {
                                     pi: Pattern::Top(),
                                     src: m1.clone(),
-                                    tgt: GroundType::Base(b_dom2),
+                                    tgt: v_dom2.clone(),
                                 },
                                 Constraint::Static {
                                     pi: Pattern::Top(),
                                     src: m2.clone(),
-                                    tgt: GroundType::Base(b_dom2),
+                                    tgt: v_dom2.clone(),
                                 },
                             ]);
                             cs = Constraint::Choice(d, cs, cs2).into();
-                            m_dom = MigrationalType::choice(
-                                d,
-                                m_dom.clone(),
-                                MigrationalType::Base(b_dom2),
-                            );
+                            m_dom = MigrationalType::choice(d, m_dom.clone(), v_dom2.into());
                             m_cod = MigrationalType::choice(d, m_cod.clone(), g_cod2.into());
                         }
 
@@ -833,12 +828,13 @@ impl TypeInference {
             GradualExpr::Nil(t) => {
                 let g = match t {
                     Some(g) => {
-                        warn!("unexpected nil with annotation at {}", g);
+                        warn!("unexpected annotation on empty list [] ({})", g);
                         g
                     }
                     None => &GradualType::Dyn(),
                 };
                 let m = self.freshen_gradual_type(g);
+                log::debug!("writing nil @ {}", m);
 
                 Some((GradualExpr::Nil(m.clone()), MigrationalType::list(m)))
             }
@@ -846,14 +842,12 @@ impl TypeInference {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
                 let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
 
-                let d = self.fresh_variation();
-                let k = self.fresh_variable();
-                let m_elt =
-                    MigrationalType::choice(d, MigrationalType::Dyn(), MigrationalType::Var(k));
+                let (m_elt, cs_elt, pat_elt) = self.elt(&m2);
                 let m_list = MigrationalType::list(m_elt.clone());
 
                 self.add_constraint(Constraint::Consistent(Pattern::Top(), m1, m_elt));
-                self.add_constraint(Constraint::Consistent(Pattern::Top(), m2, m_list.clone()));
+                self.add_constraints(cs_elt);
+                self.add_pattern(pat_elt);
 
                 Some((GradualExpr::cons(e1, e2), m_list))
             }
@@ -963,6 +957,44 @@ impl TypeInference {
                 )
             }
             _ => (
+                MigrationalType::Var(self.fresh_variable()),
+                Constraints::epsilon(),
+                Pattern::Bot(),
+            ),
+        }
+    }
+
+    fn elt(&mut self, m_list: &MigrationalType) -> (MigrationalType, Constraints, Pattern) {
+        match m_list {
+            MigrationalType::Dyn() => (
+                MigrationalType::Dyn(),
+                Constraints::epsilon(),
+                Pattern::Top(),
+            ),
+            MigrationalType::List(m_elt) => {
+                (*m_elt.clone(), Constraints::epsilon(), Pattern::Top())
+            }
+            MigrationalType::Var(alpha) => {
+                let beta = MigrationalType::Var(self.fresh_variable());
+                let real_list = MigrationalType::list(beta.clone());
+                (
+                    beta,
+                    Constraint::Consistent(Pattern::Top(), MigrationalType::Var(*alpha), real_list)
+                        .into(),
+                    Pattern::Top(),
+                )
+            }
+            MigrationalType::Choice(d, m_list1, m_list2) => {
+                let (m1, cs1, pat1) = self.elt(m_list1);
+                let (m2, cs2, pat2) = self.elt(m_list2);
+
+                (
+                    MigrationalType::choice(*d, m1, m2),
+                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Pattern::choice(*d, pat1, pat2),
+                )
+            }
+            MigrationalType::Fun(_, _) | MigrationalType::Base(_) => (
                 MigrationalType::Var(self.fresh_variable()),
                 Constraints::epsilon(),
                 Pattern::Bot(),
@@ -1208,28 +1240,42 @@ impl TypeInference {
                 ..
             } => (Subst::empty(), Pattern::Bot()),
             Constraint::Static {
-                src: MigrationalType::Fun(_, _),
-                tgt: GroundType::Fun,
-                ..
-            } => (Subst::empty(), Pattern::Top()),
+                pi,
+                src: MigrationalType::Fun(m1, m2),
+                tgt: VariationalType::Fun(v1, v2),
+            } => {
+                let (theta1, pi1) = self.unify1(Constraint::Static {
+                    pi: pi.clone(),
+                    src: *m1,
+                    tgt: *v1,
+                });
+                let (theta2, pi2) = self.unify1(Constraint::Static {
+                    pi,
+                    src: *m2,
+                    tgt: *v2,
+                });
+
+                (theta1.compose(theta2), pi1.meet(pi2))
+            }
             Constraint::Static {
-                src: MigrationalType::List(_),
-                tgt: GroundType::List,
-                ..
-            } => (Subst::empty(), Pattern::Top()),
+                pi,
+                src: MigrationalType::List(m),
+                tgt: VariationalType::List(v),
+            } => self.unify1(Constraint::Static {
+                pi,
+                src: *m,
+                tgt: *v,
+            }),
             Constraint::Static {
                 src: MigrationalType::Base(b1),
-                tgt: GroundType::Base(b2),
+                tgt: VariationalType::Base(b2),
                 ..
             } => (Subst::empty(), (b1 == b2).into()),
             Constraint::Static {
                 src: MigrationalType::Var(a),
-                tgt: GroundType::Base(b),
+                tgt,
                 ..
-            } => (
-                Subst::empty().extend(a, VariationalType::Base(b)),
-                Pattern::Top(),
-            ),
+            } => (Subst::empty().extend(a, tgt), Pattern::Top()),
             Constraint::Static {
                 pi,
                 src: MigrationalType::Choice(d, m1, m2),
@@ -1251,10 +1297,6 @@ impl TypeInference {
             }
             | Constraint::Static {
                 src: MigrationalType::List(_),
-                ..
-            }
-            | Constraint::Static {
-                src: MigrationalType::Var(_), // it'd be tempting to map it to list(?) or whatever, but that's not a variational type
                 ..
             }
             | Constraint::Static {
@@ -2223,6 +2265,13 @@ mod test {
         let m = m.eliminate(ve);
 
         assert_eq!(m, MigrationalType::int());
+    }
+
+    #[test]
+    fn list_kitchen_sink() {
+        let (_, m) = infer_unique(r#"["";3;\x. x * 2; true]"#);
+
+        assert_eq!(m, MigrationalType::list(MigrationalType::Dyn()));
     }
 
     #[test]

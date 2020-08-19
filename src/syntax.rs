@@ -659,7 +659,9 @@ impl TargetExpr {
                 ],
                 pp.space(),
             ),
-            GradualExpr::Nil(_t) => pp.text("[]"),
+            GradualExpr::Nil(t) => {
+                pp.intersperse(vec![pp.text("[]"), pp.text(":"), t.pretty(pp)], pp.space())
+            }
             // TODO identify concrete lists and pretty print accordingly
             GradualExpr::Cons(e1, e2) => pp.intersperse(
                 vec![
@@ -960,7 +962,9 @@ impl ExplicitExpr {
                 ],
                 pp.space(),
             ),
-            ExplicitExpr::Nil(_t) => pp.text("[]"),
+            ExplicitExpr::Nil(t) => {
+                pp.intersperse(vec![pp.text("[]"), pp.text(":"), t.pretty(pp)], pp.space())
+            }
             // TODO identify concrete lists and pretty print accordingly
             ExplicitExpr::Cons(e1, e2) => pp.intersperse(
                 vec![
