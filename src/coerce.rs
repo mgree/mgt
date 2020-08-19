@@ -543,6 +543,19 @@ mod test {
     }
 
     #[test]
+    fn heterogeneous_list_unique_coercions() {
+        unique_coercion("[true; 1]");
+        unique_coercion(r#"[1;2;3;4;"hi"]"#);
+        unique_coercion(r#"0::false::(\x. x*2)::""::[]"#);
+    }
+
+    #[test]
+    #[should_panic] // this test will switch to succeeding when we have type schemes
+    fn heterogeneous_polyfun_list_unique_coercions() {
+        unique_coercion(r#"0::false::(\s z. z)::""::[]"#);
+    }
+
+    #[test]
     fn exact_holes() {
         let (e, g) = unique_coercion("__num + 1");
 
@@ -592,7 +605,7 @@ mod test {
     }
 
     #[test]
-    fn statically_rejected() {
+    fn dynamize_statically_rejected() {
         rejected("true false");
         rejected("if 0 then 1 else true");
         rejected("if 0 then 1 else 1");
@@ -612,7 +625,7 @@ mod test {
     }
 
     #[test]
-    fn statically_accepted_surprisingly() {
+    fn dynamize_statically_accepted_surprisingly() {
         accepted("if 0 + 1 then 1 else true");
         accepted("(\\x.x) == (\\y. y)");
         accepted("(\\x.x) == \"hi\"");
@@ -620,7 +633,7 @@ mod test {
     }
 
     #[test]
-    fn coerced_lists() {
+    fn dynamize_coerced_lists() {
         accepted("[true; 1]");
         accepted(r#"[1;2;3;4;"hi"]"#);
         accepted(r#"0::false::(\s z. z)::""::[]"#);

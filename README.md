@@ -96,13 +96,16 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 - Language features
   + [x] Ground type predicates (`bool?`, `int?`, `string?`, `fun?`)
   + [ ] Datatypes (start with lists, then generalize; cf. Henglein and Rehof)
+    * [x] List constructors (homogeneous and heterogeneous)
+    * [ ] Matching
   + [ ] Let polymorphism and type schemes (need to separate unification
         variables and true type variables). First cut: just have `Ctx` track
         type schemes, instantiating at every variable. Most things will be
         monomorphic, but assumes can give us polymorphism. Operation resolution
         may need to yield type schemes rather than types, too
+    * [ ] Cf. Henglein and Rehof's coercion parameters
 
-- [ ] Abilitiy to use explicit operations like `+i` in the source language
+- [ ] Ability to use explicit operations like `+i` in the source language
 
 - [ ] Implement Rastogi et al.'s "The Ins and Outs of Gradual Type Inference".
 
@@ -110,8 +113,10 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Interpreter (for testing)
 
-- [ ] Better compiler output (save explicit code w/ comment indicating
-      variation, print result)
+- [ ] Better compiler output 
+  + [ ] save explicit code before OCaml
+  + [ ] comment indicating variation
+  + [ ] print result
 
 - [ ] Ensure that choices don't show up in the final, eliminated AST
      + [ ] Using tests, or...
