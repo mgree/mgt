@@ -619,6 +619,20 @@ mod test {
     }
 
     #[test]
+    fn simple_list_match_no_coercions() {
+        has_no_coercions("match [2] with | [] -> 0 | hd::tl -> hd");
+        has_no_coercions("match [1;2] with | [] -> 0 | hd::tl -> hd");
+        has_no_coercions("match [] with | [] -> 0 | hd::tl -> hd");
+    }
+
+    #[test]
+    fn heterogeneous_list_match_unique_coercions() {
+        unique_coercion("match [true; 1] with [] -> 0 | hd::tl -> hd");
+        unique_coercion(r#"match [1;2;3;4;"hi"] with [] -> false | hd::tl -> hd"#);
+        unique_coercion(r#"match 0::false::(\x. x*2)::""::[] with [] -> "hello" | hd::tl -> hd"#);
+    }
+
+    #[test]
     fn exact_holes() {
         let (e, g) = unique_coercion("__num + 1");
 

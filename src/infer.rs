@@ -869,7 +869,7 @@ impl TypeInference {
                 self.add_constraint(Constraint::Consistent(
                     Pattern::Top(),
                     m_scrutinee,
-                    m_elt.clone(),
+                    m_list.clone(),
                 ));
                 self.add_constraints(cs_elt);
                 self.add_pattern(pat_elt);
@@ -889,12 +889,12 @@ impl TypeInference {
                     "match constraints on {} and {}: {} (pi={})",
                     m_nil, m_cons, c_res, pi_res
                 );
-                self.add_pattern(pi_res);
                 self.add_constraints(c_res);
+                self.add_pattern(pi_res);
 
                 Some((
                     GradualExpr::match_(
-                        e_scrutinee,
+                        GradualExpr::ann(e_scrutinee, m_list.clone()),
                         GradualExpr::ann(e_nil, m_res.clone()),
                         hd.clone(),
                         tl.clone(),
@@ -1199,11 +1199,19 @@ impl TypeInference {
                                 let k = self.fresh_variable();
                                 let klist = MigrationalType::list(MigrationalType::Var(k));
 
-                                return self.unify1(Constraint::Consistent(
+                                let (theta1, pi1) = self.unify1(Constraint::Consistent(
+                                    Pattern::Top(),
+                                    alpha.clone(),
+                                    klist.clone(),
+                                ));
+
+                                let (theta2, pi2) = self.unify1(Constraint::Consistent(
                                     Pattern::Top(),
                                     klist,
                                     m,
                                 ));
+
+                                return (theta2.compose(theta1), pi2.meet(pi1));
                             }
                             _ => {
                                 debug!("passed occurs check, but couldn't directly bind or use type structure");
@@ -2332,6 +2340,9 @@ mod test {
         assert_eq!(m, MigrationalType::int());
 
         let (_, m) = infer_unique("match [] with | [] -> 0 | hd::tl -> 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("match [1;2] with | [] -> 0 | hd::tl -> hd");
         assert_eq!(m, MigrationalType::int());
     }
 
