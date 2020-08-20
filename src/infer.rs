@@ -8,8 +8,8 @@ use im_rc::HashSet;
 
 use log::{debug, error, trace, warn};
 
+use crate::options::{Options, DEFAULT_WIDTH};
 use crate::syntax::*;
-use crate::options::Options;
 
 /// d.1 or d.2
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -20,6 +20,7 @@ impl VariationalType {
         match self {
             VariationalType::Base(b) => VariationalType::Base(b),
             VariationalType::Fun(v1, v2) => VariationalType::fun(v1.apply(theta), v2.apply(theta)),
+            VariationalType::List(v) => VariationalType::list(v.apply(theta)),
             VariationalType::Choice(d, v1, v2) => {
                 VariationalType::choice(d, v1.apply(theta), v2.apply(theta))
             }
@@ -37,6 +38,7 @@ impl MigrationalType {
             MigrationalType::Dyn() => MigrationalType::Dyn(),
             MigrationalType::Base(b) => MigrationalType::Base(b),
             MigrationalType::Fun(m1, m2) => MigrationalType::fun(m1.apply(theta), m2.apply(theta)),
+            MigrationalType::List(m) => MigrationalType::list(m.apply(theta)),
             MigrationalType::Choice(d, m1, m2) => {
                 MigrationalType::choice(d, m1.apply(theta), m2.apply(theta))
             }
@@ -53,6 +55,7 @@ impl MigrationalType {
             MigrationalType::Fun(m1, m2) => {
                 MigrationalType::fun(m1.eliminate(elim), m2.eliminate(elim))
             }
+            MigrationalType::List(m) => MigrationalType::list(m.eliminate(elim)),
             MigrationalType::Choice(d, m1, m2) => match elim.get(&d) {
                 Side::Right => m2.eliminate(elim),
                 Side::Left => m1.eliminate(elim),
@@ -91,6 +94,15 @@ impl TargetExpr {
             GradualExpr::BOp(op, e1, e2) => {
                 GradualExpr::bop(op.eliminate(elim), e1.eliminate(elim), e2.eliminate(elim))
             }
+            GradualExpr::Nil(t) => GradualExpr::Nil(t.eliminate(elim)),
+            GradualExpr::Cons(e1, e2) => GradualExpr::cons(e1.eliminate(elim), e2.eliminate(elim)),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => GradualExpr::match_(
+                e_scrutinee.eliminate(elim),
+                e_nil.eliminate(elim),
+                hd,
+                tl,
+                e_cons.eliminate(elim),
+            ),
         }
     }
 }
@@ -298,7 +310,11 @@ impl Display for Eliminator {
 #[derive(Clone, Debug)]
 pub enum Constraint {
     Consistent(Pattern, MigrationalType, MigrationalType),
-    Ground(Pattern, MigrationalType, BaseType), // TODO ultimately need our own notion of ground type
+    Static {
+        pi: Pattern,
+        src: MigrationalType,
+        tgt: VariationalType,
+    },
     Choice(Variation, Constraints, Constraints),
 }
 
@@ -323,11 +339,11 @@ impl Constraint {
                     pp.line(),
                 )
                 .group(),
-            Constraint::Ground(pi, m, b) => pp.intersperse(
+            Constraint::Static { pi, src, tgt } => pp.intersperse(
                 vec![
-                    m.pretty(pp),
+                    src.pretty(pp),
                     pp.text("=").append(pi.pretty(pp)),
-                    pp.as_string(b),
+                    pp.as_string(tgt),
                 ],
                 pp.line(),
             ),
@@ -353,7 +369,11 @@ impl Constraint {
             Constraint::Consistent(pi, m1, m2) => {
                 Constraint::Consistent(pi, m1.apply(theta), m2.apply(theta))
             }
-            Constraint::Ground(pi, m, b) => Constraint::Ground(pi, m.apply(theta), b),
+            Constraint::Static { pi, src, tgt } => Constraint::Static {
+                pi,
+                src: src.apply(theta),
+                tgt,
+            },
             Constraint::Choice(d, cs1, cs2) => {
                 Constraint::Choice(d, cs1.apply(theta), cs2.apply(theta))
             }
@@ -681,7 +701,14 @@ impl TypeInference {
                 self.add_pattern(pi_res);
                 self.add_constraints(c_res);
 
-                Some((GradualExpr::if_(e_cond, GradualExpr::ann(e_then, m_res.clone()), GradualExpr::ann(e_else, m_res.clone())), m_res))
+                Some((
+                    GradualExpr::if_(
+                        e_cond,
+                        GradualExpr::ann(e_then, m_res.clone()),
+                        GradualExpr::ann(e_else, m_res.clone()),
+                    ),
+                    m_res,
+                ))
             }
             GradualExpr::Let(x, t, e_def, e_body) => {
                 let (e_def, m_def) = self.generate_constraints(ctx.clone(), e_def)?;
@@ -775,24 +802,27 @@ impl TypeInference {
                         for op2 in overloads.into_iter() {
                             let (g_dom2, g_cod2) = op2.signature();
 
-                            let b_dom2 = match g_dom2 {
-                                GradualType::Base(b) => b,
-                                m => panic!("expected base type in operation signature, got {}", m),
-                            };
+                            let v_dom2 = g_dom2.try_variational().expect(
+                                "expected variational (non-dynamic) type in operation signature",
+                            );
 
                             let d = self.fresh_variation().biased(Side::Right);
 
                             op = ExplicitBOp::choice(d, op, op2);
                             let cs2 = Constraints(vec![
-                                Constraint::Ground(Pattern::Top(), m1.clone(), b_dom2),
-                                Constraint::Ground(Pattern::Top(), m2.clone(), b_dom2),
+                                Constraint::Static {
+                                    pi: Pattern::Top(),
+                                    src: m1.clone(),
+                                    tgt: v_dom2.clone(),
+                                },
+                                Constraint::Static {
+                                    pi: Pattern::Top(),
+                                    src: m2.clone(),
+                                    tgt: v_dom2.clone(),
+                                },
                             ]);
                             cs = Constraint::Choice(d, cs, cs2).into();
-                            m_dom = MigrationalType::choice(
-                                d,
-                                m_dom.clone(),
-                                MigrationalType::Base(b_dom2),
-                            );
+                            m_dom = MigrationalType::choice(d, m_dom.clone(), v_dom2.into());
                             m_cod = MigrationalType::choice(d, m_cod.clone(), g_cod2.into());
                         }
 
@@ -802,6 +832,77 @@ impl TypeInference {
                     }
                 }
             }
+            GradualExpr::Nil(t) => {
+                let g = match t {
+                    Some(g) => {
+                        warn!("unexpected annotation on empty list [] ({})", g);
+                        g
+                    }
+                    None => &GradualType::Dyn(),
+                };
+                let m = self.freshen_gradual_type(g);
+                log::debug!("writing nil @ {}", m);
+
+                Some((GradualExpr::Nil(m.clone()), MigrationalType::list(m)))
+            }
+            GradualExpr::Cons(e1, e2) => {
+                let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
+                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
+
+                let (m_elt, cs_elt, pat_elt) = self.elt(&m2);
+                let m_list = MigrationalType::list(m_elt.clone());
+
+                self.add_constraint(Constraint::Consistent(Pattern::Top(), m1, m_elt));
+                self.add_constraints(cs_elt);
+                self.add_pattern(pat_elt);
+
+                Some((GradualExpr::cons(e1, e2), m_list))
+            }
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                let (e_scrutinee, m_scrutinee) =
+                    self.generate_constraints(ctx.clone(), e_scrutinee)?;
+
+                // make sure we're looking at a list
+                let (m_elt, cs_elt, pat_elt) = self.elt(&m_scrutinee);
+                let m_list = MigrationalType::list(m_elt.clone());
+
+                self.add_constraint(Constraint::Consistent(
+                    Pattern::Top(),
+                    m_scrutinee,
+                    m_list.clone(),
+                ));
+                self.add_constraints(cs_elt);
+                self.add_pattern(pat_elt);
+
+                // check the nil branch
+                let (e_nil, m_nil) = self.generate_constraints(ctx.clone(), e_nil)?;
+
+                // check the cons branch
+                let (e_cons, m_cons) = self.generate_constraints(
+                    ctx.extend(hd.clone(), m_elt.clone())
+                        .extend(tl.clone(), m_list.clone()),
+                    e_cons,
+                )?;
+
+                let (m_res, c_res, pi_res) = self.meet(&m_nil, &m_cons);
+                debug!(
+                    "match constraints on {} and {}: {} (pi={})",
+                    m_nil, m_cons, c_res, pi_res
+                );
+                self.add_constraints(c_res);
+                self.add_pattern(pi_res);
+
+                Some((
+                    GradualExpr::match_(
+                        GradualExpr::ann(e_scrutinee, m_list.clone()),
+                        GradualExpr::ann(e_nil, m_res.clone()),
+                        hd.clone(),
+                        tl.clone(),
+                        GradualExpr::ann(e_cons, m_res.clone()),
+                    ),
+                    m_res,
+                ))
+            }
         }
     }
 
@@ -810,6 +911,7 @@ impl TypeInference {
             MigrationalType::Dyn() => MigrationalType::Var(self.fresh_variable()),
             MigrationalType::Base(b) => MigrationalType::Base(*b),
             MigrationalType::Var(a) => MigrationalType::Var(*a),
+            MigrationalType::List(m) => MigrationalType::list(self.dyn_to_var(m)),
             MigrationalType::Choice(d, m1, m2) => {
                 MigrationalType::choice(*d, self.dyn_to_var(m1), self.dyn_to_var(m2))
             }
@@ -907,6 +1009,44 @@ impl TypeInference {
                 )
             }
             _ => (
+                MigrationalType::Var(self.fresh_variable()),
+                Constraints::epsilon(),
+                Pattern::Bot(),
+            ),
+        }
+    }
+
+    fn elt(&mut self, m_list: &MigrationalType) -> (MigrationalType, Constraints, Pattern) {
+        match m_list {
+            MigrationalType::Dyn() => (
+                MigrationalType::Dyn(),
+                Constraints::epsilon(),
+                Pattern::Top(),
+            ),
+            MigrationalType::List(m_elt) => {
+                (*m_elt.clone(), Constraints::epsilon(), Pattern::Top())
+            }
+            MigrationalType::Var(alpha) => {
+                let beta = MigrationalType::Var(self.fresh_variable());
+                let real_list = MigrationalType::list(beta.clone());
+                (
+                    beta,
+                    Constraint::Consistent(Pattern::Top(), MigrationalType::Var(*alpha), real_list)
+                        .into(),
+                    Pattern::Top(),
+                )
+            }
+            MigrationalType::Choice(d, m_list1, m_list2) => {
+                let (m1, cs1, pat1) = self.elt(m_list1);
+                let (m2, cs2, pat2) = self.elt(m_list2);
+
+                (
+                    MigrationalType::choice(*d, m1, m2),
+                    Constraint::Choice(*d, cs1, cs2).into(),
+                    Pattern::choice(*d, pat1, pat2),
+                )
+            }
+            MigrationalType::Fun(_, _) | MigrationalType::Base(_) => (
                 MigrationalType::Var(self.fresh_variable()),
                 Constraints::epsilon(),
                 Pattern::Bot(),
@@ -1032,23 +1172,51 @@ impl TypeInference {
                     // occurs check!
                     if let Some(v) = m.try_variational() {
                         return (Subst::empty().extend(a, v), Pattern::Top()); // first case: direct binding
-                    } else if m.is_fun() {
-                        // third case: check if M is a function
-                        let k1 = self.fresh_variable();
-                        let k2 = self.fresh_variable();
-                        let kfun = MigrationalType::fun(
-                            MigrationalType::Var(k1),
-                            MigrationalType::Var(k2),
-                        );
+                    } else {
+                        match m {
+                            m @ MigrationalType::Fun(_, _) => {
+                                // third case: check if M is a function
+                                let k1 = self.fresh_variable();
+                                let k2 = self.fresh_variable();
+                                let kfun = MigrationalType::fun(
+                                    MigrationalType::Var(k1),
+                                    MigrationalType::Var(k2),
+                                );
 
-                        let (theta1, pi1) = self.unify1(Constraint::Consistent(
-                            Pattern::Top(),
-                            alpha.clone(),
-                            kfun.clone(),
-                        ));
-                        let (theta2, pi2) =
-                            self.unify1(Constraint::Consistent(Pattern::Top(), kfun, m.clone())); // ??? MMG paper says pi2, not Top
-                        return (theta2.compose(theta1), pi2.meet(pi1));
+                                let (theta1, pi1) = self.unify1(Constraint::Consistent(
+                                    Pattern::Top(),
+                                    alpha.clone(),
+                                    kfun.clone(),
+                                ));
+                                let (theta2, pi2) = self.unify1(Constraint::Consistent(
+                                    Pattern::Top(),
+                                    kfun,
+                                    m.clone(),
+                                )); // ??? MMG paper says pi2, not Top
+                                return (theta2.compose(theta1), pi2.meet(pi1));
+                            }
+                            m @ MigrationalType::List(_) => {
+                                let k = self.fresh_variable();
+                                let klist = MigrationalType::list(MigrationalType::Var(k));
+
+                                let (theta1, pi1) = self.unify1(Constraint::Consistent(
+                                    Pattern::Top(),
+                                    alpha.clone(),
+                                    klist.clone(),
+                                ));
+
+                                let (theta2, pi2) = self.unify1(Constraint::Consistent(
+                                    Pattern::Top(),
+                                    klist,
+                                    m,
+                                ));
+
+                                return (theta2.compose(theta1), pi2.meet(pi1));
+                            }
+                            _ => {
+                                debug!("passed occurs check, but couldn't directly bind or use type structure");
+                            }
+                        }
                     }
                 }
 
@@ -1103,12 +1271,19 @@ impl TypeInference {
 
                 (theta2.compose(theta1), pi2.meet(pi1))
             }
+            Constraint::Consistent(p, MigrationalType::List(m1), MigrationalType::List(m2)) => {
+                self.unify1(Constraint::Consistent(p, *m1, *m2))
+            }
             Constraint::Consistent(_p, MigrationalType::Base(b1), MigrationalType::Base(b2)) => {
                 // (e)
                 (Subst::empty(), (b1 == b2).into())
             }
             Constraint::Consistent(_p, MigrationalType::Base(_), MigrationalType::Fun(_, _))
-            | Constraint::Consistent(_p, MigrationalType::Fun(_, _), MigrationalType::Base(_)) => {
+            | Constraint::Consistent(_p, MigrationalType::Fun(_, _), MigrationalType::Base(_))
+            | Constraint::Consistent(_p, MigrationalType::List(_), MigrationalType::Fun(_, _))
+            | Constraint::Consistent(_p, MigrationalType::Fun(_, _), MigrationalType::List(_))
+            | Constraint::Consistent(_p, MigrationalType::Base(_), MigrationalType::List(_))
+            | Constraint::Consistent(_p, MigrationalType::List(_), MigrationalType::Base(_)) => {
                 // (e)
                 (Subst::empty(), Pattern::Bot())
             }
@@ -1120,24 +1295,74 @@ impl TypeInference {
                 let theta = self.merge(d, theta1, theta2);
                 (theta, Pattern::choice(d, pi1, pi2))
             }
-            Constraint::Ground(_pi, MigrationalType::Dyn(), _b) => (Subst::empty(), Pattern::Bot()),
-            Constraint::Ground(_pi, MigrationalType::Fun(_, _), _b) => {
-                (Subst::empty(), Pattern::Bot())
+            Constraint::Static {
+                src: MigrationalType::Dyn(),
+                ..
+            } => (Subst::empty(), Pattern::Bot()),
+            Constraint::Static {
+                pi,
+                src: MigrationalType::Fun(m1, m2),
+                tgt: VariationalType::Fun(v1, v2),
+            } => {
+                let (theta1, pi1) = self.unify1(Constraint::Static {
+                    pi: pi.clone(),
+                    src: *m1,
+                    tgt: *v1,
+                });
+                let (theta2, pi2) = self.unify1(Constraint::Static {
+                    pi,
+                    src: *m2,
+                    tgt: *v2,
+                });
+
+                (theta1.compose(theta2), pi1.meet(pi2))
             }
-            Constraint::Ground(_pi, MigrationalType::Base(b1), b2) => {
-                (Subst::empty(), (b1 == b2).into())
-            }
-            Constraint::Ground(_pi, MigrationalType::Var(a), b) => (
-                Subst::empty().extend(a, VariationalType::Base(b)),
-                Pattern::Top(),
-            ),
-            Constraint::Ground(pi, MigrationalType::Choice(d, m1, m2), b) => {
-                let (theta1, pi1) = self.unify1(Constraint::Ground(pi.clone(), *m1, b));
-                let (theta2, pi2) = self.unify1(Constraint::Ground(pi, *m2, b));
+            Constraint::Static {
+                pi,
+                src: MigrationalType::List(m),
+                tgt: VariationalType::List(v),
+            } => self.unify1(Constraint::Static {
+                pi,
+                src: *m,
+                tgt: *v,
+            }),
+            Constraint::Static {
+                src: MigrationalType::Base(b1),
+                tgt: VariationalType::Base(b2),
+                ..
+            } => (Subst::empty(), (b1 == b2).into()),
+            Constraint::Static {
+                src: MigrationalType::Var(a),
+                tgt,
+                ..
+            } => (Subst::empty().extend(a, tgt), Pattern::Top()),
+            Constraint::Static {
+                pi,
+                src: MigrationalType::Choice(d, m1, m2),
+                tgt,
+            } => {
+                let (theta1, pi1) = self.unify1(Constraint::Static {
+                    pi: pi.clone(),
+                    src: *m1,
+                    tgt: tgt.clone(),
+                });
+                let (theta2, pi2) = self.unify1(Constraint::Static { pi, src: *m2, tgt });
 
                 let theta = self.merge(d, theta1, theta2);
                 (theta, Pattern::choice(d, pi1, pi2))
             }
+            Constraint::Static {
+                src: MigrationalType::Fun(_, _),
+                ..
+            }
+            | Constraint::Static {
+                src: MigrationalType::List(_),
+                ..
+            }
+            | Constraint::Static {
+                src: MigrationalType::Base(_),
+                ..
+            } => (Subst::empty(), Pattern::Bot()),
         }
     }
 
@@ -2103,6 +2328,25 @@ mod test {
     }
 
     #[test]
+    fn list_kitchen_sink() {
+        let (_, m) = infer_unique(r#"["";3;\x. x * 2; true]"#);
+
+        assert_eq!(m, MigrationalType::list(MigrationalType::Dyn()));
+    }
+
+    #[test]
+    fn match_simple() {
+        let (_, m) = infer_unique("match [] with [] -> 0 | hd::tl -> 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("match [] with | [] -> 0 | hd::tl -> 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("match [1;2] with | [] -> 0 | hd::tl -> hd");
+        assert_eq!(m, MigrationalType::int());
+    }
+
+    #[test]
     fn infer_bad_constraints() {
         assert!(
             TypeInference::infer(&GradualExpr::app(
@@ -2159,7 +2403,9 @@ mod test {
         let (_e, m) = infer_unique(r#"let x = "oh, " in if string? x then x + "hi" else x + 10"#);
         assert_eq!(m, MigrationalType::string());
 
-        let (_e, m) = infer_unique(r#"let x = if true then "oh, " else false in if string? x then x + "hi" else x + 10"#);
+        let (_e, m) = infer_unique(
+            r#"let x = if true then "oh, " else false in if string? x then x + "hi" else x + 10"#,
+        );
         assert_eq!(m, MigrationalType::Dyn());
     }
 

@@ -1,65 +1,14 @@
 use std::cmp::PartialEq;
 use std::fmt::Display;
-use std::hash::Hash;
 
 use log::{error, info, warn};
 
 use im_rc::HashSet;
 
-pub const DEFAULT_WIDTH: usize = 80;
+use crate::options::DEFAULT_WIDTH;
+pub use crate::types::*;
 
 lalrpop_mod!(parser);
-
-/// gamma
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BaseType {
-    Bool,
-    Int,
-    String,
-}
-
-/// alpha
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct TypeVariable(pub(super) usize);
-
-/// G
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum GradualType {
-    Base(BaseType),
-    Var(TypeVariable),
-    Fun(Box<GradualType>, Box<GradualType>),
-    Dyn(),
-}
-
-/// d
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Variation(usize, Option<Side>);
-
-/// .1 or .2
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum Side {
-    Left,
-    Right,
-}
-
-/// V
-#[derive(Clone, Debug, PartialEq)]
-pub enum VariationalType {
-    Base(BaseType),
-    Var(TypeVariable),
-    Fun(Box<VariationalType>, Box<VariationalType>),
-    Choice(Variation, Box<VariationalType>, Box<VariationalType>),
-}
-
-/// M
-#[derive(Clone, Debug, PartialEq)]
-pub enum MigrationalType {
-    Base(BaseType),
-    Var(TypeVariable),
-    Fun(Box<MigrationalType>, Box<MigrationalType>),
-    Dyn(),
-    Choice(Variation, Box<MigrationalType>, Box<MigrationalType>),
-}
 
 /// c
 #[derive(Clone, Debug, PartialEq)]
@@ -145,6 +94,16 @@ pub enum GradualExpr<T, U, B> {
     ),
     UOp(U, Box<GradualExpr<T, U, B>>),
     BOp(B, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    Nil(T),
+    Cons(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    /// Match(scrutinee, nil, h, t, cons (binding h and t))
+    Match(
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+        Variable,
+        Variable,
+        Box<GradualExpr<T, U, B>>,
+    ),
 }
 
 pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
@@ -154,6 +113,7 @@ pub type TargetExpr = GradualExpr<MigrationalType, ExplicitUOp, ExplicitBOp>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroundType {
     Base(BaseType),
+    List,
     Fun,
 }
 
@@ -173,6 +133,7 @@ pub enum Coercion {
     Check(GroundType),
     Fun(Box<Coercion>, Box<Coercion>),
     Seq(Box<Coercion>, Box<Coercion>),
+    List(Box<Coercion>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -191,6 +152,24 @@ pub enum ExplicitExpr {
     ),
     UOp(ExplicitUOp, Box<ExplicitExpr>),
     BOp(ExplicitBOp, Box<ExplicitExpr>, Box<ExplicitExpr>),
+    Nil(GradualType),
+    Cons(Box<ExplicitExpr>, Box<ExplicitExpr>),
+    /// Match(scrutinee, nil, h, t, cons (binding h and t))
+    Match(
+        Box<ExplicitExpr>,
+        Box<ExplicitExpr>,
+        Variable,
+        Variable,
+        Box<ExplicitExpr>,
+    ),
+}
+
+impl GradualType {
+    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
+        parser::TypeParser::new()
+            .parse(s)
+            .map_err(|e| e.to_string())
+    }
 }
 
 impl<T, U, B> GradualExpr<T, U, B> {
@@ -240,6 +219,26 @@ impl<T, U, B> GradualExpr<T, U, B> {
         GradualExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 
+    pub fn cons(e1: Self, e2: Self) -> Self {
+        GradualExpr::Cons(Box::new(e1), Box::new(e2))
+    }
+
+    pub fn match_(
+        e_scrutinee: Self,
+        e_nil: Self,
+        hd: Variable,
+        tl: Variable,
+        e_cons: Self,
+    ) -> Self {
+        GradualExpr::Match(
+            Box::new(e_scrutinee),
+            Box::new(e_nil),
+            hd,
+            tl,
+            Box::new(e_cons),
+        )
+    }
+
     pub fn map_types<F, S>(self, f: &F) -> GradualExpr<S, U, B>
     where
         F: Fn(T) -> S,
@@ -266,6 +265,15 @@ impl<T, U, B> GradualExpr<T, U, B> {
             ),
             GradualExpr::UOp(op, e) => GradualExpr::uop(op, e.map_types(f)),
             GradualExpr::BOp(op, e1, e2) => GradualExpr::bop(op, e1.map_types(f), e2.map_types(f)),
+            GradualExpr::Nil(t) => GradualExpr::Nil(f(t)),
+            GradualExpr::Cons(e1, e2) => GradualExpr::cons(e1.map_types(f), e2.map_types(f)),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => GradualExpr::match_(
+                e_scrutinee.map_types(f),
+                e_nil.map_types(f),
+                hd,
+                tl,
+                e_cons.map_types(f),
+            ),
         }
     }
 
@@ -285,6 +293,12 @@ impl<T, U, B> GradualExpr<T, U, B> {
 }
 
 impl SourceExpr {
+    pub fn list(elts: Vec<Self>) -> Self {
+        elts.into_iter()
+            .rev()
+            .fold(GradualExpr::Nil(None), |t, h| GradualExpr::cons(h, t))
+    }
+
     pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
         parser::ExprParser::new()
             .parse(s)
@@ -449,6 +463,56 @@ impl SourceExpr {
                 ],
                 pp.space(),
             ),
+            GradualExpr::Nil(_t) => pp.text("[]"),
+            // TODO identify concrete lists and pretty print accordingly
+            GradualExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
+            ),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                ],
+                pp.line(),
+            ),
         }
     }
 }
@@ -508,11 +572,14 @@ impl TargetExpr {
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
             GradualExpr::Const(_) | GradualExpr::Var(_) => HashSet::new(),
-            GradualExpr::Lam(_x, t, e) => t.choices().union(e.choices()),
-            GradualExpr::Hole(_, t) => t.choices(),
-            GradualExpr::Ann(e, t) => e.choices().union(t.choices()),
-            GradualExpr::App(e1, e2) => e1.choices().union(e2.choices()),
-            GradualExpr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
+            GradualExpr::Lam(_, t, e) | GradualExpr::Ann(e, t) => t.choices().union(e.choices()),
+            GradualExpr::Hole(_, t) | GradualExpr::Nil(t) => t.choices(),
+            GradualExpr::App(e1, e2) | GradualExpr::Cons(e1, e2) => {
+                e1.choices().union(e2.choices())
+            }
+            GradualExpr::If(e1, e2, e3) | GradualExpr::Match(e1, e2, _, _, e3) => {
+                e1.choices().union(e2.choices()).union(e3.choices())
+            }
             GradualExpr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
             GradualExpr::LetRec(defns, e2) => {
                 let ds = defns
@@ -665,6 +732,58 @@ impl TargetExpr {
                 ],
                 pp.space(),
             ),
+            GradualExpr::Nil(t) => {
+                pp.intersperse(vec![pp.text("[]"), pp.text(":"), t.pretty(pp)], pp.space())
+            }
+            // TODO identify concrete lists and pretty print accordingly
+            GradualExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
+            ),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                ],
+                pp.line(),
+            ),
         }
     }
 }
@@ -697,6 +816,7 @@ impl Display for GroundType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GroundType::Base(b) => b.fmt(f),
+            GroundType::List => write!(f, "list"),
             GroundType::Fun => write!(f, "fun"),
         }
     }
@@ -753,6 +873,26 @@ impl ExplicitExpr {
         ExplicitExpr::BOp(op, Box::new(e1), Box::new(e2))
     }
 
+    pub fn cons(e1: Self, e2: Self) -> Self {
+        ExplicitExpr::Cons(Box::new(e1), Box::new(e2))
+    }
+
+    pub fn match_(
+        e_scrutinee: Self,
+        e_nil: Self,
+        hd: Variable,
+        tl: Variable,
+        e_cons: Self,
+    ) -> Self {
+        ExplicitExpr::Match(
+            Box::new(e_scrutinee),
+            Box::new(e_nil),
+            hd,
+            tl,
+            Box::new(e_cons),
+        )
+    }
+
     pub fn is_compound(&self) -> bool {
         match self {
             ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => false,
@@ -769,7 +909,10 @@ impl ExplicitExpr {
 
     pub fn coercions(self) -> Vec<Coercion> {
         match self {
-            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => vec![],
+            ExplicitExpr::Var(_)
+            | ExplicitExpr::Const(_)
+            | ExplicitExpr::Hole(_, _)
+            | ExplicitExpr::Nil(_) => vec![],
             ExplicitExpr::Lam(_, _, e) | ExplicitExpr::UOp(_, e) => e.coercions(),
             ExplicitExpr::Coerce(e, c) => {
                 let mut cs = e.coercions();
@@ -777,13 +920,14 @@ impl ExplicitExpr {
                 cs
             }
             ExplicitExpr::App(e1, e2)
+            | ExplicitExpr::Cons(e1, e2)
             | ExplicitExpr::Let(_, _, e1, e2)
             | ExplicitExpr::BOp(_, e1, e2) => {
                 let mut cs = e1.coercions();
                 cs.extend(e2.coercions());
                 cs
             }
-            ExplicitExpr::If(e1, e2, e3) => {
+            ExplicitExpr::If(e1, e2, e3) | ExplicitExpr::Match(e1, e2, _, _, e3) => {
                 let mut cs = e1.coercions();
                 cs.extend(e2.coercions());
                 cs.extend(e3.coercions());
@@ -939,6 +1083,58 @@ impl ExplicitExpr {
                 ],
                 pp.space(),
             ),
+            ExplicitExpr::Nil(t) => {
+                pp.intersperse(vec![pp.text("[]"), pp.text(":"), t.pretty(pp)], pp.space())
+            }
+            // TODO identify concrete lists and pretty print accordingly
+            ExplicitExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
+            ),
+            ExplicitExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                ],
+                pp.line(),
+            ),
         }
     }
 }
@@ -968,6 +1164,7 @@ impl Coercion {
             Coercion::Id(_, _) => true,
             Coercion::Check(_) | Coercion::Tag(_) => true,
             Coercion::Fun(c1, c2) | Coercion::Seq(c1, c2) => c1.is_safe() && c2.is_safe(),
+            Coercion::List(c) => c.is_safe(),
         }
     }
 
@@ -981,6 +1178,10 @@ impl Coercion {
                 let (g12, g22) = c2.types()?;
 
                 Some((GradualType::fun(g11, g12), GradualType::fun(g21, g22)))
+            }
+            Coercion::List(c) => {
+                let (g1, g2) = c.types()?;
+                Some((GradualType::list(g1), GradualType::list(g2)))
             }
             Coercion::Seq(c1, c2) => {
                 let (g1, g12) = c1.types()?;
@@ -1040,9 +1241,16 @@ impl Coercion {
         }
     }
 
+    pub(crate) fn list(c: Self) -> Self {
+        match c {
+            Coercion::Id(t, g) => Coercion::Id(t, GradualType::list(g)),
+            c => Coercion::List(Box::new(c)),
+        }
+    }
+
     pub(crate) fn is_compound(&self) -> bool {
         match self {
-            Coercion::Fun(_, _) | Coercion::Seq(_, _) => true,
+            Coercion::Fun(_, _) | Coercion::Seq(_, _) | Coercion::List(_) => true,
             Coercion::Id(_, _) | Coercion::Check(_) | Coercion::Tag(_) => false,
         }
     }
@@ -1071,6 +1279,7 @@ impl Coercion {
                     .append(d2)
                     .group()
             }
+            Coercion::List(c) => pp.text("list").append(c.pretty(pp).parens()),
             Coercion::Seq(c1, c2) => {
                 let d1 = c1.pretty(pp).group();
 
@@ -1094,448 +1303,6 @@ impl Display for Coercion {
         let pp = pretty::BoxAllocator;
         let doc = self.pretty::<_, ()>(&pp);
         doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl GradualType {
-    pub fn bool() -> Self {
-        GradualType::Base(BaseType::Bool)
-    }
-
-    pub fn int() -> Self {
-        GradualType::Base(BaseType::Int)
-    }
-
-    pub fn string() -> Self {
-        GradualType::Base(BaseType::String)
-    }
-
-    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
-        parser::TypeParser::new()
-            .parse(s)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
-    where
-        D: pretty::DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        match self {
-            GradualType::Dyn() => pp.text("?"),
-            GradualType::Base(b) => pp.as_string(b),
-            GradualType::Var(a) => pp.as_string(a),
-            GradualType::Fun(g1, g2) if g1.is_fun() => g1
-                .pretty(pp)
-                .parens()
-                .group()
-                .append(pp.space())
-                .append(pp.text("->"))
-                .append(pp.line())
-                .append(g2.pretty(pp).group())
-                .group(),
-            GradualType::Fun(g1, g2) => g1
-                .pretty(pp)
-                .group()
-                .append(pp.space())
-                .append(pp.text("->"))
-                .append(pp.line())
-                .append(g2.pretty(pp).group())
-                .group(),
-        }
-    }
-
-    pub fn fun(g1: GradualType, g2: GradualType) -> GradualType {
-        GradualType::Fun(Box::new(g1), Box::new(g2))
-    }
-
-    pub fn consistent(&self, other: &GradualType) -> bool {
-        match (self, other) {
-            (GradualType::Dyn(), _) | (_, GradualType::Dyn()) => true,
-            (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
-                g11.consistent(g21) && g12.consistent(g22)
-            }
-            (g1, g2) => g1 == g2,
-        }
-    }
-
-    pub fn dom(&self) -> Option<GradualType> {
-        match self {
-            GradualType::Dyn() => Some(GradualType::Dyn()),
-            GradualType::Fun(g1, _) => Some(*g1.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn cod(&self) -> Option<GradualType> {
-        match self {
-            GradualType::Dyn() => Some(GradualType::Dyn()),
-            GradualType::Fun(_, g2) => Some(*g2.clone()),
-            _ => None,
-        }
-    }
-
-    /// should only be called on consistent types
-    pub fn meet(&self, other: &GradualType) -> GradualType {
-        match (self, other) {
-            (GradualType::Dyn(), g) | (g, GradualType::Dyn()) => g.clone(),
-            (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
-                GradualType::fun(g11.meet(g21), g12.meet(g22))
-            }
-            (g1, g2) => {
-                assert_eq!(g1, g2, "meet is only defined on consistent types");
-                g1.clone()
-            }
-        }
-    }
-
-    pub fn join(&self, other: &GradualType) -> GradualType {
-        match (self, other) {
-            (g1, g2) if g1 == g2 => g1.clone(),
-            (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
-                GradualType::fun(g11.join(g21), g12.join(g22))
-            }
-            (GradualType::Base(b1), GradualType::Base(b2)) => {
-                if b1 == b2 {
-                    GradualType::Base(*b1)
-                } else {
-                    GradualType::Dyn()
-                }
-            }
-            (_g1, _g2) => GradualType::Dyn(),
-        }
-    }
-
-    pub fn try_meet(&self, other: &GradualType) -> Option<GradualType> {
-        match (self, other) {
-            (GradualType::Dyn(), g) | (g, GradualType::Dyn()) => Some(g.clone()),
-            (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
-                let g1 = g11.try_meet(g21)?;
-                let g2 = g12.try_meet(g22)?;
-                Some(GradualType::fun(g1, g2))
-            }
-            (g1, g2) => {
-                if g1 == g2 {
-                    Some(g1.clone())
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    pub fn has_dyn(&self) -> bool {
-        match self {
-            GradualType::Dyn() => true,
-            GradualType::Fun(g1, g2) => g1.has_dyn() || g2.has_dyn(),
-            GradualType::Base(_) => false,
-            GradualType::Var(_) => false,
-        }
-    }
-
-    pub fn is_fun(&self) -> bool {
-        match self {
-            GradualType::Fun(_, _) => true,
-            _ => false,
-        }
-    }
-}
-
-impl From<BaseType> for GradualType {
-    fn from(b: BaseType) -> Self {
-        GradualType::Base(b)
-    }
-}
-
-impl Display for GradualType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let pp = pretty::BoxAllocator;
-        let doc = self.pretty::<_, ()>(&pp);
-        doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl VariationalType {
-    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
-    where
-        D: pretty::DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        match self {
-            VariationalType::Base(b) => pp.as_string(b),
-            VariationalType::Var(a) => pp.as_string(a),
-            VariationalType::Fun(v1, v2) => {
-                let mut dom = v1.pretty(pp);
-
-                if v1.is_fun() {
-                    dom = dom.parens()
-                }
-
-                dom.append(pp.text(")"))
-                    .append(pp.space())
-                    .append(pp.text("->"))
-                    .append(pp.line())
-                    .append(v2.pretty(pp))
-                    .group()
-            }
-            VariationalType::Choice(d, v1, v2) => pp
-                .as_string(d)
-                .append(
-                    v1.pretty(pp)
-                        .append(pp.text(","))
-                        .append(v2.pretty(pp))
-                        .angles(),
-                )
-                .group(),
-        }
-    }
-
-    pub fn fun(v1: VariationalType, v2: VariationalType) -> VariationalType {
-        VariationalType::Fun(Box::new(v1), Box::new(v2))
-    }
-
-    pub fn choice(d: Variation, v1: VariationalType, v2: VariationalType) -> VariationalType {
-        // reduced smart constructor, since case (b) of unification needs to generate choices with identical branches!
-        // we _do_ project the inner types to the appropriate side of that variation, though
-        VariationalType::Choice(
-            d,
-            Box::new(v1.select(d, Side::Left)),
-            Box::new(v2.select(d, Side::Right)),
-        )
-    }
-
-    pub fn select(&self, d: Variation, side: Side) -> VariationalType {
-        match self {
-            VariationalType::Base(b) => VariationalType::Base(b.clone()),
-            VariationalType::Var(a) => VariationalType::Var(*a),
-            VariationalType::Fun(v1, v2) => {
-                VariationalType::fun(v1.select(d, side), v2.select(d, side))
-            }
-            VariationalType::Choice(d2, v1, v2) => {
-                if d == *d2 {
-                    match side {
-                        Side::Left => v1.select(d, side),
-                        Side::Right => v2.select(d, side),
-                    }
-                } else {
-                    VariationalType::choice(*d2, v1.select(d, side), v2.select(d, side))
-                }
-            }
-        }
-    }
-
-    pub fn is_fun(&self) -> bool {
-        match self {
-            VariationalType::Fun(_, _) => true,
-            _ => false,
-        }
-    }
-}
-
-impl Display for VariationalType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let pp = pretty::BoxAllocator;
-        let doc = self.pretty::<_, ()>(&pp);
-        doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl MigrationalType {
-    pub fn bool() -> Self {
-        MigrationalType::Base(BaseType::Bool)
-    }
-
-    pub fn int() -> Self {
-        MigrationalType::Base(BaseType::Int)
-    }
-
-    pub fn string() -> Self {
-        MigrationalType::Base(BaseType::String)
-    }
-
-    pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
-    where
-        D: pretty::DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        match self {
-            MigrationalType::Dyn() => pp.text("?"),
-            MigrationalType::Base(b) => pp.as_string(b),
-            MigrationalType::Var(a) => pp.as_string(a),
-            MigrationalType::Fun(m1, m2) => {
-                let mut dom = m1.pretty(pp);
-
-                if m1.is_fun() {
-                    dom = dom.parens()
-                }
-
-                dom.append(pp.space())
-                    .append(pp.text("->"))
-                    .append(pp.line())
-                    .append(m2.pretty(pp))
-                    .group()
-            }
-            MigrationalType::Choice(d, m1, m2) => pp
-                .as_string(d)
-                .append(
-                    m1.pretty(pp)
-                        .append(pp.text(","))
-                        .append(m2.pretty(pp))
-                        .angles(),
-                )
-                .group(),
-        }
-    }
-
-    pub fn fun(m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
-        MigrationalType::Fun(Box::new(m1), Box::new(m2))
-    }
-
-    pub fn choice(d: Variation, m1: MigrationalType, m2: MigrationalType) -> MigrationalType {
-        // reduced smart constructor, since case (b) of unification needs to generate choices with identical branches!
-        // we _do_ project the inner types to the appropriate side of that variation, though
-        MigrationalType::Choice(
-            d,
-            Box::new(m1.select(d, Side::Left)),
-            Box::new(m2.select(d, Side::Right)),
-        )
-    }
-
-    pub fn select(&self, d: Variation, side: Side) -> MigrationalType {
-        match self {
-            MigrationalType::Dyn() => MigrationalType::Dyn(),
-            MigrationalType::Base(b) => MigrationalType::Base(b.clone()),
-            MigrationalType::Var(a) => MigrationalType::Var(*a),
-            MigrationalType::Fun(m1, m2) => {
-                MigrationalType::fun(m1.select(d, side), m2.select(d, side))
-            }
-            MigrationalType::Choice(d2, m1, m2) => {
-                if d == *d2 {
-                    match side {
-                        Side::Left => m1.select(d, side),
-                        Side::Right => m2.select(d, side),
-                    }
-                } else {
-                    MigrationalType::choice(*d2, m1.select(d, side), m2.select(d, side))
-                }
-            }
-        }
-    }
-
-    pub fn is_fun(&self) -> bool {
-        match self {
-            MigrationalType::Fun(_, _) => true,
-            _ => false,
-        }
-    }
-
-    pub fn has_dyn(&self) -> bool {
-        match self {
-            MigrationalType::Dyn() => true,
-            MigrationalType::Fun(m1, m2) => m1.has_dyn() || m2.has_dyn(),
-            MigrationalType::Choice(_d, m1, m2) => m1.has_dyn() || m2.has_dyn(),
-            MigrationalType::Base(_) => false,
-            MigrationalType::Var(_) => false,
-        }
-    }
-
-    pub fn vars(&self) -> HashSet<&TypeVariable> {
-        match self {
-            MigrationalType::Dyn() | MigrationalType::Base(_) => HashSet::new(),
-            MigrationalType::Var(alpha) => HashSet::unit(alpha),
-            MigrationalType::Fun(m1, m2) => m1.vars().union(m2.vars()),
-            MigrationalType::Choice(_d, m1, m2) => m1.vars().union(m2.vars()),
-        }
-    }
-
-    pub fn choices(&self) -> HashSet<&Variation> {
-        match self {
-            MigrationalType::Dyn() | MigrationalType::Base(_) | MigrationalType::Var(_) => {
-                HashSet::new()
-            }
-            MigrationalType::Fun(m1, m2) => m1.choices().union(m2.choices()),
-            MigrationalType::Choice(d, m1, m2) => m1.choices().union(m2.choices()).update(d),
-        }
-    }
-
-    pub fn try_variational(&self) -> Option<VariationalType> {
-        match self {
-            MigrationalType::Dyn() => None,
-            MigrationalType::Base(b) => Some(VariationalType::Base(b.clone())),
-            MigrationalType::Var(a) => Some(VariationalType::Var(*a)),
-            MigrationalType::Choice(d, m1, m2) => {
-                let v1 = m1.try_variational()?;
-                let v2 = m2.try_variational()?;
-
-                Some(VariationalType::choice(*d, v1, v2))
-            }
-            MigrationalType::Fun(m1, m2) => {
-                let v1 = m1.try_variational()?;
-                let v2 = m2.try_variational()?;
-
-                Some(VariationalType::fun(v1, v2))
-            }
-        }
-    }
-
-    pub fn try_gradual(&self) -> Option<GradualType> {
-        match self {
-            MigrationalType::Choice(_, _, _) => None,
-            MigrationalType::Base(b) => Some(GradualType::Base(b.clone())),
-            MigrationalType::Var(a) => Some(GradualType::Var(*a)),
-            MigrationalType::Dyn() => Some(GradualType::Dyn()),
-            MigrationalType::Fun(m1, m2) => {
-                let g1 = m1.try_gradual()?;
-                let g2 = m2.try_gradual()?;
-
-                Some(GradualType::fun(g1, g2))
-            }
-        }
-    }
-}
-
-impl Display for MigrationalType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let pp = pretty::BoxAllocator;
-        let doc = self.pretty::<_, ()>(&pp);
-        doc.1.render_fmt(DEFAULT_WIDTH, f)
-    }
-}
-
-impl From<BaseType> for MigrationalType {
-    fn from(b: BaseType) -> Self {
-        MigrationalType::Base(b)
-    }
-}
-
-impl From<GradualType> for MigrationalType {
-    fn from(g: GradualType) -> Self {
-        match g {
-            GradualType::Base(b) => MigrationalType::Base(b),
-            GradualType::Var(a) => MigrationalType::Var(a),
-            GradualType::Dyn() => MigrationalType::Dyn(),
-            GradualType::Fun(g1, g2) => {
-                MigrationalType::fun(MigrationalType::from(*g1), MigrationalType::from(*g2))
-            }
-        }
-    }
-}
-
-impl From<VariationalType> for MigrationalType {
-    fn from(t: VariationalType) -> Self {
-        match t {
-            VariationalType::Base(b) => MigrationalType::Base(b),
-            VariationalType::Var(a) => MigrationalType::Var(a),
-            VariationalType::Choice(d, t1, t2) => {
-                MigrationalType::choice(d, MigrationalType::from(*t1), MigrationalType::from(*t2))
-            }
-            VariationalType::Fun(t1, t2) => {
-                MigrationalType::fun(MigrationalType::from(*t1), MigrationalType::from(*t2))
-            }
-        }
     }
 }
 
@@ -1563,6 +1330,7 @@ impl From<GroundType> for GradualType {
     fn from(g: GroundType) -> Self {
         match g {
             GroundType::Base(b) => GradualType::Base(b),
+            GroundType::List => GradualType::List(Box::new(GradualType::Dyn())),
             GroundType::Fun => GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
         }
     }
@@ -1774,6 +1542,28 @@ mod test {
     }
 
     #[test]
+    fn expr_list() {
+        assert!(SourceExpr::parse("[]").is_ok());
+        assert!(SourceExpr::parse("[ ]").is_ok());
+        assert!(SourceExpr::parse("1::[]").is_ok());
+        assert!(SourceExpr::parse("1::2::[]").is_ok());
+        assert!(SourceExpr::parse("1::(2::[])").is_ok());
+        assert!(SourceExpr::parse("x::y::z").is_ok());
+
+        assert!(SourceExpr::parse("[1;2]").is_ok());
+        assert_eq!(
+            SourceExpr::parse("[true;1]").unwrap(),
+            SourceExpr::cons(
+                SourceExpr::bool(true),
+                SourceExpr::cons(SourceExpr::int(1), SourceExpr::Nil(None))
+            )
+        );
+
+        assert!(SourceExpr::parse("x::y::").is_err());
+        assert!(SourceExpr::parse("::x::y").is_err());
+    }
+
+    #[test]
     fn const_int() {
         assert!(SourceExpr::parse("22").is_ok());
         assert_eq!(
@@ -1812,6 +1602,31 @@ mod test {
             GradualType::parse("string").unwrap(),
             BaseType::String.into()
         );
+    }
+
+    #[test]
+    fn types_list() {
+        assert_eq!(
+            GradualType::parse("[bool]").unwrap(),
+            GradualType::list(GradualType::bool())
+        );
+        assert_eq!(
+            GradualType::parse("[?]").unwrap(),
+            GradualType::list(GradualType::Dyn())
+        );
+        assert_eq!(
+            GradualType::parse("[\t[\nbool] ]").unwrap(),
+            GradualType::list(GradualType::list(GradualType::bool()))
+        );
+        assert_eq!(
+            GradualType::parse("[?->[bool]]").unwrap(),
+            GradualType::list(GradualType::fun(
+                GradualType::Dyn(),
+                GradualType::list(GradualType::bool())
+            ))
+        );
+
+        assert!(GradualType::parse("[bool").is_err());
     }
 
     #[test]
@@ -1975,6 +1790,19 @@ mod test {
             "let rec f (x:bool) = g x and g (y:int) = f y in f 0",
             "let rec f = \\x : bool. g x and g = \\y : int. f y in f 0",
         )
+    }
+    #[test]
+    fn parse_match() {
+        match SourceExpr::parse("match [] with | [] -> 0 | hd::tl -> 1").unwrap() {
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                assert_eq!(e_scrutinee.to_string(), "[]");
+                assert_eq!(e_nil.to_string(), "0");
+                assert_eq!(hd, "hd");
+                assert_eq!(tl, "tl");
+                assert_eq!(e_cons.to_string(), "1");
+            }
+            _ => panic!("expected match"),
+        }
     }
 
     #[test]

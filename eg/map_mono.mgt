@@ -1,0 +1,10 @@
+let rec map f l =
+  match l with
+  | [] -> [] : [int]
+  | hd::tl -> f hd :: map f tl
+and sum (l : [int]) =
+  match l with
+  | [] -> 0
+  | hd::tl -> hd + tl
+in
+sum (map (\x. 2 * x) [1;2;3;4])

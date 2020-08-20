@@ -156,6 +156,63 @@ impl CoercionInsertion {
                     g_cod,
                 )
             }
+            GradualExpr::Nil(m) => {
+                let g = GradualType::list(m.try_gradual().expect("malformed annotation"));
+
+                log::debug!("nil @ {}", g);
+                if let GradualType::Var(_) = g {
+                    warn!("type variable nil...");
+                }
+
+                (ExplicitExpr::Nil(g.clone()), g)
+            }
+            GradualExpr::Cons(e1, e2) => {
+                let (e1, g1) = self.make_explicit(ctx, *e1);
+                let (e2, g2) = self.make_explicit(ctx, *e2);
+
+                let g_elt = match &g2 {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g => panic!("cons-ed onto non-list: {} : {}", e2, g),
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+
+                (
+                    ExplicitExpr::cons(self.coerce(e1, &g1, &g_elt), self.coerce(e2, &g2, &g_list)),
+                    g_list,
+                )
+            }
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                let (e_scrutinee, g_scrutinee) = self.make_explicit(ctx, *e_scrutinee);
+
+                let g_elt = match &g_scrutinee {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g => panic!("match on non-list: {} : {}", e_scrutinee, g),
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+
+                let (e_nil, g_nil) = self.make_explicit(ctx, *e_nil);
+                let (e_cons, g_cons) = self.make_explicit(
+                    &ctx.extend(hd.clone(), g_elt.clone())
+                        .extend(tl.clone(), g_list.clone()),
+                    *e_cons,
+                );
+
+                let g_res = g_nil.join(&g_cons);
+                (
+                    ExplicitExpr::match_(
+                        self.coerce(e_scrutinee, &g_scrutinee, &g_list),
+                        self.coerce(e_nil, &g_nil, &g_res),
+                        hd,
+                        tl,
+                        self.coerce(e_cons, &g_cons, &g_res),
+                    ),
+                    g_res,
+                )
+            }
         }
     }
 
@@ -333,6 +390,63 @@ impl CoercionInsertion {
                     g_cod,
                 ))
             }
+            GradualExpr::Nil(g) => {
+                let g = GradualType::list(g.unwrap_or(GradualType::Dyn()));
+
+                Some((ExplicitExpr::Nil(g.clone()), g))
+            }
+            GradualExpr::Cons(e1, e2) => {
+                let (e1, g1) = self.dynamize(ctx, *e1)?;
+                let (e2, g2) = self.dynamize(ctx, *e2)?;
+
+                let g_elt = match &g2 {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g2 => {
+                        error!("consed onto non-list {} : {}", e2, g2);
+                        return None;
+                    }
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+                Some((
+                    ExplicitExpr::cons(self.coerce(e1, &g1, &g_elt), self.coerce(e2, &g2, &g_list)),
+                    g_list,
+                ))
+            }
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                let (e_scrutinee, g_scrutinee) = self.dynamize(ctx, *e_scrutinee)?;
+
+                let g_elt = match &g_scrutinee {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g => {
+                        error!("match on non-list: {} : {}", e_scrutinee, g);
+                        return None;
+                    }
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+
+                let (e_nil, g_nil) = self.dynamize(ctx, *e_nil)?;
+                let (e_cons, g_cons) = self.dynamize(
+                    &ctx.extend(hd.clone(), g_elt.clone())
+                        .extend(tl.clone(), g_list.clone()),
+                    *e_cons,
+                )?;
+
+                let g_res = g_nil.join(&g_cons);
+                Some((
+                    ExplicitExpr::match_(
+                        self.coerce(e_scrutinee, &g_scrutinee, &g_list),
+                        self.coerce(e_nil, &g_nil, &g_res),
+                        hd,
+                        tl,
+                        self.coerce(e_cons, &g_cons, &g_res),
+                    ),
+                    g_res,
+                ))
+            }
         }
     }
 
@@ -365,21 +479,43 @@ impl CoercionInsertion {
                         ),
                         Coercion::Tag(GroundType::Fun),
                     ),
-                    (GradualType::Dyn(), src @ GradualType::Fun(_, _)) => Coercion::seq(
+                    (GradualType::Dyn(), tgt @ GradualType::Fun(_, _)) => Coercion::seq(
                         Coercion::Check(GroundType::Fun),
                         self.coercion(
                             &GradualType::fun(GradualType::Dyn(), GradualType::Dyn()),
-                            src,
+                            tgt,
                         ),
                     ),
                     (GradualType::Fun(g11, g12), GradualType::Fun(g21, g22)) => {
                         Coercion::fun(self.coercion(g21, g11), self.coercion(g12, g22))
                     }
+                    (src @ GradualType::List(_), GradualType::Dyn()) => Coercion::seq(
+                        self.coercion(src, &GradualType::list(GradualType::Dyn())),
+                        Coercion::Tag(GroundType::List),
+                    ),
+                    (GradualType::Dyn(), tgt @ GradualType::List(_)) => Coercion::seq(
+                        Coercion::Check(GroundType::List),
+                        self.coercion(&GradualType::list(GradualType::Dyn()), tgt),
+                    ),
+                    (GradualType::List(g1), GradualType::List(g2)) => {
+                        Coercion::list(self.coercion(g1, g2))
+                    }
+                    (GradualType::Var(a), tgt) => {
+                        panic!("Trying to coerce type variable {} to {}.", a, tgt)
+                    }
+                    (src, GradualType::Var(a)) => {
+                        panic!("Trying to coerce {} to type variable {}.", src, a)
+                    }
                     (src, tgt) => {
-                        assert!(!src.consistent(tgt));
+                        assert!(
+                            !src.consistent(tgt),
+                            "Bottomed out coerciong {} to {}, but the types are consistent.",
+                            src,
+                            tgt
+                        );
 
                         if self.options.safe_only {
-                            panic!("Coercion between inconsistent types {} and {} is guaranteed to fail; bailing. Set --allow-unsafe to continue.",
+                            panic!("Coercion between inconsistent types {} and {} is guaranteed to fail; bailing. Turn off --safe-only to continue.",
                             src, tgt);
                         } else {
                             warn!("Coercion between inconsistent types {} and {} will fail; going through ?", src, tgt);
@@ -461,6 +597,42 @@ mod test {
     }
 
     #[test]
+    fn statically_typed_list_no_coercions() {
+        has_no_coercions("[]");
+        has_no_coercions("1::[]");
+        has_no_coercions("true::false::true::[]");
+        has_no_coercions("[1;2;3;4]");
+        has_no_coercions(r#"["you"; "can't"; "make"; "me"; "do"; "anything"]"#);
+    }
+
+    #[test]
+    fn heterogeneous_list_unique_coercions() {
+        unique_coercion("[true; 1]");
+        unique_coercion(r#"[1;2;3;4;"hi"]"#);
+        unique_coercion(r#"0::false::(\x. x*2)::""::[]"#);
+    }
+
+    #[test]
+    #[should_panic] // this test will switch to succeeding when we have type schemes
+    fn heterogeneous_polyfun_list_unique_coercions() {
+        unique_coercion(r#"0::false::(\s z. z)::""::[]"#);
+    }
+
+    #[test]
+    fn simple_list_match_no_coercions() {
+        has_no_coercions("match [2] with | [] -> 0 | hd::tl -> hd");
+        has_no_coercions("match [1;2] with | [] -> 0 | hd::tl -> hd");
+        has_no_coercions("match [] with | [] -> 0 | hd::tl -> hd");
+    }
+
+    #[test]
+    fn heterogeneous_list_match_unique_coercions() {
+        unique_coercion("match [true; 1] with [] -> 0 | hd::tl -> hd");
+        unique_coercion(r#"match [1;2;3;4;"hi"] with [] -> false | hd::tl -> hd"#);
+        unique_coercion(r#"match 0::false::(\x. x*2)::""::[] with [] -> "hello" | hd::tl -> hd"#);
+    }
+
+    #[test]
     fn exact_holes() {
         let (e, g) = unique_coercion("__num + 1");
 
@@ -510,7 +682,7 @@ mod test {
     }
 
     #[test]
-    fn statically_rejected() {
+    fn dynamize_statically_rejected() {
         rejected("true false");
         rejected("if 0 then 1 else true");
         rejected("if 0 then 1 else 1");
@@ -530,11 +702,18 @@ mod test {
     }
 
     #[test]
-    fn statically_accepted_surprisingly() {
+    fn dynamize_statically_accepted_surprisingly() {
         accepted("if 0 + 1 then 1 else true");
         accepted("(\\x.x) == (\\y. y)");
         accepted("(\\x.x) == \"hi\"");
         accepted("false && (if true then (true:?) else (0:?))");
+    }
+
+    #[test]
+    fn dynamize_coerced_lists() {
+        accepted("[true; 1]");
+        accepted(r#"[1;2;3;4;"hi"]"#);
+        accepted(r#"0::false::(\s z. z)::""::[]"#);
     }
 
     fn coerce(s1: &str, s2: &str) -> Coercion {

@@ -14,6 +14,7 @@ TypeAtomic: GradualType = {
     "bool" => GradualType::Base(BaseType::Bool),
     "int" => GradualType::Base(BaseType::Int),
     "string" => GradualType::Base(BaseType::String),
+    "[" <Type> "]" => GradualType::list(<>),
     "(" <Type> ")",
 }
 
@@ -51,6 +52,8 @@ pub Expr: SourceExpr = {
     "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(x, t, e1, e2),
     "let" <f:Id> <args:Args> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(f, None, GradualExpr::lams(args, e1), e2),
     "let" "rec" <defns:RecDefns> "in" <e2:Expr> => GradualExpr::letrec(defns, e2),
+    "match" <e_scrutinee:Expr> "with" "|"? "[" "]" "->" <e_nil:Expr> "|" <hd:Id> "::" <tl:Id> "->" <e_cons:Expr> =>
+        GradualExpr::match_(e_scrutinee, e_nil, hd, tl, e_cons),
     <ExprAnn>,
 }
 
@@ -70,12 +73,17 @@ ExprAnd: SourceExpr = {
 }
 
 ExprCompare: SourceExpr = {
-    <e1:ExprFactor> "==" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::Equal, e1, e2),
-    <e1:ExprFactor> "<" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThan, e1, e2),
-    <e1:ExprFactor> ">" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThan, e2, e1),
-    <e1:ExprFactor> "<=" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThanEqual, e1, e2),
-    <e1:ExprFactor> ">=" <e2:ExprFactor> => GradualExpr::bop(SourceBOp::LessThanEqual, e2, e1),
-    <ExprFactor>,
+    <e1:ExprCons> "==" <e2:ExprCons> => GradualExpr::bop(SourceBOp::Equal, e1, e2),
+    <e1:ExprCons> "<" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThan, e1, e2),
+    <e1:ExprCons> ">" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThan, e2, e1),
+    <e1:ExprCons> "<=" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThanEqual, e1, e2),
+    <e1:ExprCons> ">=" <e2:ExprCons> => GradualExpr::bop(SourceBOp::LessThanEqual, e2, e1),
+    <ExprCons>,
+}
+
+ExprCons: SourceExpr = {
+    <e1:ExprFactor> "::" <e2:ExprCons> => GradualExpr::cons(e1, e2),
+    <ExprFactor>
 }
 
 ExprFactor: SourceExpr = {
@@ -120,6 +128,12 @@ Const: SourceExpr = {
     Num => GradualExpr::Const(Constant::Int(<>)),
     Bool => GradualExpr::Const(Constant::Bool(<>)),
     StrLit => GradualExpr::Const(Constant::String(<>)),
+    "[" "]" => GradualExpr::Nil(None),
+    "[" <elts:(<Expr> ";")*> <last:Expr> ";"? "]" => {
+        let mut elts = elts;
+        elts.push(last);
+        GradualExpr::list(elts)
+    }
 }
 
 Num: isize = r"-?[0-9]+" => isize::from_str(<>).unwrap();
@@ -146,9 +160,14 @@ match {
     "->",
     "(",
     ")",
+    "::",
+    "[",
+    "]",
+    ";",
     "\\",
     ".",
     ":",
+    "|",
     "=",
     "!",
     "~",
@@ -182,6 +201,8 @@ match {
     "in",
     "true",
     "false",
+    "match",
+    "with",
     r"__[[:alnum:]_']*",
     r#""[^"]*""#,
 } else {

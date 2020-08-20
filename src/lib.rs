@@ -5,6 +5,7 @@ pub mod options;
 
 pub use options::{Options, CompilationMode, CompilationOptions};
 
+pub mod types;
 pub mod syntax;
 
 pub mod infer;

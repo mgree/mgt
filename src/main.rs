@@ -161,7 +161,6 @@ fn main() {
         println!("\nPROGRAM {}\n{}\n:\n{}", variation, e, g);
     }
 
-    eprintln!("options {:#?}", options.compile);
     if let CompilationMode::Compile(opts) = options.compile {
         let workdir =
             tempfile::TempDir::new_in(".").expect("allocating working directory for ocamlopt");
@@ -256,8 +255,12 @@ fn campora(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, Gradua
             let e = e.clone().eliminate(&ve);
             let m = m.clone().eliminate(&ve);
 
+            info!("{}\n  : {}\n", e, m);
+
             let (e, g) = ci.explicit(e);
-            assert_eq!(m, g.clone().into());
+            if m != g.clone().into() {
+                error!("Eliminated type was {} but coerced typed was {}.", m, g);
+            }
 
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             ve.hash(&mut hasher);

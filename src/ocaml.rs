@@ -12,9 +12,7 @@ pub struct OCamlCompiler {
 
 impl OCamlCompiler {
     pub fn new(options: CompilationOptions) -> Self {
-        OCamlCompiler {
-            options,
-        }
+        OCamlCompiler { options }
     }
 
     pub fn go(&self, variation: &str, e: ExplicitExpr, g: GradualType) {
@@ -31,6 +29,7 @@ impl OCamlCompiler {
 
         let src_file = self.options.file_ext(variation, ".ml");
         let mut src = std::fs::File::create(&src_file).expect("make source file");
+        // TODO use _g to generate a function that produces output
         ocaml.1.render(80, &mut src).expect("write ocaml source");
         src.write("\n".as_bytes()).expect("write trailing newline");
         info!("ocaml source is in {}", src_file);
@@ -80,6 +79,12 @@ impl GradualType {
             GradualType::Dyn() => pp.text("Mgt.Runtime.dyn"),
             GradualType::Base(b) => pp.as_string(b),
             GradualType::Var(a) => pp.text(format!("'{}", a)),
+            GradualType::List(g) if g.is_compound() => g
+                .ocaml(pp)
+                .parens()
+                .append(pp.space())
+                .append(pp.text("list")),
+            GradualType::List(g) => g.ocaml(pp).append(pp.space()).append(pp.text("list")),
             GradualType::Fun(g1, g2) if g1.is_fun() => g1
                 .ocaml(pp)
                 .parens()
@@ -110,6 +115,7 @@ impl ExplicitUOp {
             ExplicitUOp::Is(GroundType::Base(BaseType::Int)) => "Mgt.Runtime.is_int",
             ExplicitUOp::Is(GroundType::Base(BaseType::String)) => "Mgt.Runtime.is_string",
             ExplicitUOp::Is(GroundType::Fun) => "Mgt.Runtime.is_fun",
+            ExplicitUOp::Is(GroundType::List) => "Mgt.Runtime.is_list",
         }
     }
 }
@@ -157,6 +163,13 @@ impl Coercion {
                     pp.text("Mgt.Runtime.coerce_fun"),
                     c1.ocaml(pp).group().parens(),
                     c2.ocaml(pp).group().parens(),
+                ],
+                pp.line(),
+            ),
+            Coercion::List(c) => pp.intersperse(
+                vec![
+                    pp.text("Mgt.Runtime.coerce_list"),
+                    c.ocaml(pp).group().parens(),
                 ],
                 pp.line(),
             ),
@@ -323,6 +336,56 @@ impl ExplicitExpr {
                     pp.space(),
                 ),
             },
+            ExplicitExpr::Nil(_t) => pp.text("[]"),
+            // TODO identify concrete lists and pretty print accordingly
+            ExplicitExpr::Cons(e1, e2) => pp.intersperse(
+                vec![
+                    if e1.is_compound() {
+                        e1.pretty(pp).parens()
+                    } else {
+                        e1.pretty(pp)
+                    },
+                    pp.text("::"),
+                    if e2.is_compound() {
+                        e2.pretty(pp).parens()
+                    } else {
+                        e2.pretty(pp)
+                    },
+                ],
+                pp.line(),
+            ),
+            ExplicitExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                ],
+                pp.line(),
+            ),
         }
     }
 }
