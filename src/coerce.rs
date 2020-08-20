@@ -183,6 +183,36 @@ impl CoercionInsertion {
                     g_list,
                 )
             }
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                let (e_scrutinee, g_scrutinee) = self.make_explicit(ctx, *e_scrutinee);
+
+                let g_elt = match &g_scrutinee {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g => panic!("match on non-list: {} : {}", e_scrutinee, g),
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+
+                let (e_nil, g_nil) = self.make_explicit(ctx, *e_nil);
+                let (e_cons, g_cons) = self.make_explicit(
+                    &ctx.extend(hd.clone(), g_elt.clone())
+                        .extend(tl.clone(), g_list.clone()),
+                    *e_cons,
+                );
+
+                let g_res = g_nil.join(&g_cons);
+                (
+                    ExplicitExpr::match_(
+                        self.coerce(e_scrutinee, &g_scrutinee, &g_list),
+                        self.coerce(e_nil, &g_nil, &g_res),
+                        hd,
+                        tl,
+                        self.coerce(e_cons, &g_cons, &g_res),
+                    ),
+                    g_res,
+                )
+            }
         }
     }
 
@@ -382,6 +412,39 @@ impl CoercionInsertion {
                 Some((
                     ExplicitExpr::cons(self.coerce(e1, &g1, &g_elt), self.coerce(e2, &g2, &g_list)),
                     g_list,
+                ))
+            }
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                let (e_scrutinee, g_scrutinee) = self.dynamize(ctx, *e_scrutinee)?;
+
+                let g_elt = match &g_scrutinee {
+                    GradualType::List(g) => *g.clone(),
+                    GradualType::Dyn() => GradualType::Dyn(),
+                    g => {
+                        error!("match on non-list: {} : {}", e_scrutinee, g);
+                        return None;
+                    }
+                };
+
+                let g_list = GradualType::list(g_elt.clone());
+
+                let (e_nil, g_nil) = self.dynamize(ctx, *e_nil)?;
+                let (e_cons, g_cons) = self.dynamize(
+                    &ctx.extend(hd.clone(), g_elt.clone())
+                        .extend(tl.clone(), g_list.clone()),
+                    *e_cons,
+                )?;
+
+                let g_res = g_nil.join(&g_cons);
+                Some((
+                    ExplicitExpr::match_(
+                        self.coerce(e_scrutinee, &g_scrutinee, &g_list),
+                        self.coerce(e_nil, &g_nil, &g_res),
+                        hd,
+                        tl,
+                        self.coerce(e_cons, &g_cons, &g_res),
+                    ),
+                    g_res,
                 ))
             }
         }

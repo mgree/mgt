@@ -96,6 +96,14 @@ pub enum GradualExpr<T, U, B> {
     BOp(B, Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
     Nil(T),
     Cons(Box<GradualExpr<T, U, B>>, Box<GradualExpr<T, U, B>>),
+    /// Match(scrutinee, nil, h, t, cons (binding h and t))
+    Match(
+        Box<GradualExpr<T, U, B>>,
+        Box<GradualExpr<T, U, B>>,
+        Variable,
+        Variable,
+        Box<GradualExpr<T, U, B>>,
+    ),
 }
 
 pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
@@ -146,6 +154,14 @@ pub enum ExplicitExpr {
     BOp(ExplicitBOp, Box<ExplicitExpr>, Box<ExplicitExpr>),
     Nil(GradualType),
     Cons(Box<ExplicitExpr>, Box<ExplicitExpr>),
+    /// Match(scrutinee, nil, h, t, cons (binding h and t))
+    Match(
+        Box<ExplicitExpr>,
+        Box<ExplicitExpr>,
+        Variable,
+        Variable,
+        Box<ExplicitExpr>,
+    ),
 }
 
 impl GradualType {
@@ -207,6 +223,22 @@ impl<T, U, B> GradualExpr<T, U, B> {
         GradualExpr::Cons(Box::new(e1), Box::new(e2))
     }
 
+    pub fn match_(
+        e_scrutinee: Self,
+        e_nil: Self,
+        hd: Variable,
+        tl: Variable,
+        e_cons: Self,
+    ) -> Self {
+        GradualExpr::Match(
+            Box::new(e_scrutinee),
+            Box::new(e_nil),
+            hd,
+            tl,
+            Box::new(e_cons),
+        )
+    }
+
     pub fn map_types<F, S>(self, f: &F) -> GradualExpr<S, U, B>
     where
         F: Fn(T) -> S,
@@ -235,6 +267,13 @@ impl<T, U, B> GradualExpr<T, U, B> {
             GradualExpr::BOp(op, e1, e2) => GradualExpr::bop(op, e1.map_types(f), e2.map_types(f)),
             GradualExpr::Nil(t) => GradualExpr::Nil(f(t)),
             GradualExpr::Cons(e1, e2) => GradualExpr::cons(e1.map_types(f), e2.map_types(f)),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => GradualExpr::match_(
+                e_scrutinee.map_types(f),
+                e_nil.map_types(f),
+                hd,
+                tl,
+                e_cons.map_types(f),
+            ),
         }
     }
 
@@ -442,6 +481,38 @@ impl SourceExpr {
                 ],
                 pp.line(),
             ),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                ],
+                pp.line(),
+            ),
         }
     }
 }
@@ -506,7 +577,9 @@ impl TargetExpr {
             GradualExpr::App(e1, e2) | GradualExpr::Cons(e1, e2) => {
                 e1.choices().union(e2.choices())
             }
-            GradualExpr::If(e1, e2, e3) => e1.choices().union(e2.choices()).union(e3.choices()),
+            GradualExpr::If(e1, e2, e3) | GradualExpr::Match(e1, e2, _, _, e3) => {
+                e1.choices().union(e2.choices()).union(e3.choices())
+            }
             GradualExpr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
             GradualExpr::LetRec(defns, e2) => {
                 let ds = defns
@@ -679,6 +752,38 @@ impl TargetExpr {
                 ],
                 pp.line(),
             ),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                ],
+                pp.line(),
+            ),
         }
     }
 }
@@ -772,6 +877,22 @@ impl ExplicitExpr {
         ExplicitExpr::Cons(Box::new(e1), Box::new(e2))
     }
 
+    pub fn match_(
+        e_scrutinee: Self,
+        e_nil: Self,
+        hd: Variable,
+        tl: Variable,
+        e_cons: Self,
+    ) -> Self {
+        ExplicitExpr::Match(
+            Box::new(e_scrutinee),
+            Box::new(e_nil),
+            hd,
+            tl,
+            Box::new(e_cons),
+        )
+    }
+
     pub fn is_compound(&self) -> bool {
         match self {
             ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => false,
@@ -806,7 +927,7 @@ impl ExplicitExpr {
                 cs.extend(e2.coercions());
                 cs
             }
-            ExplicitExpr::If(e1, e2, e3) => {
+            ExplicitExpr::If(e1, e2, e3) | ExplicitExpr::Match(e1, e2, _, _, e3) => {
                 let mut cs = e1.coercions();
                 cs.extend(e2.coercions());
                 cs.extend(e3.coercions());
@@ -979,6 +1100,38 @@ impl ExplicitExpr {
                     } else {
                         e2.pretty(pp)
                     },
+                ],
+                pp.line(),
+            ),
+            ExplicitExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
                 ],
                 pp.line(),
             ),
@@ -1637,6 +1790,19 @@ mod test {
             "let rec f (x:bool) = g x and g (y:int) = f y in f 0",
             "let rec f = \\x : bool. g x and g = \\y : int. f y in f 0",
         )
+    }
+    #[test]
+    fn parse_match() {
+        match SourceExpr::parse("match [] with | [] -> 0 | hd::tl -> 1").unwrap() {
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                assert_eq!(e_scrutinee.to_string(), "[]");
+                assert_eq!(e_nil.to_string(), "0");
+                assert_eq!(hd, "hd");
+                assert_eq!(tl, "tl");
+                assert_eq!(e_cons.to_string(), "1");
+            }
+            _ => panic!("expected match"),
+        }
     }
 
     #[test]

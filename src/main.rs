@@ -161,7 +161,6 @@ fn main() {
         println!("\nPROGRAM {}\n{}\n:\n{}", variation, e, g);
     }
 
-    eprintln!("options {:#?}", options.compile);
     if let CompilationMode::Compile(opts) = options.compile {
         let workdir =
             tempfile::TempDir::new_in(".").expect("allocating working directory for ocamlopt");

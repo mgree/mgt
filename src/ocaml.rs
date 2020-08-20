@@ -354,6 +354,38 @@ impl ExplicitExpr {
                 ],
                 pp.line(),
             ),
+            ExplicitExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
+                vec![
+                    pp.intersperse(
+                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.text("[]"),
+                            pp.text("->"),
+                            e_nil.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                    pp.intersperse(
+                        vec![
+                            pp.text("|"),
+                            pp.as_string(hd),
+                            pp.text("::"),
+                            pp.as_string(tl),
+                            pp.text("->"),
+                            e_cons.pretty(pp).indent(2),
+                        ],
+                        pp.space(),
+                    )
+                    .group(),
+                ],
+                pp.line(),
+            ),
         }
     }
 }

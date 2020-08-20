@@ -96,6 +96,13 @@ impl TargetExpr {
             }
             GradualExpr::Nil(t) => GradualExpr::Nil(t.eliminate(elim)),
             GradualExpr::Cons(e1, e2) => GradualExpr::cons(e1.eliminate(elim), e2.eliminate(elim)),
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => GradualExpr::match_(
+                e_scrutinee.eliminate(elim),
+                e_nil.eliminate(elim),
+                hd,
+                tl,
+                e_cons.eliminate(elim),
+            ),
         }
     }
 }
@@ -850,6 +857,51 @@ impl TypeInference {
                 self.add_pattern(pat_elt);
 
                 Some((GradualExpr::cons(e1, e2), m_list))
+            }
+            GradualExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => {
+                let (e_scrutinee, m_scrutinee) =
+                    self.generate_constraints(ctx.clone(), e_scrutinee)?;
+
+                // make sure we're looking at a list
+                let (m_elt, cs_elt, pat_elt) = self.elt(&m_scrutinee);
+                let m_list = MigrationalType::list(m_elt.clone());
+
+                self.add_constraint(Constraint::Consistent(
+                    Pattern::Top(),
+                    m_scrutinee,
+                    m_elt.clone(),
+                ));
+                self.add_constraints(cs_elt);
+                self.add_pattern(pat_elt);
+
+                // check the nil branch
+                let (e_nil, m_nil) = self.generate_constraints(ctx.clone(), e_nil)?;
+
+                // check the cons branch
+                let (e_cons, m_cons) = self.generate_constraints(
+                    ctx.extend(hd.clone(), m_elt.clone())
+                        .extend(tl.clone(), m_list.clone()),
+                    e_cons,
+                )?;
+
+                let (m_res, c_res, pi_res) = self.meet(&m_nil, &m_cons);
+                debug!(
+                    "match constraints on {} and {}: {} (pi={})",
+                    m_nil, m_cons, c_res, pi_res
+                );
+                self.add_pattern(pi_res);
+                self.add_constraints(c_res);
+
+                Some((
+                    GradualExpr::match_(
+                        e_scrutinee,
+                        GradualExpr::ann(e_nil, m_res.clone()),
+                        hd.clone(),
+                        tl.clone(),
+                        GradualExpr::ann(e_cons, m_res.clone()),
+                    ),
+                    m_res,
+                ))
             }
         }
     }
@@ -2272,6 +2324,15 @@ mod test {
         let (_, m) = infer_unique(r#"["";3;\x. x * 2; true]"#);
 
         assert_eq!(m, MigrationalType::list(MigrationalType::Dyn()));
+    }
+
+    #[test]
+    fn match_simple() {
+        let (_, m) = infer_unique("match [] with [] -> 0 | hd::tl -> 1");
+        assert_eq!(m, MigrationalType::int());
+
+        let (_, m) = infer_unique("match [] with | [] -> 0 | hd::tl -> 1");
+        assert_eq!(m, MigrationalType::int());
     }
 
     #[test]
