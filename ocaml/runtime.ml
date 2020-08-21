@@ -31,11 +31,14 @@ let string_of_tag : tag -> string = function
     | TList -> "list"
     | TFun -> "fun"
 
+let rec string_of_list : ('a -> string) -> 'a list -> string = fun f l ->
+    "[" ^ String.concat ";" (List.map f l) ^ "]"
+
 let rec string_of_dyn : dyn -> string = function
     | Bool b -> if b then "true" else "false"
     | Int i -> string_of_int i
     | String s -> s
-    | List l -> "[" ^ String.concat ";" (List.map string_of_dyn l) ^ "]"
+    | List l -> string_of_list string_of_dyn l
     | Fun _ -> "<procedure>"
 
 let is_bool : dyn -> bool = function

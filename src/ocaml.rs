@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::process::Command;
 
-use log::info;
+use log::{info, warn};
 
 use crate::options::CompilationOptions;
 use crate::syntax::*;
@@ -23,15 +23,22 @@ impl OCamlCompiler {
         }
     }
 
-    pub fn compile(&self, variation: &str, e: ExplicitExpr, _g: GradualType) -> String {
+    pub fn compile(&self, variation: &str, e: ExplicitExpr, g: GradualType) -> String {
         let pp = pretty::BoxAllocator;
-        let ocaml = e.ocaml::<_, ()>(&pp);
+
+        let ocaml = e.ocaml::<_, ()>(&pp).indent(2);
 
         let src_file = self.options.file_ext(variation, ".ml");
         let mut src = std::fs::File::create(&src_file).expect("make source file");
-        // TODO use _g to generate a function that produces output
-        ocaml.1.render(80, &mut src).expect("write ocaml source");
-        src.write("\n".as_bytes()).expect("write trailing newline");
+
+        writeln!(src, "let v =").expect("write ocaml source (top-level let)");
+        ocaml
+            .1
+            .render(80, &mut src)
+            .expect("write ocaml source (actual code)");
+        writeln!(src, ";;").expect("write ocaml source (double semi-colon)");
+        writeln!(src, "print_endline ({} v)", g.printer()).expect("write ocaml source (printer)");
+
         info!("ocaml source is in {}", src_file);
 
         let ocamlfind = Command::new("which")
@@ -102,6 +109,24 @@ impl GradualType {
                 .append(pp.line())
                 .append(g2.ocaml(pp).group())
                 .group(),
+        }
+    }
+
+    fn printer(&self) -> String {
+        match self {
+            GradualType::Dyn() => "string_of_dyn".to_string(),
+            GradualType::Var(a) => {
+                warn!(
+                    "Program has polymorphic return type {}, printing will misbehave.",
+                    a
+                );
+                "(fun _x -> \"polymorphic value\")".to_string()
+            }
+            GradualType::Base(BaseType::Bool) => "string_of_bool".to_string(),
+            GradualType::Base(BaseType::Int) => "string_of_int".to_string(),
+            GradualType::Base(BaseType::String) => "(fun s -> s)".to_string(),
+            GradualType::List(g) => format!("string_of_list {}", g.printer()),
+            GradualType::Fun(_, _) => "(fun _f -> \"<procedure>\")".to_string(),
         }
     }
 }

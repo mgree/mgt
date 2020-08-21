@@ -114,7 +114,7 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 - [ ] Better compiler output 
   + [ ] save explicit code before OCaml
   + [ ] comment indicating variation
-  + [ ] print result
+  + [x] print result
 
 - [ ] Ensure that choices don't show up in the final, eliminated AST
      + [ ] Using tests, or...

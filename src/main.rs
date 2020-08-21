@@ -321,6 +321,12 @@ mod test {
         run(args, s, |a| a.succeeds().unwrap());
     }
 
+    fn succeeds_with(args: Vec<&str>, s: &str, out: &str) {
+        run(args, s, |a| {
+            a.succeeds().and().stdout().contains(out).unwrap()
+        });
+    }
+
     fn fails(args: Vec<&str>, s: &str) {
         run(args, s, |a| a.fails().unwrap());
     }
@@ -330,6 +336,15 @@ mod test {
         succeeds(vec![], "\\x. x");
         succeeds(vec!["-a", "campora"], "\\x. x");
         succeeds(vec!["-a", "dynamic"], "\\x. x");
+    }
+
+    #[test]
+    fn fact5() {
+        succeeds_with(
+            vec!["-m", "run"],
+            "let rec fact n = if n <= 0 then 1 else n * fact (n - 1) in fact 5",
+            "120",
+        );
     }
 
     #[test]
