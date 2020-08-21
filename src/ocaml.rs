@@ -114,7 +114,7 @@ impl GradualType {
 
     fn printer(&self) -> String {
         match self {
-            GradualType::Dyn() => "string_of_dyn".to_string(),
+            GradualType::Dyn() => "Mgt.Runtime.string_of_dyn".to_string(),
             GradualType::Var(a) => {
                 warn!(
                     "Program has polymorphic return type {}, printing will misbehave.",
@@ -125,7 +125,7 @@ impl GradualType {
             GradualType::Base(BaseType::Bool) => "string_of_bool".to_string(),
             GradualType::Base(BaseType::Int) => "string_of_int".to_string(),
             GradualType::Base(BaseType::String) => "(fun s -> s)".to_string(),
-            GradualType::List(g) => format!("string_of_list {}", g.printer()),
+            GradualType::List(g) => format!("Mgt.Runtime.string_of_list {}", g.printer()),
             GradualType::Fun(_, _) => "(fun _f -> \"<procedure>\")".to_string(),
         }
     }
