@@ -3,10 +3,10 @@ extern crate lalrpop_util;
 
 pub mod options;
 
-pub use options::{Options, CompilationMode, CompilationOptions};
+pub use options::{CompilationMode, CompilationOptions, Options};
 
-pub mod types;
 pub mod syntax;
+pub mod types;
 
 pub mod infer;
 
@@ -19,4 +19,3 @@ pub use coerce::CoercionInsertion;
 pub mod ocaml;
 
 pub use ocaml::OCamlCompiler;
-

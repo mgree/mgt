@@ -1205,11 +1205,8 @@ impl TypeInference {
                                     klist.clone(),
                                 ));
 
-                                let (theta2, pi2) = self.unify1(Constraint::Consistent(
-                                    Pattern::Top(),
-                                    klist,
-                                    m,
-                                ));
+                                let (theta2, pi2) =
+                                    self.unify1(Constraint::Consistent(Pattern::Top(), klist, m));
 
                                 return (theta2.compose(theta1), pi2.meet(pi1));
                             }
