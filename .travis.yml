@@ -33,7 +33,7 @@ before_install:
   - bash -ex .travis-ocaml.sh
   - opam install -y ocamlfind dune
   - (cd ocaml; opam pin add -y .)
-  - (cd ocaml; opam upgrade)
+  - (cd ocaml; opam upgrade .)
 
 script:
   - cargo build --verbose --all
