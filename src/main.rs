@@ -427,6 +427,30 @@ mod test {
 
     #[test]
     #[serial(mgt_run)]
+    fn compile_map_mono() {
+        succeeds_with(
+            vec!["-m", "run", "-o", "mgt_run"],
+            r"
+let rec map f l =
+    match l with
+    | [] -> [] : [int]
+    | hd::tl -> f hd :: map f tl
+and sum (l : [int]) =
+    match l with
+    | [] -> 0
+    | hd::tl -> hd + sum tl
+in
+sum (map (\x. 2 * x) [1;2;3;4])",
+            "20", // should output sum of [2;4;6;8] = 20
+        );
+        assert!(std::fs::metadata("mgt_run")
+            .expect("compiled directory")
+            .is_dir());
+        std::fs::remove_dir_all("mgt_run").expect("clean up output directory");
+    }
+
+    #[test]
+    #[serial(mgt_run)]
     fn compile_run_id() {
         succeeds(vec!["-m", "run", "-o", "mgt_run"], "\\x. x");
         assert!(std::fs::metadata("mgt_run")

@@ -5,6 +5,6 @@ let rec map f l =
 and sum (l : [int]) =
   match l with
   | [] -> 0
-  | hd::tl -> hd + tl
+  | hd::tl -> hd + sum tl
 in
 sum (map (\x. 2 * x) [1;2;3;4])

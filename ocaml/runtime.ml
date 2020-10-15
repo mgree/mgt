@@ -68,7 +68,7 @@ let check_string : dyn -> string = function
     | v -> raise (Coercion_failure(TString, v))    
 let check_list : dyn -> dyn list = function
     | List l -> l
-    | v -> raise (Coercion_failure(TFun, v))
+    | v -> raise (Coercion_failure(TList, v))
 let check_fun : dyn -> (dyn -> dyn) = function
     | Fun f -> f
     | v -> raise (Coercion_failure(TFun, v))

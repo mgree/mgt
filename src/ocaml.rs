@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::process::Command;
 
-use log::{info, warn};
+use log::{info, warn, error};
 
 use crate::options::CompilationOptions;
 use crate::syntax::*;
@@ -23,8 +23,11 @@ impl OCamlCompiler {
         }
     }
 
-    pub fn compile(&self, variation: &str, e: ExplicitExpr, g: GradualType) -> String {
+    pub fn compile(&self, variation: &str, mut e: ExplicitExpr, g: GradualType) -> String {
         let pp = pretty::BoxAllocator;
+
+        // eta expand any letrecs that might have coercions in there
+        e.fix_letrecs();
 
         let ocaml = e.ocaml::<_, ()>(&pp).indent(2);
 
@@ -63,7 +66,9 @@ impl OCamlCompiler {
             .status()
             .expect("successful run of ocamlopt");
 
-        assert!(res.success());
+        if !res.success() {
+            error!("Compiler failed!")
+        }
 
         exe
     }
@@ -211,6 +216,54 @@ impl Coercion {
 }
 
 impl ExplicitExpr {
+    fn fix_letrecs(&mut self) {
+        use ExplicitExpr::*;
+        match self {
+            Const(_) | Var(_) | Hole(_, _) | Nil(_) => (),
+            Lam(_, _, e) | Coerce(e, _) | UOp(_, e) => e.fix_letrecs(),
+            App(e1, e2) | Let(_, _, e1, e2) | BOp(_, e1, e2) | Cons(e1, e2) => {
+                e1.fix_letrecs();
+                e2.fix_letrecs();
+            }
+            If(e1, e2, e3) | Match(e1, e2, _, _, e3) => {
+                e1.fix_letrecs();
+                e2.fix_letrecs();
+                e3.fix_letrecs();
+            }
+            LetRec(defns, e2) => {
+                for (_, g, e1) in defns.iter_mut() {
+                    e1.fix_letrecs();
+                    *e1 = e1.eta_expand(g, 0);
+                }
+                e2.fix_letrecs();
+            }
+        }
+    }
+
+    fn eta_expand(&self, g: &GradualType, n: usize) -> Self {
+        // no need to eta expand a function
+        if let ExplicitExpr::Lam(_, _, _) = self {
+            return self.clone();
+        }
+
+        match g {
+            GradualType::Fun(g1, g2) => {
+                let x = format!("mgt_eta{}", n);
+                ExplicitExpr::lam(x, *g1.clone(), self.eta_expand(g2, n+1))
+            }
+            _ => {
+                let mut e = self.clone();
+
+                for i in 0..n {
+                    let x = format!("mgt_eta{}", i);
+                    e = ExplicitExpr::app(e, ExplicitExpr::Var(x));
+                }
+
+                return e;
+            }
+        }
+    }
+
     fn ocaml<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
@@ -366,15 +419,15 @@ impl ExplicitExpr {
             ExplicitExpr::Cons(e1, e2) => pp.intersperse(
                 vec![
                     if e1.is_compound() {
-                        e1.pretty(pp).parens()
+                        e1.ocaml(pp).parens()
                     } else {
-                        e1.pretty(pp)
+                        e1.ocaml(pp)
                     },
                     pp.text("::"),
                     if e2.is_compound() {
-                        e2.pretty(pp).parens()
+                        e2.ocaml(pp).parens()
                     } else {
-                        e2.pretty(pp)
+                        e2.ocaml(pp)
                     },
                 ],
                 pp.line(),
@@ -382,7 +435,7 @@ impl ExplicitExpr {
             ExplicitExpr::Match(e_scrutinee, e_nil, hd, tl, e_cons) => pp.intersperse(
                 vec![
                     pp.intersperse(
-                        vec![pp.text("match"), e_scrutinee.pretty(pp), pp.text("with")],
+                        vec![pp.text("match"), e_scrutinee.ocaml(pp), pp.text("with")],
                         pp.space(),
                     )
                     .group(),
@@ -391,7 +444,7 @@ impl ExplicitExpr {
                             pp.text("|"),
                             pp.text("[]"),
                             pp.text("->"),
-                            e_nil.pretty(pp).indent(2),
+                            e_nil.ocaml(pp).indent(2),
                         ],
                         pp.space(),
                     )
@@ -403,7 +456,7 @@ impl ExplicitExpr {
                             pp.text("::"),
                             pp.as_string(tl),
                             pp.text("->"),
-                            e_cons.pretty(pp).indent(2),
+                            e_cons.ocaml(pp).indent(2),
                         ],
                         pp.space(),
                     )
