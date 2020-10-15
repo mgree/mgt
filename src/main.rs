@@ -34,6 +34,9 @@ fn main() {
         .arg(Arg::with_name("SAFE_ONLY")
                  .help("When set, refuses to generate coercions between inconsistent types")
                  .long("safe-only"))
+        .arg(Arg::with_name("COERCION_PARAMETERS")
+                 .help("When set, uses coercion parameters to implement polymorphism rather than treating unresolved type variables as ?.")
+                 .long("coercion-parameters"))
         .arg(Arg::with_name("COMPILATION_MODE")
                  .help("Determines whether to `infer` and show types, `compile` and persist an executable, or compile a transient executable and `run` it.")
                  .long("mode")
@@ -78,6 +81,7 @@ fn main() {
 
     options.strict_ifs = config.is_present("STRICT_IFS");
     options.safe_only = config.is_present("SAFE_ONLY");
+    options.dynamic_type_variables = !config.is_present("COERCION_PARAMETERS");
     options.compile = match config.value_of("COMPILATION_MODE") {
         Some("infer") | None => CompilationMode::InferOnly,
         Some("compile") => CompilationMode::Compile(CompilationOptions::compile_only()),
@@ -248,16 +252,26 @@ fn campora(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, Gradua
         std::process::exit(1);
     }
 
+    let dynamic_type_variables = options.dynamic_type_variables;
     let ci = CoercionInsertion::new(options);
 
     ves.iter()
         .map(|ve| {
-            let e = e.clone().eliminate(&ve);
-            let m = m.clone().eliminate(&ve);
+            let mut e = e.clone().eliminate(&ve);
+            let mut m = m.clone().eliminate(&ve);
+
+            assert!(e.choices().is_empty());
+            assert!(m.choices().is_empty());
+
+            if dynamic_type_variables {
+                e.dynamize_type_variables();
+                m.dynamize_type_variables();
+            }
 
             info!("{}\n  : {}\n", e, m);
 
             let (e, g) = ci.explicit(e);
+
             if m != g.clone().into() {
                 error!("Eliminated type was {} but coerced typed was {}.", m, g);
             }

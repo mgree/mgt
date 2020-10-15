@@ -38,6 +38,25 @@ pub struct Options {
     /// you the exact inferred type. On the other hand, the inferred type sucks!
     pub safe_only: bool,
 
+    /// Should we generate coercion parameters for type variables or should we
+    /// treat type variables as `?`, the dynamic type?
+    ///
+    /// Type variables---like all types---are consistent with `?`. But what
+    /// should happen if we actually need to coerce a type variable to the
+    /// dynamic type?
+    ///
+    /// Henglein and Rehof describe a notion of "coercion parameters", where
+    /// function arguments of polymorphic that might be coerced to `?` cause the
+    /// compiler to generate extra parameters for each such type variable; each
+    /// instantiation/call site then passes in these coercion parameters.
+    ///
+    /// Setting `dynamic_type_variables` to `true` will cause every type
+    /// variable to be changed to `?` before code generation.
+    ///
+    /// As of 2020-10-14, this defaults to `true`, since coercion parameters
+    /// aren't generated yet.
+    pub dynamic_type_variables: bool,
+
     /// Whether to just infer types, infer types and compile with the OCaml
     /// optimizing native compiler, or infer, compile, and run. Defaults to
     /// `CompilationMode::CompileAndRun`.
@@ -67,6 +86,7 @@ impl Default for Options {
         Options {
             strict_ifs: false,
             safe_only: true,
+            dynamic_type_variables: true,
             compile: CompilationMode::InferOnly,
         }
     }

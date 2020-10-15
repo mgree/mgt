@@ -99,11 +99,12 @@ other bits of the inference. If you want something to be `?`, write `assume foo
         type schemes, instantiating at every variable. Most things will be
         monomorphic, but assumes can give us polymorphism. Operation resolution
         may need to yield type schemes rather than types, too
-    * [ ] Cf. Henglein and Rehof's coercion parameters
+    * [x] Dynamic interpretation of polymorphism
+    * [ ] Cf. Henglein and Rehof's coercion parameters (update CLI params/options)
 
 - [ ] Ability to use explicit operations like `+i` in the source language
 
-- [ ] Abilitiy to use explicit operations like `+i` in the source language
+- [ ] Ability to use explicit operations like `+i` in the source language
 
 - [ ] Implement Rastogi et al.'s "The Ins and Outs of Gradual Type Inference".
 
@@ -117,7 +118,7 @@ other bits of the inference. If you want something to be `?`, write `assume foo
   + [x] print result
 
 - [ ] Ensure that choices don't show up in the final, eliminated AST
-     + [ ] Using tests, or...
+     + [x] Using assertion, or...
      + [ ] `eliminate` operation that changes types to really have no choice
            left (would need more than one `Expr`, trait)
 
@@ -125,6 +126,7 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 ## Optimization
 
+- [ ] Make things mutable
 - [ ] Go by reference in inference, type checking, etc.?
 
 # Acknowledgments

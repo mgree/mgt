@@ -140,7 +140,7 @@ pub enum Coercion {
 pub enum ExplicitExpr {
     Const(Constant),
     Var(Variable),
-    Lam(Variable, GradualType, Box<Self>),
+    Lam(Variable, GradualType, Box<ExplicitExpr>),
     Hole(String, GradualType),
     Coerce(Box<ExplicitExpr>, Coercion),
     App(Box<ExplicitExpr>, Box<ExplicitExpr>),
@@ -569,6 +569,59 @@ impl ExplicitBOp {
 }
 
 impl TargetExpr {
+    pub fn dynamize_type_variables(&mut self) {
+        match self {
+            GradualExpr::Const(_) | GradualExpr::Var(_) => (),
+            GradualExpr::Lam(_, m, e) => {
+                m.dynamize_type_variables();
+                e.dynamize_type_variables();
+            }
+            GradualExpr::Ann(e, m) => {
+                e.dynamize_type_variables();
+                m.dynamize_type_variables();
+            }
+            GradualExpr::Hole(_, m) => m.dynamize_type_variables(),
+            GradualExpr::App(e1, e2) => {
+                e1.dynamize_type_variables();
+                e2.dynamize_type_variables();
+            }
+            GradualExpr::If(e1, e2, e3) => {
+                e1.dynamize_type_variables();
+                e2.dynamize_type_variables();
+                e3.dynamize_type_variables();
+            }
+            GradualExpr::Let(_, m, e1, e2) => {
+                m.dynamize_type_variables();
+                e1.dynamize_type_variables();
+                e2.dynamize_type_variables();
+            }
+            GradualExpr::LetRec(defns, e2) => {
+                for (_, m, e1) in defns.iter_mut() {
+                    m.dynamize_type_variables();
+                    e1.dynamize_type_variables();
+                }
+                e2.dynamize_type_variables();
+            }
+            GradualExpr::UOp(_, e) => {
+                e.dynamize_type_variables();
+            }
+            GradualExpr::BOp(_, e1, e2) => {
+                e1.dynamize_type_variables();
+                e2.dynamize_type_variables();
+            }
+            GradualExpr::Nil(m) => m.dynamize_type_variables(),
+            GradualExpr::Cons(e1, e2) => {
+                e1.dynamize_type_variables();
+                e2.dynamize_type_variables();
+            }
+            GradualExpr::Match(e1, e2, _, _, e3) => {
+                e1.dynamize_type_variables();
+                e2.dynamize_type_variables();
+                e3.dynamize_type_variables();
+            }
+        }
+    }
+
     pub fn choices(&self) -> HashSet<&Variation> {
         match self {
             GradualExpr::Const(_) | GradualExpr::Var(_) => HashSet::new(),

@@ -501,10 +501,10 @@ impl CoercionInsertion {
                         Coercion::list(self.coercion(g1, g2))
                     }
                     (GradualType::Var(a), tgt) => {
-                        panic!("Trying to coerce type variable {} to {}.", a, tgt)
+                        unimplemented!("No coercion parameter to coerce type variable {} to {}.", a, tgt)
                     }
                     (src, GradualType::Var(a)) => {
-                        panic!("Trying to coerce {} to type variable {}.", src, a)
+                        unimplemented!("No coercion parameter to coerce {} to type variable {}.", src, a)
                     }
                     (src, tgt) => {
                         assert!(

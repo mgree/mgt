@@ -347,6 +347,22 @@ impl MigrationalType {
         MigrationalType::Base(BaseType::String)
     }
 
+    pub fn dynamize_type_variables(&mut self) {
+        match self {
+            MigrationalType::Base(_) | MigrationalType::Dyn() => (),
+            MigrationalType::Var(_) => *self = MigrationalType::Dyn(),
+            MigrationalType::Fun(m1, m2) => {
+                m1.dynamize_type_variables();
+                m2.dynamize_type_variables();
+            }
+            MigrationalType::List(m) => m.dynamize_type_variables(),
+            MigrationalType::Choice(_, m1, m2) => {
+                m1.dynamize_type_variables();
+                m2.dynamize_type_variables();
+            }
+        }
+    }
+
     pub fn pretty<'b, D, A>(&'b self, pp: &'b D) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
