@@ -10,7 +10,7 @@ pub mod types;
 
 pub mod infer;
 
-pub use infer::TypeInference;
+pub use infer::campora::TypeInference;
 
 pub mod coerce;
 

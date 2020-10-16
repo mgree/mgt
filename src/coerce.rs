@@ -3,7 +3,7 @@ use im_rc::HashMap;
 
 use log::{error, warn};
 
-use crate::infer::BOpSignature;
+use crate::infer::campora::BOpSignature;
 use crate::syntax::*;
 
 // Gamma
@@ -541,7 +541,7 @@ impl CoercionInsertion {
 mod test {
     use super::*;
 
-    use crate::infer::*;
+    use crate::infer::campora::*;
 
     fn has_no_coercions(s: &str) {
         let (e, m, ves) = TypeInference::infer(&SourceExpr::parse(s).unwrap()).unwrap();
