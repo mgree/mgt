@@ -3,7 +3,7 @@ use im_rc::HashMap;
 
 use log::{error, warn};
 
-use crate::infer::campora::BOpSignature;
+use crate::infer::overload::*;
 use crate::syntax::*;
 
 // Gamma
