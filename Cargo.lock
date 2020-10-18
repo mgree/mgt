@@ -517,6 +517,7 @@ version = "0.1.0"
 dependencies = [
  "assert_cli",
  "clap",
+ "ena",
  "env_logger",
  "im-rc",
  "lalrpop",
