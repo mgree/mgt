@@ -87,7 +87,7 @@ pub fn unify(subst: &mut Subst, g1: GradualType, g2: GradualType) -> Result<(), 
 
             if let (Some(g1), Some(g2)) = (subst.probe_value(a1), subst.probe_value(a2)) {
                 unify(subst, g1, g2)?;
-            };
+            }
 
             subst.unify_var_var(a1, a2)
         }

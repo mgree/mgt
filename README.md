@@ -124,6 +124,8 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 - [ ] Refactor pretty printing (separate trait, nicer arithmetic output)
 
+- [ ] Nicer error messages (https://crates.io/crates/anyhow)
+
 ## Optimization
 
 - [ ] Make things mutable
