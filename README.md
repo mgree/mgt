@@ -10,6 +10,15 @@ Closely follows the formalism, where the [paper-formalism](https://github.com/mg
   - Constraint generation takes a term optionally annotated with gradual types and returns a term fully annotated with migrational types.
   - Operator overloading.
 
+To use the ocaml compiler, you need to install the `mgt` runtime package via OPAM. That's easiest to do via pinning:
+
+```ShellSession
+$ cd ocaml
+$ opam pin add .
+```
+
+After that, `cargo build` and `cargo run` should work just fine to run the `mgt` compiler.
+
 ## Overloading
 
 Consider a source operation like `==` in JS:
