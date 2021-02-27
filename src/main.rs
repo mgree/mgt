@@ -356,6 +356,19 @@ mod test {
         run(args, s, |a| a.fails().unwrap());
     }
 
+    fn succeeds_with_err(args: Vec<&str>, s: &str, out: &str, err: &str) {
+        run(args, s, |a| {
+            a.succeeds() // OCaml ec isn't lifted
+                .and()
+                .stdout()
+                .contains(out)
+                .and()
+                .stderr()
+                .contains(err)
+                .unwrap()
+        });
+    }
+
     #[test]
     fn id() {
         succeeds(vec![], "\\x. x");
@@ -495,5 +508,38 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     #[test]
     fn run_lax_if() {
         succeeds(vec!["-m", "run"], "if true then 1 else false");
+    }
+
+    #[test]
+    #[serial(mgt)]
+    fn arjun_arg() {
+        succeeds_with_err(
+            vec!["-m", "run"],
+            r"if ((\x:? . x) 200) then 1 else 0",
+            "PROGRAM", // actually compiles
+            "Fatal error: exception Mgt.Runtime.Coercion_failure(0, _)",
+        );
+    }
+
+    #[test]
+    #[serial(mgt)]
+    fn arjun_fun() {
+        succeeds_with_err(
+            vec!["-m", "run"],
+            r"((\y:? . y) 400) 0",
+            "PROGRAM", // actually compiles
+            "Fatal error: exception Mgt.Runtime.Coercion_failure(4, _)",
+        );
+    }
+
+    #[test]
+    #[serial(mgt)]
+    fn arjun_app() {
+        succeeds_with_err(
+            vec!["-m", "run"],
+            r"((\y:? . y) 400) 0 (if ((\x:? . x) 200) then 1 else 0)",
+            "PROGRAM", // actually compiles
+            "Fatal error: exception Mgt.Runtime.Coercion_failure(4, _)",
+        );
     }
 }
