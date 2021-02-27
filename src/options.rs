@@ -79,6 +79,8 @@ pub struct CompilationOptions {
     pub path: String,
     /// The base output name to use.
     pub basename: String,
+    /// Whether or not to enforce left-to-right evaluation in the compiled code.
+    pub enforce_ltr: bool,
 }
 
 impl Default for Options {
@@ -97,6 +99,7 @@ impl CompilationOptions {
         CompilationOptions {
             run: false,
             persist: true,
+            enforce_ltr: true,
             path: "./mgt".into(),
             basename: "out".into(),
         }
@@ -106,6 +109,7 @@ impl CompilationOptions {
         CompilationOptions {
             run: true,
             persist: false,
+            enforce_ltr: true,
             path: "./mgt".into(),
             basename: "mgt_out".into(),
         }

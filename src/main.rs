@@ -34,6 +34,9 @@ fn main() {
         .arg(Arg::with_name("SAFE_ONLY")
                  .help("When set, refuses to generate coercions between inconsistent types")
                  .long("safe-only"))
+        .arg(Arg::with_name("SKIP-LTR")
+                 .help("When set, doesn't ensure left-to-right evaluation order of the compiled OCaml output (via ANF).")
+                 .long("skip-ltr"))
         .arg(Arg::with_name("COERCION_PARAMETERS")
                  .help("When set, uses coercion parameters to implement polymorphism rather than treating unresolved type variables as ?.")
                  .long("coercion-parameters"))
@@ -99,6 +102,10 @@ fn main() {
                 warn!("Setting `--transient` in infer mode has no effect.")
             }
 
+            if config.is_present("SKIP-LTR") {
+                warn!("Setting `--skip-ltr` in infer mode has no effect.")
+            }
+
             CompilationMode::InferOnly
         }
         CompilationMode::Compile(mut opts) => {
@@ -124,6 +131,10 @@ fn main() {
                     warn!("Output directory was set, but so was --transient. Not saving the directory.");
                 }
                 opts.persist = false;
+            }
+
+            if config.is_present("SKIP-LTR") {
+                opts.enforce_ltr = false;
             }
 
             CompilationMode::Compile(opts)
