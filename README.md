@@ -140,7 +140,7 @@ other bits of the inference. If you want something to be `?`, write `assume foo
 
 # Acknowledgments
 
-Conversations with [Arjun Guha](https://twitter.com/arjunguha), [Colin
+Conversations with [Arjun Guha](https://khoury.northeastern.edu/~arjunguha), [Colin
 Gordon](https://twitter.com/csgordon/), [Ron
 Garcia](https://twitter.com/rg9119), and [Jens
 Palsberg](http://web.cs.ucla.edu/~palsberg/) were helpful.
