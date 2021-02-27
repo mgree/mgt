@@ -172,6 +172,16 @@ impl GradualType {
     }
 }
 
+impl Constant {
+    pub fn ground_type(&self) -> GroundType {
+        match self {
+            Constant::Bool(_) => GroundType::Base(BaseType::Bool),
+            Constant::Int(_) => GroundType::Base(BaseType::Int),
+            Constant::String(_) => GroundType::Base(BaseType::String),
+        }
+    }
+}
+
 impl<T, U, B> GradualExpr<T, U, B> {
     pub fn bool(b: bool) -> Self {
         GradualExpr::Const(Constant::Bool(b))
@@ -1030,7 +1040,7 @@ impl ExplicitExpr {
                 .brackets()
                 .group()
                 .append(pp.line())
-                .append(e.pretty(pp).nest(2))
+                .append(e.pretty(pp).parens().nest(2))
                 .group(),
             ExplicitExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
@@ -1361,20 +1371,22 @@ impl Display for Coercion {
 
 impl From<&Constant> for MigrationalType {
     fn from(c: &Constant) -> Self {
-        match c {
-            Constant::Bool(_) => MigrationalType::bool(),
-            Constant::Int(_) => MigrationalType::int(),
-            Constant::String(_) => MigrationalType::string(),
-        }
+        c.ground_type().into()
     }
 }
 
-impl From<Constant> for GroundType {
-    fn from(c: Constant) -> Self {
-        match c {
-            Constant::Bool(_) => GroundType::Base(BaseType::Bool),
-            Constant::Int(_) => GroundType::Base(BaseType::Int),
-            Constant::String(_) => GroundType::Base(BaseType::String),
+impl From<&Constant> for GroundType {
+    fn from(c: &Constant) -> Self {
+        c.ground_type()
+    }
+}
+
+impl From<GroundType> for MigrationalType {
+    fn from(g: GroundType) -> Self {
+        match g {
+            GroundType::Base(b) => MigrationalType::Base(b),
+            GroundType::List => MigrationalType::List(Box::new(MigrationalType::Dyn())),
+            GroundType::Fun => MigrationalType::fun(MigrationalType::Dyn(), MigrationalType::Dyn()),
         }
     }
 }

@@ -119,6 +119,8 @@ impl CoercionInsertion {
                     );
                 }
 
+                log::debug!("{:?}", ctx);
+
                 let defns: Vec<(Variable, GradualType, ExplicitExpr)> = defns
                     .into_iter()
                     .map(|(x, m, e1)| {
@@ -157,23 +159,23 @@ impl CoercionInsertion {
                 )
             }
             GradualExpr::Nil(m) => {
-                let g = GradualType::list(m.try_gradual().expect("malformed annotation"));
-
-                log::debug!("nil @ {}", g);
-                if let GradualType::Var(_) = g {
+                let elt = m.try_gradual().expect("malformed annotation");
+                log::debug!("nil @ {}", elt);
+                if let GradualType::Var(_) = elt {
                     warn!("type variable nil...");
                 }
 
-                (ExplicitExpr::Nil(g.clone()), g)
+                let g = GradualType::list(elt.clone());
+
+                (ExplicitExpr::Nil(elt), g)
             }
             GradualExpr::Cons(e1, e2) => {
                 let (e1, g1) = self.make_explicit(ctx, *e1);
                 let (e2, g2) = self.make_explicit(ctx, *e2);
 
-                let g_elt = match &g2 {
-                    GradualType::List(g) => *g.clone(),
-                    GradualType::Dyn() => GradualType::Dyn(),
-                    g => panic!("cons-ed onto non-list: {} : {}", e2, g),
+                let g_elt = match g2.elt() {
+                    Some(g_elt) => g_elt,
+                    None => panic!("cons-ed onto non-list: {} : {}", e2, g2),
                 };
 
                 let g_list = GradualType::list(g_elt.clone());
@@ -391,9 +393,10 @@ impl CoercionInsertion {
                 ))
             }
             GradualExpr::Nil(g) => {
-                let g = GradualType::list(g.unwrap_or(GradualType::Dyn()));
+                let elt = g.unwrap_or(GradualType::Dyn());
+                let g = GradualType::list(elt.clone());
 
-                Some((ExplicitExpr::Nil(g.clone()), g))
+                Some((ExplicitExpr::Nil(elt), g))
             }
             GradualExpr::Cons(e1, e2) => {
                 let (e1, g1) = self.dynamize(ctx, *e1)?;

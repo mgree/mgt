@@ -28,6 +28,7 @@ impl OCamlCompiler {
 
         // eta expand any letrecs that might have coercions in there
         e.fix_letrecs();
+        e.anf();
 
         let ocaml = e.ocaml::<_, ()>(&pp).indent(2);
 

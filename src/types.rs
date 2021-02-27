@@ -139,6 +139,14 @@ impl GradualType {
         }
     }
 
+    pub fn elt(&self) -> Option<GradualType> {
+        match self {
+            GradualType::Dyn() => Some(GradualType::Dyn()),
+            GradualType::List(g) => Some(*g.clone()),
+            _ => None,
+        }
+    }
+
     /// should only be called on consistent types
     pub fn meet(&self, other: &GradualType) -> GradualType {
         match (self, other) {
