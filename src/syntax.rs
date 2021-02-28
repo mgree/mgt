@@ -1273,7 +1273,6 @@ impl Coercion {
                 } else {
                     let c =
                         Coercion::Seq(Box::new(Coercion::Tag(b1)), Box::new(Coercion::Check(b2)));
-                    warn!("bound-to-fail coercion: {}", c);
                     c
                 }
             }

@@ -3,7 +3,7 @@ extern crate lalrpop_util;
 
 pub mod options;
 
-pub use options::{CompilationMode, CompilationOptions, Options};
+pub use options::{CompilationMode, CompilationOptions, SafetyLevel, Options};
 
 pub mod syntax;
 pub mod types;

@@ -1,4 +1,4 @@
-use crate::options::Options;
+use crate::options::{Options, SafetyLevel};
 use im_rc::HashMap;
 
 use log::{error, warn};
@@ -517,16 +517,19 @@ impl CoercionInsertion {
                             tgt
                         );
 
-                        if self.options.safe_only {
-                            panic!("Coercion between inconsistent types {} and {} is guaranteed to fail; bailing. Turn off --safe-only to continue.",
-                            src, tgt);
-                        } else {
-                            warn!("Coercion between inconsistent types {} and {} will fail; going through ?", src, tgt);
+                        match self.options.safety_level {
+                            SafetyLevel::Error => 
+                            panic!("Coercion between inconsistent types {} and {} is guaranteed to fail; bailing. Turn off --unsafe error to continue.",
+                            src, tgt),
+                            SafetyLevel::Warn =>
+                                warn!("Coercion between inconsistent types {} and {} will fail; going through ?.", src, tgt),
+                            SafetyLevel::Quiet => (),
+                        }
                             Coercion::seq(
                                 self.coercion(src, &GradualType::Dyn()),
                                 self.coercion(&GradualType::Dyn(), tgt),
                             )
-                        }
+                        
                     }
                 }
             }

@@ -29,12 +29,15 @@ fn main() {
                 .help("Sets the level of verbosity"),
         )
         .arg(Arg::with_name("STRICT_IFS")
-                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type `?` (may conflict with --safe-only; defaults to off)")
+                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type `?` (may conflict with --unsafe error; defaults to off)")
                  .long("strict-ifs"))
-        .arg(Arg::with_name("SAFE_ONLY")
-                 .help("When set, refuses to generate coercions between inconsistent types")
-                 .long("safe-only"))
-        .arg(Arg::with_name("SKIP-LTR")
+        .arg(Arg::with_name("UNSAFE_COERCIONS")
+                 .help("Determines behavior on coercions between inconsistent types (should not be higher than `warn` with --strict-ifs on; defaults to warn)")
+                 .long("unsafe")
+                 .short("u")
+                 .possible_values(&["quiet", "warn", "error"])
+                 .default_value("warn"))
+        .arg(Arg::with_name("SKIP_LTR")
                  .help("When set, doesn't ensure left-to-right evaluation order of the compiled OCaml output (via ANF).")
                  .long("skip-ltr"))
         .arg(Arg::with_name("COERCION_PARAMETERS")
@@ -83,13 +86,18 @@ fn main() {
     let input_source = config.value_of("INPUT").expect("input source");
 
     options.strict_ifs = config.is_present("STRICT_IFS");
-    options.safe_only = config.is_present("SAFE_ONLY");
+    options.safety_level = match config.value_of("UNSAFE_COERCIONS") {
+        Some("quiet") => SafetyLevel::Quiet,
+        Some("warn") | None => SafetyLevel::Warn,
+        Some("error") => SafetyLevel::Error,
+        Some(mode) => panic!("Invalid safety level for coercions '{}'.", mode),
+    };
     options.dynamic_type_variables = !config.is_present("COERCION_PARAMETERS");
     options.compile = match config.value_of("COMPILATION_MODE") {
         Some("infer") | None => CompilationMode::InferOnly,
         Some("compile") => CompilationMode::Compile(CompilationOptions::compile_only()),
         Some("run") => CompilationMode::Compile(CompilationOptions::compile_and_run()),
-        Some(mode) => panic!("Invalid compilation mode {}.", mode),
+        Some(mode) => panic!("Invalid compilation mode '{}'.", mode),
     };
     options.compile = match options.compile {
         // MMG weird idiom
@@ -102,7 +110,7 @@ fn main() {
                 warn!("Setting `--transient` in infer mode has no effect.")
             }
 
-            if config.is_present("SKIP-LTR") {
+            if config.is_present("SKIP_LTR") {
                 warn!("Setting `--skip-ltr` in infer mode has no effect.")
             }
 
@@ -140,8 +148,8 @@ fn main() {
             CompilationMode::Compile(opts)
         }
     };
-    if options.safe_only && options.strict_ifs {
-        warn!("Running with both --strict-ifs and --safe-only may break compilation.");
+    if options.safety_level == SafetyLevel::Error && options.strict_ifs {
+        warn!("Running with both --strict-ifs and --unsafe error may break compilation.");
     }
 
     let mut input = String::new();
@@ -321,11 +329,9 @@ mod test {
         let mut args = args;
 
         // no args
-        eprintln!("arg-free");
         f(Assert::main_binary().with_args(&args).stdin(s));
 
         // explicit stdin
-        eprintln!("explicit stdin");
         args.push("-");
         f(Assert::main_binary().with_args(&args).stdin(s));
 
@@ -356,9 +362,22 @@ mod test {
         run(args, s, |a| a.fails().unwrap());
     }
 
+    fn fails_with_err(args: Vec<&str>, s: &str, out: &str, err: &str) {
+        run(args, s, |a| {
+            a.fails()
+                .and()
+                .stdout()
+                .contains(out)
+                .and()
+                .stderr()
+                .contains(err)
+                .unwrap()
+        });
+    }
+
     fn succeeds_with_err(args: Vec<&str>, s: &str, out: &str, err: &str) {
         run(args, s, |a| {
-            a.succeeds() // OCaml ec isn't lifted
+            a.succeeds()
                 .and()
                 .stdout()
                 .contains(out)
@@ -408,14 +427,23 @@ mod test {
 
     #[test]
     fn lax_if_annotated_safe_only() {
-        fails(vec!["--safe-only"], "if true then true : ? else 0 : ?");
+        fails_with_err(vec!["--unsafe", "error"], "if true then true : ? else 0 : ?", "", "inconsistent");
+        succeeds_with_err(vec!["--unsafe", "warn"], "if true then true : ? else 0 : ?", "", "inconsistent");
+        run(vec!["--unsafe", "quiet"],  "if true then true : ? else 0 : ?", |a| {
+            a.succeeds()
+                .and()
+                .stderr()
+                .doesnt_contain("inconsistent")
+                .unwrap()
+        });
         succeeds(vec!["-a", "dynamic"], "if true then true : ? else 0 : ?");
+        succeeds(vec!["-a", "dynamic", "--unsafe", "error"], "if true then true : ? else 0 : ?");
     }
 
     #[test]
     fn strict_if_annotated_safe_only() {
         fails(
-            vec!["--safe-only", "--strict-ifs"],
+            vec!["--unsafe error", "--strict-ifs"],
             "if true then true : ? else 0 : ?",
         );
     }
@@ -513,6 +541,7 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     #[test]
     #[serial(mgt)]
     fn arjun_arg() {
+        // ocaml exit status isn't lifted
         succeeds_with_err(
             vec!["-m", "run"],
             r"if ((\x:? . x) 200) then 1 else 0",
@@ -524,6 +553,7 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     #[test]
     #[serial(mgt)]
     fn arjun_fun() {
+        // ocaml exit status isn't lifted
         succeeds_with_err(
             vec!["-m", "run"],
             r"((\y:? . y) 400) 0",
