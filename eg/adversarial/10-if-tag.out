@@ -1,0 +1,7 @@
+
+PROGRAM f5d9c924bee58534
+\tag : bool.
+\x : bool.
+  if tag then [int?] (([bool!] (x)) +? ([int!] (1))) else if x then 1 else 0
+:
+bool -> bool -> int

@@ -1,0 +1,5 @@
+
+PROGRAM cffdf92c8fc80b94
+\f : (int -> int) -> int -> ?. \g : int -> int. f g ((g 10) +i 1)
+:
+((int -> int) -> int -> ?) -> (int -> int) -> ?
