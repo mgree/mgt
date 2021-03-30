@@ -29,7 +29,7 @@ fn main() {
                 .help("Sets the level of verbosity"),
         )
         .arg(Arg::with_name("STRICT_IFS")
-                 .help("When set, conditionals must have consistent types; without it, mismatches conditionals have type `?` (may conflict with --unsafe error; defaults to off)")
+                 .help("When set, conditionals must have consistent types; without it, mismatched conditionals have type `?` (may conflict with --unsafe error; defaults to off)")
                  .long("strict-ifs"))
         .arg(Arg::with_name("UNSAFE_COERCIONS")
                  .help("Determines behavior on coercions between inconsistent types (should not be higher than `warn` with --strict-ifs on; defaults to warn)")
