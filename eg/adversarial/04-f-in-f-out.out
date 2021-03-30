@@ -1,5 +1,0 @@
-
-PROGRAM 878a3ad54753b40c
-(\f : int -> int. (\y : int. f) (f 5)) (\x : int. 10 +i x)
-:
-int -> int

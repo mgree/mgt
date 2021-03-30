@@ -1,6 +1,0 @@
-
-PROGRAM 61fa6f0dcd198b70
-(\f : ?. ([fun?] (f)) ([bool!] (true)))
-([(int? ↝ int!) ; fun!] (\x : int. x +i 100))
-:
-?

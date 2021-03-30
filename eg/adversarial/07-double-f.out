@@ -1,5 +1,0 @@
-
-PROGRAM cee7caa195437997
-\f : bool -> bool. f (f true)
-:
-(bool -> bool) -> bool
