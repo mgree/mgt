@@ -47,7 +47,7 @@ TypeAnnot: GradualType = {
 
 pub Expr: SourceExpr = {
     "if" <c:Expr> "then" <t:Expr> "else" <e:Expr> => GradualExpr::if_(c, t, e),
-    "\\" <args:Args> "." <e:Expr> => GradualExpr::lams(args, e),
+    "fun" <args:Args> "." <e:Expr> => GradualExpr::lams(args, e),
     "assume" <x:Id> <t:TypeAnnot?> "in" <e2:Expr> => GradualExpr::let_(x.clone(), t, GradualExpr::Hole("__".to_string() + &x, None), e2),
     "let" <x:Id> <t:TypeAnnot?> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(x, t, e1, e2),
     "let" <f:Id> <args:Args> "=" <e1:Expr> "in" <e2:Expr> => GradualExpr::let_(f, None, GradualExpr::lams(args, e1), e2),
@@ -164,7 +164,6 @@ match {
     "[",
     "]",
     ";",
-    "\\",
     ".",
     ":",
     "|",
@@ -183,6 +182,7 @@ match {
     ">",
     ">=",
 } else {
+    "fun",
     "dyn",
     "bool",
     "int",

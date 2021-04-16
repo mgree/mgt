@@ -325,14 +325,14 @@ impl SourceExpr {
             GradualExpr::Var(x) => pp.text(x),
             GradualExpr::Const(c) => pp.as_string(c),
             GradualExpr::Lam(x, None, e) => pp
-                .text("\\")
+                .text("fun")
                 .append(pp.text(x))
                 .append(pp.text("."))
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
             GradualExpr::Lam(x, Some(t), e) => pp
-                .text("\\")
+                .text("fun")
                 .append(pp.text(x))
                 .append(pp.space())
                 .append(pp.text(":"))
@@ -1018,7 +1018,7 @@ impl ExplicitExpr {
             ExplicitExpr::Var(x) => pp.text(x),
             ExplicitExpr::Const(c) => pp.as_string(c),
             ExplicitExpr::Lam(x, t, e) => pp
-                .text("\\")
+                .text("fun ")
                 .append(pp.text(x))
                 .append(pp.space())
                 .append(pp.text(":"))
@@ -1035,13 +1035,7 @@ impl ExplicitExpr {
                 .append(pp.line())
                 .append(t.pretty(pp))
                 .group(),
-            ExplicitExpr::Coerce(e, c) => c
-                .pretty(pp)
-                .brackets()
-                .group()
-                .append(pp.line())
-                .append(e.pretty(pp).parens().nest(2))
-                .group(),
+            ExplicitExpr::Coerce(e, c) => e.pretty(pp).parens(),
             ExplicitExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
                 let mut d2 = e2.pretty(pp);
@@ -1491,9 +1485,9 @@ impl Display for ExplicitUOp {
 impl Display for ExplicitBOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            ExplicitBOp::PlusInt => "+i",
-            ExplicitBOp::PlusString => "+s",
-            ExplicitBOp::PlusDyn => "+?",
+            ExplicitBOp::PlusInt => "+",
+            ExplicitBOp::PlusString => "+",
+            ExplicitBOp::PlusDyn => "+",
             ExplicitBOp::Minus => "-",
             ExplicitBOp::Times => "*",
             ExplicitBOp::Divide => "/",
