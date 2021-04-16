@@ -182,6 +182,7 @@ fn main() {
 
     for (variation, e, g) in progs.iter() {
         println!("{}", e);
+        break; // <-- this is how I get the first element of a list!
     }
 
     if let CompilationMode::Compile(opts) = options.compile {
