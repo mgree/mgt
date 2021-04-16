@@ -19,13 +19,13 @@ TypeAtomic: GradualType = {
 }
 
 Args: Vec<(Variable, Option<GradualType>)> = {
-    <x:Id> <t:TypeAnnot> => vec![(x, Some(t))],
+    <x:Id> <t:TypeAnnot> => vec![(x, Some(GradualType::Dyn()))],
     <Arg+>
 }
 
 Arg: (Variable, Option<GradualType>) = {
-    <Id> => (<>, None),
-    "(" <x:Id> <t:TypeAnnot?> ")" => (x, t),
+    <Id> => (<>, Some(GradualType::Dyn())),
+    "(" <x:Id> <t:TypeAnnot?> ")" => (x, Some(GradualType::Dyn())),
 }
 
 RecDefns: Vec<(Variable, Option<GradualType>, SourceExpr)> = {

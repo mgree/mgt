@@ -1,1 +1,1 @@
-(\f:?. f true) (\x:?. x + 100)
+(fun f . f true) (fun x . x + 100)
