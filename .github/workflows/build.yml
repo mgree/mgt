@@ -31,9 +31,7 @@ jobs:
       - run: opam install -y ocamlfind dune
 
       - name: Install OCaml runtime
-        run: |
-          opam pin add -y ./ocaml
-          opam pin upgrade ./ocaml
+        run: opam pin add -y ./ocaml
 
       - name: Build mgt
         run: cargo build --verbose --all
