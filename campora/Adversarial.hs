@@ -10,7 +10,7 @@ import Infer
 import Basics
 
 -- 01-farg-mismatch.gtlc
-a01_farg_mismatch = ("f" \\> (vv "f") <> tru) <> ("x" \\> plus (vv "x") (Vi 100))
+a01_farg_mismatch = ("f" @> (vv "f") <> tru) <> ("x" @> plus (vv "x") (Vi 100))
 
 -- 02-rank2-poly-id.gtlc
 a02_rank2_poly_id = ("i" \\> ("a" \\> (vv "i") <> tru) <> (vv "i" <> (Vi 5))) <> ("x" \\> vv "x")

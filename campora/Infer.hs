@@ -38,6 +38,7 @@ infer env (DynLam n term)
       return (sub, sub >>> (TDyn `Tfun` t), tp)
 
 infer env (CDLam n term) = do
+
     freshd <- newDn
     freshv <- newVn
     
