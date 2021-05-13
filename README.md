@@ -1,5 +1,5 @@
 # mgt
-[![Build Status](https://travis-ci.com/mgree/mgt.svg?branch=main)](https://travis-ci.com/mgree/mgt)
+[![Main workflow](https://github.com/mgree/mgt/actions/workflows/build.yml/badge.svg)](https://github.com/mgree/mgt/actions/workflows/build.yml)
 
 Implementation of "Migrating Gradual Types" by Campora, Chen, Erwig, and Walkingshaw ([POPL 2018](https://dl.acm.org/doi/10.1145/3158103), [author PDF](http://web.engr.oregonstate.edu/~walkiner/papers/popl18-migrating-gradual-types.pdf)).
 
