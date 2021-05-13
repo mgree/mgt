@@ -33,9 +33,8 @@ jobs:
       - name: Install OCaml runtime
         run: opam pin add -y ./ocaml
 
-      - name: Build mgt
-        run: cargo build --verbose --all
-
-      - name: Test mgt
-        run: opam exec -- cargo test --verbose --all
+      - name: Build and test mgt
+        run: |
+          cargo build --verbose --all
+          opam exec -- cargo test --verbose --all
         
