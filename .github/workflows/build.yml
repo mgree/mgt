@@ -1,0 +1,43 @@
+name: Main workflow
+
+on:
+  - pull_request
+  - push
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+        ocaml-version:
+          - 4.11.0
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Use OCaml ${{ matrix.ocaml-version }}
+        uses: avsm/setup-ocaml@v1
+        with:
+          ocaml-version: ${{ matrix.ocaml-version }}
+
+
+      - run: opam install -y ocamlfind dune
+
+      - name: Install OCaml runtime
+        run: |
+          opam pin add -y ./ocaml
+          opam pin upgrade ./ocaml
+
+      - name: Build mgt
+        run: cargo build --verbose --all
+
+      - name: Test mgt
+        run: opam exec -- cargo test --verbose --all
+        
