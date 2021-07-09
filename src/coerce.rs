@@ -19,8 +19,9 @@ impl Ctx {
         Ctx(self.0.update(x, m))
     }
 
-    pub fn lookup(&self, x: &Variable) -> Option<&GradualType> {
-        self.0.get(x)
+    pub fn lookup<S>(&self, x: S) -> Option<&GradualType> 
+    where S: AsRef<str> {
+        self.0.get(x.as_ref())
     }
 }
 

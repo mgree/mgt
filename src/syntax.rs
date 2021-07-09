@@ -289,17 +289,11 @@ impl<T, U, B> GradualExpr<T, U, B> {
     }
 
     pub fn is_compound(&self) -> bool {
-        match self {
-            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _) => false,
-            _ => true,
-        }
+        !matches!(self, GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _))
     }
 
     pub fn is_app(&self) -> bool {
-        match self {
-            GradualExpr::App(_, _) => true,
-            _ => false,
-        }
+        matches!(self, GradualExpr::App(_, _))
     }
 }
 
@@ -958,17 +952,11 @@ impl ExplicitExpr {
     }
 
     pub fn is_compound(&self) -> bool {
-        match self {
-            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _) => false,
-            _ => true,
-        }
+        !matches!(self, ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _))
     }
 
     pub fn is_app(&self) -> bool {
-        match self {
-            ExplicitExpr::App(_, _) => true,
-            _ => false,
-        }
+        matches!(self, ExplicitExpr::App(_, _))
     }
 
     pub fn coercions(self) -> Vec<Coercion> {
