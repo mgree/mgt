@@ -75,7 +75,7 @@ fn main() {
         0 => log::LevelFilter::Warn,
         1 => log::LevelFilter::Info,
         2 => log::LevelFilter::Debug,
-        3 | _ => log::LevelFilter::Trace,
+        _ => log::LevelFilter::Trace,
     };
     env_logger::Builder::from_default_env()
         .filter(None, verbosity)
@@ -325,7 +325,7 @@ mod test {
 
     fn run<F>(args: Vec<&str>, s: &str, f: F)
     where
-        F: Fn(Assert) -> (),
+        F: Fn(Assert),
     {
         let mut args = args;
 

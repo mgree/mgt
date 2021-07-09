@@ -8,6 +8,7 @@ use im_rc::HashSet;
 use crate::options::DEFAULT_WIDTH;
 pub use crate::types::*;
 
+#[allow(clippy::all)]
 lalrpop_mod!(parser);
 
 /// c
@@ -165,7 +166,7 @@ pub enum ExplicitExpr {
 }
 
 impl GradualType {
-    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
+    pub fn parse(s: &str) -> Result<Self, String> {
         parser::TypeParser::new()
             .parse(s)
             .map_err(|e| e.to_string())
@@ -309,7 +310,7 @@ impl SourceExpr {
             .fold(GradualExpr::Nil(None), |t, h| GradualExpr::cons(h, t))
     }
 
-    pub fn parse<'a>(s: &'a str) -> Result<Self, String> {
+    pub fn parse(s: &str) -> Result<Self, String> {
         parser::ExprParser::new()
             .parse(s)
             .map_err(|e| e.to_string())
@@ -421,7 +422,7 @@ impl SourceExpr {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
-                    defns.into_iter().map(|(x, t, e1)| {
+                    defns.iter().map(|(x, t, e1)| {
                         let d_annot = if let Some(t) = t {
                             pp.intersperse(
                                 vec![pp.text(":"), t.pretty(pp), pp.text("=")],
@@ -646,7 +647,7 @@ impl TargetExpr {
             GradualExpr::Let(_x, t, e1, e2) => t.choices().union(e1.choices()).union(e2.choices()),
             GradualExpr::LetRec(defns, e2) => {
                 let ds = defns
-                    .into_iter()
+                    .iter()
                     .map(|(_x, t, e1)| t.choices().union(e1.choices()));
                 HashSet::unions(ds).union(e2.choices())
             }
@@ -750,7 +751,7 @@ impl TargetExpr {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
-                    defns.into_iter().map(|(x, t, e1)| {
+                    defns.iter().map(|(x, t, e1)| {
                         pp.intersperse(
                             vec![pp.text(x), pp.text(":"), t.pretty(pp), pp.text("=")],
                             pp.space(),
@@ -1095,7 +1096,7 @@ impl ExplicitExpr {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
-                    defns.into_iter().map(|(x, t, e1)| {
+                    defns.iter().map(|(x, t, e1)| {
                         pp.intersperse(
                             vec![pp.text(x), pp.text(":"), t.pretty(pp), pp.text("=")],
                             pp.space(),
@@ -1265,9 +1266,7 @@ impl Coercion {
                 if b1 == b2 {
                     Coercion::Id(IdType::Safe, b1.into())
                 } else {
-                    let c =
-                        Coercion::Seq(Box::new(Coercion::Tag(b1)), Box::new(Coercion::Check(b2)));
-                    c
+                    Coercion::Seq(Box::new(Coercion::Tag(b1)), Box::new(Coercion::Check(b2)))
                 }
             }
             (Coercion::Check(b1), Coercion::Tag(b2)) => {
