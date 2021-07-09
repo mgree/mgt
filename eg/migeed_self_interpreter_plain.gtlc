@@ -1,0 +1,5 @@
+(\h. (\x. h (x x)) (\x. h x x))
+(\e m.
+  m (\x. x)
+    (\m n. (e m) (e n))
+    (\m v. e (m v)))
