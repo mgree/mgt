@@ -1,5 +1,5 @@
 use crate::options::{Options, SafetyLevel};
-use im_rc::HashMap;
+use im_rc::OrdMap;
 
 use log::{error, warn};
 
@@ -8,11 +8,11 @@ use crate::syntax::*;
 
 // Gamma
 #[derive(Clone, Debug)]
-pub struct Ctx(HashMap<Variable, GradualType>);
+pub struct Ctx(OrdMap<Variable, GradualType>);
 
 impl Ctx {
     pub fn empty() -> Self {
-        Ctx(HashMap::new())
+        Ctx(OrdMap::new())
     }
 
     pub fn extend(&self, x: Variable, m: GradualType) -> Self {

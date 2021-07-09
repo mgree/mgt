@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use im_rc::HashSet;
+use im_rc::OrdSet;
 
 use crate::options::DEFAULT_WIDTH;
 
@@ -15,7 +15,7 @@ pub enum BaseType {
 }
 
 /// alpha
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct TypeVariable(pub(super) usize);
 
 /// G
@@ -29,11 +29,11 @@ pub enum GradualType {
 }
 
 /// d
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Variation(pub(crate) usize, pub(crate) Option<Side>);
 
 /// .1 or .2
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Side {
     Left,
     Right,
@@ -466,10 +466,10 @@ impl MigrationalType {
         }
     }
 
-    pub fn vars(&self) -> HashSet<&TypeVariable> {
+    pub fn vars(&self) -> OrdSet<&TypeVariable> {
         match self {
-            MigrationalType::Dyn() | MigrationalType::Base(_) => HashSet::new(),
-            MigrationalType::Var(alpha) => HashSet::unit(alpha),
+            MigrationalType::Dyn() | MigrationalType::Base(_) => OrdSet::new(),
+            MigrationalType::Var(alpha) => OrdSet::unit(alpha),
             MigrationalType::List(m) => m.vars(),
             MigrationalType::Fun(m1, m2) | MigrationalType::Choice(_, m1, m2) => {
                 m1.vars().union(m2.vars())
@@ -477,10 +477,10 @@ impl MigrationalType {
         }
     }
 
-    pub fn choices(&self) -> HashSet<&Variation> {
+    pub fn choices(&self) -> OrdSet<&Variation> {
         match self {
             MigrationalType::Dyn() | MigrationalType::Base(_) | MigrationalType::Var(_) => {
-                HashSet::new()
+                OrdSet::new()
             }
             MigrationalType::List(m) => m.choices(),
             MigrationalType::Fun(m1, m2) => m1.choices().union(m2.choices()),
