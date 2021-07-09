@@ -209,7 +209,7 @@ impl GradualType {
     pub fn try_variational(&self) -> Option<VariationalType> {
         match self {
             GradualType::Dyn() => None,
-            GradualType::Base(b) => Some(VariationalType::Base(b.clone())),
+            GradualType::Base(b) => Some(VariationalType::Base(*b)),
             GradualType::Var(a) => Some(VariationalType::Var(*a)),
             GradualType::List(m) => Some(VariationalType::list(m.try_variational()?)),
             GradualType::Fun(m1, m2) => {
@@ -491,7 +491,7 @@ impl MigrationalType {
     pub fn try_variational(&self) -> Option<VariationalType> {
         match self {
             MigrationalType::Dyn() => None,
-            MigrationalType::Base(b) => Some(VariationalType::Base(b.clone())),
+            MigrationalType::Base(b) => Some(VariationalType::Base(*b)),
             MigrationalType::Var(a) => Some(VariationalType::Var(*a)),
             MigrationalType::List(m) => Some(VariationalType::list(m.try_variational()?)),
             MigrationalType::Choice(d, m1, m2) => {
@@ -512,7 +512,7 @@ impl MigrationalType {
     pub fn try_gradual(&self) -> Option<GradualType> {
         match self {
             MigrationalType::Choice(_, _, _) => None,
-            MigrationalType::Base(b) => Some(GradualType::Base(b.clone())),
+            MigrationalType::Base(b) => Some(GradualType::Base(*b)),
             MigrationalType::Var(a) => Some(GradualType::Var(*a)),
             MigrationalType::List(m) => Some(GradualType::list(m.try_gradual()?)),
             MigrationalType::Dyn() => Some(GradualType::Dyn()),

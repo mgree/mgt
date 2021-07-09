@@ -262,7 +262,7 @@ impl ExplicitExpr {
                     e = ExplicitExpr::app(e, ExplicitExpr::Var(x));
                 }
 
-                return e;
+                e
             }
         }
     }
@@ -354,7 +354,7 @@ impl ExplicitExpr {
                 let letrec = pp.text("let rec").append(pp.space());
 
                 let bindings = pp.intersperse(
-                    defns.into_iter().map(|(x, t, e1)| {
+                    defns.iter().map(|(x, t, e1)| {
                         pp.intersperse(
                             vec![pp.text(x), pp.text(":"), t.ocaml(pp), pp.text("=")],
                             pp.space(),

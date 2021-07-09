@@ -255,7 +255,7 @@ impl Eliminator {
         match side {
             None => {
                 warn!("No choice for variation {}; can't go wrong going right", d);
-                return Side::default();
+                Side::default()
             }
             Some(side) => *side,
         }
@@ -639,9 +639,9 @@ impl TypeInference {
                 let m_dom = self.freshen_annotation(t);
 
                 let (e, m_cod) =
-                    self.generate_constraints(ctx.extend(x.clone(), m_dom.clone().into()), e)?;
+                    self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-                let m_dom: MigrationalType = m_dom.clone().into();
+                let m_dom: MigrationalType = m_dom.clone();
                 Some((
                     GradualExpr::lam(x.clone(), m_dom.clone(), e),
                     MigrationalType::fun(m_dom, m_cod),
@@ -793,7 +793,7 @@ impl TypeInference {
                     }
                     BOpSignature::Overloaded { dyn_op, overloads } => {
                         let mut op = dyn_op;
-                        let (g_dom, g_cod) = op.signature().into();
+                        let (g_dom, g_cod) = op.signature();
                         let mut m_dom: MigrationalType = g_dom.into();
                         let mut m_cod: MigrationalType = g_cod.into();
 
@@ -1126,7 +1126,7 @@ impl TypeInference {
                 .lookup(a)
                 .cloned()
                 .unwrap_or_else(|| VariationalType::Var(self.fresh_variable()));
-            map = map.update(a.clone(), VariationalType::choice(d, v1, v2));
+            map = map.update(*a, VariationalType::choice(d, v1, v2));
         }
 
         Subst(map)
@@ -1148,6 +1148,7 @@ impl TypeInference {
         (theta, pi)
     }
 
+    #[allow(clippy::many_single_char_names)]
     fn unify1(&mut self, c: Constraint) -> (Subst, Pattern) {
         trace!("unify1({})", c);
 
@@ -1419,6 +1420,7 @@ impl TypeInference {
 }
 
 #[cfg(test)]
+#[allow(clippy::many_single_char_names)]
 mod test {
     use super::*;
     use im_rc::HashSet;
@@ -1447,9 +1449,7 @@ mod test {
     }
 
     fn infer_strict(s: &str) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
-        let mut options = Options::default();
-        options.strict_ifs = true;
-        let mut ti = TypeInference::new(options);
+        let mut ti = TypeInference::new(Options { strict_ifs: true, .. Options::default() });
 
         ti.run(&GradualExpr::parse(s).unwrap())
     }
