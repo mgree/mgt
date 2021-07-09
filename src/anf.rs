@@ -3,15 +3,15 @@ use crate::syntax::*;
 
 use log::debug;
 
-pub const ANF_VARNAME: &'static str = "__mgt_var";
+pub const ANF_VARNAME: &str = "__mgt_var";
 
-struct ANF {
+struct Anf {
     next_var: usize,
 }
 
-impl ANF {
+impl Anf {
     pub fn new() -> Self {
-        ANF { next_var: 0 }
+        Anf { next_var: 0 }
     }
 
     fn fresh(&mut self) -> String {
@@ -121,9 +121,8 @@ impl ANF {
             Let(x, g, e1, e2) => {
                 let g1 = self.anf(e1, ctx);
                 assert_eq!(g, &g1);
-                let g2 = self.anf(e2, &ctx.extend(x.clone(), g1));
-
-                g2
+                
+                self.anf(e2, &ctx.extend(x.clone(), g1))
             }
             LetRec(bindings, e) => {
                 let mut ctx = ctx.clone();
@@ -161,9 +160,7 @@ impl ANF {
 
 impl ExplicitExpr {
     pub fn anf(&mut self) {
-        let mut anf = ANF::new();
-        let _g = anf.anf(self, &Ctx::empty());
-
-        ()
+        let mut anf = Anf::new();
+        anf.anf(self, &Ctx::empty());
     }
 }
