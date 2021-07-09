@@ -181,7 +181,8 @@ fn main() {
     let progs: Vec<(_, _, _)> = algorithm(options.clone(), e).into_iter().collect();
 
     for (variation, e, g) in progs.iter() {
-        println!("\nPROGRAM {}\n{}\n:\n{}", variation, e, g);
+        println!("{}", e);
+        break; // <-- this is how I get the first element of a list!
     }
 
     if let CompilationMode::Compile(opts) = options.compile {

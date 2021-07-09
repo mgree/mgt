@@ -80,7 +80,7 @@ impl GradualType {
         A: Clone,
     {
         match self {
-            GradualType::Dyn() => pp.text("?"),
+            GradualType::Dyn() => pp.text("any"),
             GradualType::Base(b) => pp.as_string(b),
             GradualType::Var(a) => pp.as_string(a),
             GradualType::List(g) => g.pretty(pp).brackets(),
