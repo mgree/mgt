@@ -265,7 +265,7 @@ fn campora(options: Options, e: SourceExpr) -> Vec<(String, ExplicitExpr, Gradua
 
     info!("Found {} maximal typings.", ves.len());
 
-    if ves.len() == 0 {
+    if ves.is_empty() {
         warn!("Untypable; unresolved type: {}.", m);
         warn!("{}", e);
         std::process::exit(1);
