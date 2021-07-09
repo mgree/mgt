@@ -222,17 +222,11 @@ impl GradualType {
     }
 
     pub fn is_fun(&self) -> bool {
-        match self {
-            GradualType::Fun(_, _) => true,
-            _ => false,
-        }
+        matches!(self, GradualType::Fun(_, _))
     }
 
     pub fn is_compound(&self) -> bool {
-        match self {
-            GradualType::Fun(_, _) | GradualType::List(_) => true,
-            _ => false,
-        }
+        matches!(self, GradualType::Fun(_, _) | GradualType::List(_))
     }
 }
 
@@ -307,7 +301,7 @@ impl VariationalType {
 
     pub fn select(&self, d: Variation, side: Side) -> VariationalType {
         match self {
-            VariationalType::Base(b) => VariationalType::Base(b.clone()),
+            VariationalType::Base(b) => VariationalType::Base(*b),
             VariationalType::Var(a) => VariationalType::Var(*a),
             VariationalType::List(g) => VariationalType::list(g.select(d, side)),
             VariationalType::Fun(v1, v2) => {
@@ -327,10 +321,7 @@ impl VariationalType {
     }
 
     pub fn is_fun(&self) -> bool {
-        match self {
-            VariationalType::Fun(_, _) => true,
-            _ => false,
-        }
+        matches!(self, VariationalType::Fun(_, _))
     }
 }
 
@@ -428,7 +419,7 @@ impl MigrationalType {
     pub fn select(&self, d: Variation, side: Side) -> MigrationalType {
         match self {
             MigrationalType::Dyn() => MigrationalType::Dyn(),
-            MigrationalType::Base(b) => MigrationalType::Base(b.clone()),
+            MigrationalType::Base(b) => MigrationalType::Base(*b),
             MigrationalType::Var(a) => MigrationalType::Var(*a),
             MigrationalType::List(m) => MigrationalType::list(m.select(d, side)),
             MigrationalType::Fun(m1, m2) => {
@@ -448,10 +439,7 @@ impl MigrationalType {
     }
 
     pub fn is_fun(&self) -> bool {
-        match self {
-            MigrationalType::Fun(_, _) => true,
-            _ => false,
-        }
+        matches!(self, MigrationalType::Fun(_, _))
     }
 
     pub fn has_dyn(&self) -> bool {

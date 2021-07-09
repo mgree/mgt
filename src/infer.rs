@@ -244,9 +244,15 @@ impl From<bool> for Pattern {
     }
 }
 
+impl Default for Eliminator {
+    fn default() -> Self {
+        Eliminator(OrdMap::new())
+    }
+}
+
 impl Eliminator {
     pub fn new() -> Self {
-        Eliminator(OrdMap::new())
+        Eliminator::default()
     }
 
     pub fn get(&self, d: &Variation) -> Side {
@@ -450,8 +456,11 @@ impl Ctx {
         Ctx(self.0.update(x, m))
     }
 
-    pub fn lookup(&self, x: &Variable) -> Option<&MigrationalType> {
-        self.0.get(x)
+    pub fn lookup<S>(&self, x: S) -> Option<&MigrationalType>
+    where
+        S: AsRef<str>,
+    {
+        self.0.get(x.as_ref())
     }
 }
 
@@ -1449,7 +1458,10 @@ mod test {
     }
 
     fn infer_strict(s: &str) -> Option<(TargetExpr, MigrationalType, OrdSet<Eliminator>)> {
-        let mut ti = TypeInference::new(Options { strict_ifs: true, .. Options::default() });
+        let mut ti = TypeInference::new(Options {
+            strict_ifs: true,
+            ..Options::default()
+        });
 
         ti.run(&GradualExpr::parse(s).unwrap())
     }
@@ -1834,10 +1846,7 @@ mod test {
                 GradualExpr::App(e1, _) => match *e1 {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
-                            GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
-                                _ => false,
-                            },
+                            GradualExpr::Lam(_, _, e) => matches!(*e, GradualExpr::BOp(ExplicitBOp::EqualBool, _, _)),
                             _ => false,
                         },
                         _ => false,
@@ -1861,10 +1870,7 @@ mod test {
                 GradualExpr::App(e1, _) => match *e1 {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
-                            GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
-                                _ => false,
-                            },
+                            GradualExpr::Lam(_, _, e) => matches!(*e, GradualExpr::BOp(ExplicitBOp::EqualBool, _, _)),
                             _ => false,
                         },
                         _ => false,
@@ -1888,10 +1894,7 @@ mod test {
                 GradualExpr::App(e1, _) => match *e1 {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
-                            GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
-                                _ => false,
-                            },
+                            GradualExpr::Lam(_, _, e) => matches!(*e, GradualExpr::BOp(ExplicitBOp::EqualBool, _, _)),
                             _ => false,
                         },
                         _ => false,
@@ -1915,10 +1918,7 @@ mod test {
                 GradualExpr::App(e1, _) => match *e1 {
                     GradualExpr::App(e1, _) => match *e1 {
                         GradualExpr::Lam(_, _, e) => match *e {
-                            GradualExpr::Lam(_, _, e) => match *e {
-                                GradualExpr::BOp(ExplicitBOp::EqualBool, _, _) => true,
-                                _ => false,
-                            },
+                            GradualExpr::Lam(_, _, e) => matches!(*e, GradualExpr::BOp(ExplicitBOp::EqualBool, _, _)),
                             _ => false,
                         },
                         _ => false,
