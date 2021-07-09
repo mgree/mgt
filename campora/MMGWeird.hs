@@ -21,6 +21,11 @@ h' = Let "id" ("x" \> vv "x") (If (vv "id" <> tru) (vv "id" <> tru) (vv "id" <> 
 i = Let "id" ("x" @> vv "x") (If (vv "id" <> tru) (vv "id" <> i0) (vv "id" <> i1))
 i' = Let "id" ("x" @> vv "x") (If (vv "id" <> tru) (vv "id" <> tru) (vv "id" <> fls))
 
+poly = Let "id" ("x" \\> vv "x")
+         (Let "res" (If (vv "id" <> tru) (vv "id" <> i0) (vv "id" <> i1))
+                    (vv "id"))
+
+
 -- NB they don't both instantiating things not found in the final pattern
 --
 -- >>> > go ("x" \\> vv "x")

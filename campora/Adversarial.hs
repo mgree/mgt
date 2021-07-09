@@ -47,6 +47,18 @@ a10_if_tag = ("tag" \\> "x" \\>
 plusEnv = [("plus",Tint `Tfun` (Tint `Tfun` Tint))]
 plus a1 a2 = vv "plus" <> a1 <> a2
 
+-- migeed01_apply_add
+m01_apply_add = ("x" \\> vv "x" <> (plus (vv "x") (Vi 1)))
+
+-- migeed12_self_interp
+m12_self_interp =
+  ("h" \\> ("x" \\> vv "h" <> (vv "x" <> vv "x")) <> ("x" \\> vv "h" <> (vv "x" <> vv "x")))
+  <>
+  ("e" \\> "m" \\>
+    vv "m" <> ("x" \\> vv "x")
+           <> ("m" \\> "n" \\> (vv "e" <> vv "m") <> (vv "e" <> vv "n"))
+           <> ("m" \\> "v" \\> vv "e" <> (vv "m" <> vv "v")))
+
 -- NB they don't bother instantiating things not found in the final pattern
 --
 -- >>> > go ("x" \\> vv "x")
