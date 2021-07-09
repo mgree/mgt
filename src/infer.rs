@@ -3,8 +3,8 @@ use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
-use im_rc::HashMap;
-use im_rc::HashSet;
+use im_rc::OrdMap;
+use im_rc::OrdSet;
 
 use log::{debug, error, trace, warn};
 
@@ -12,8 +12,8 @@ use crate::options::{Options, DEFAULT_WIDTH};
 use crate::syntax::*;
 
 /// d.1 or d.2
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Eliminator(HashMap<Variation, Side>);
+#[derive(Clone, Debug, Hash, PartialOrd, Ord, PartialEq, Eq)]
+pub struct Eliminator(OrdMap<Variation, Side>);
 
 impl VariationalType {
     pub fn apply(self, theta: &Subst) -> VariationalType {
@@ -200,17 +200,17 @@ impl Pattern {
         }
     }
 
-    pub fn valid_eliminators(self) -> HashSet<Eliminator> {
+    pub fn valid_eliminators(self) -> OrdSet<Eliminator> {
         match self {
-            Pattern::Top() => HashSet::unit(Eliminator::new()),
-            Pattern::Bot() => HashSet::new(),
+            Pattern::Top() => OrdSet::unit(Eliminator::new()),
+            Pattern::Bot() => OrdSet::new(),
             Pattern::Choice(d, pi1, pi2) => {
-                let ves1: HashSet<Eliminator> = pi1
+                let ves1: OrdSet<Eliminator> = pi1
                     .valid_eliminators()
                     .into_iter()
                     .map(|ve| ve.update(d, Side::Left))
                     .collect();
-                let ves2: HashSet<Eliminator> = pi2
+                let ves2: OrdSet<Eliminator> = pi2
                     .valid_eliminators()
                     .into_iter()
                     .map(|ve| ve.update(d, Side::Right))
@@ -246,7 +246,7 @@ impl From<bool> for Pattern {
 
 impl Eliminator {
     pub fn new() -> Self {
-        Eliminator(HashMap::new())
+        Eliminator(OrdMap::new())
     }
 
     pub fn get(&self, d: &Variation) -> Side {
@@ -269,7 +269,7 @@ impl Eliminator {
         self.0.is_empty()
     }
 
-    pub fn expand(self, ds: &HashSet<&Variation>) -> Self {
+    pub fn expand(self, ds: &OrdSet<&Variation>) -> Self {
         let mut elim = self;
 
         for d in ds.iter() {
@@ -439,11 +439,11 @@ impl From<Constraint> for Constraints {
 
 // Gamma
 #[derive(Clone, Debug)]
-pub struct Ctx(HashMap<Variable, MigrationalType>);
+pub struct Ctx(OrdMap<Variable, MigrationalType>);
 
 impl Ctx {
     pub fn empty() -> Self {
-        Ctx(HashMap::new())
+        Ctx(OrdMap::new())
     }
 
     pub fn extend(&self, x: Variable, m: MigrationalType) -> Self {
@@ -457,11 +457,11 @@ impl Ctx {
 
 // theta
 #[derive(Clone, Debug)]
-pub struct Subst(pub(super) HashMap<TypeVariable, VariationalType>);
+pub struct Subst(pub(super) OrdMap<TypeVariable, VariationalType>);
 
 impl Subst {
     pub fn empty() -> Self {
-        Subst(HashMap::new())
+        Subst(OrdMap::new())
     }
 
     pub fn extend(&self, a: TypeVariable, v: VariationalType) -> Self {
@@ -473,7 +473,7 @@ impl Subst {
     }
 
     pub fn compose(self, other: Subst) -> Subst {
-        let composed: HashMap<_, _> = other
+        let composed: OrdMap<_, _> = other
             .0
             .into_iter()
             .map(|(a, v)| (a, v.apply(&self)))
@@ -1113,10 +1113,10 @@ impl TypeInference {
     }
 
     fn merge(&mut self, d: Variation, theta1: Subst, theta2: Subst) -> Subst {
-        let dom1: HashSet<&TypeVariable> = HashSet::from_iter(theta1.0.keys());
-        let dom2: HashSet<&TypeVariable> = HashSet::from_iter(theta2.0.keys());
+        let dom1: OrdSet<&TypeVariable> = OrdSet::from_iter(theta1.0.keys());
+        let dom2: OrdSet<&TypeVariable> = OrdSet::from_iter(theta2.0.keys());
 
-        let mut map = HashMap::new();
+        let mut map = OrdMap::new();
         for a in dom1.union(dom2) {
             let v1 = theta1
                 .lookup(a)
@@ -1367,7 +1367,7 @@ impl TypeInference {
     pub fn run(
         &mut self,
         e: &SourceExpr,
-    ) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+    ) -> Option<(TargetExpr, MigrationalType, OrdSet<Eliminator>)> {
         let (e, m) = self.generate_constraints(Ctx::empty(), e)?;
 
         debug!("Generated constraints:");
@@ -1400,7 +1400,7 @@ impl TypeInference {
         debug!("]");
 
         let ds = e.choices().clone().union(m.choices());
-        let ves: HashSet<Eliminator> = ves.into_iter().map(move |ve| ve.expand(&ds)).collect();
+        let ves: OrdSet<Eliminator> = ves.into_iter().map(move |ve| ve.expand(&ds)).collect();
 
         debug!("Maximal valid eliminators:");
         debug!("ves = [");
@@ -1412,7 +1412,7 @@ impl TypeInference {
         Some((e, m, ves))
     }
 
-    pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+    pub fn infer(e: &SourceExpr) -> Option<(TargetExpr, MigrationalType, OrdSet<Eliminator>)> {
         let mut ti = TypeInference::new(Options::default());
 
         ti.run(e)
@@ -1423,13 +1423,13 @@ impl TypeInference {
 #[allow(clippy::many_single_char_names)]
 mod test {
     use super::*;
-    use im_rc::HashSet;
+    use im_rc::OrdSet;
 
-    fn try_infer(s: &str) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+    fn try_infer(s: &str) -> Option<(TargetExpr, MigrationalType, OrdSet<Eliminator>)> {
         TypeInference::infer(&SourceExpr::parse(s).unwrap())
     }
 
-    fn infer(s: &str) -> (TargetExpr, MigrationalType, HashSet<Eliminator>) {
+    fn infer(s: &str) -> (TargetExpr, MigrationalType, OrdSet<Eliminator>) {
         try_infer(s).unwrap()
     }
 
@@ -1448,7 +1448,7 @@ mod test {
         assert!(ves.is_empty());
     }
 
-    fn infer_strict(s: &str) -> Option<(TargetExpr, MigrationalType, HashSet<Eliminator>)> {
+    fn infer_strict(s: &str) -> Option<(TargetExpr, MigrationalType, OrdSet<Eliminator>)> {
         let mut ti = TypeInference::new(Options { strict_ifs: true, .. Options::default() });
 
         ti.run(&GradualExpr::parse(s).unwrap())
@@ -1516,7 +1516,7 @@ mod test {
             },
             _ => panic!("expected function type"),
         }
-        assert_eq!(ves, HashSet::unit(Eliminator::new()));
+        assert_eq!(ves, OrdSet::unit(Eliminator::new()));
     }
 
     #[test]
@@ -1606,7 +1606,7 @@ mod test {
             m,
             MigrationalType::fun(MigrationalType::bool(), MigrationalType::bool())
         );
-        assert_eq!(ves, HashSet::unit(Eliminator::new()));
+        assert_eq!(ves, OrdSet::unit(Eliminator::new()));
     }
 
     #[test]
@@ -1636,7 +1636,7 @@ mod test {
         let (_e, m, ves) = TypeInference::infer(&e).unwrap();
 
         assert_eq!(m, MigrationalType::bool());
-        assert_eq!(ves, HashSet::unit(Eliminator::new()));
+        assert_eq!(ves, OrdSet::unit(Eliminator::new()));
     }
 
     #[test]

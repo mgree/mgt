@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use log::{error, info, warn};
 
-use im_rc::HashSet;
+use im_rc::OrdSet;
 
 use crate::options::DEFAULT_WIDTH;
 pub use crate::types::*;
@@ -537,20 +537,20 @@ impl Display for SourceExpr {
 }
 
 impl ExplicitUOp {
-    pub fn choices(&self) -> HashSet<&Variation> {
+    pub fn choices(&self) -> OrdSet<&Variation> {
         match self {
-            ExplicitUOp::Negate => HashSet::new(),
-            ExplicitUOp::Not => HashSet::new(),
-            ExplicitUOp::Is(_g) => HashSet::new(),
+            ExplicitUOp::Negate => OrdSet::new(),
+            ExplicitUOp::Not => OrdSet::new(),
+            ExplicitUOp::Is(_g) => OrdSet::new(),
         }
     }
 }
 
 impl ExplicitBOp {
-    pub fn choices(&self) -> HashSet<&Variation> {
+    pub fn choices(&self) -> OrdSet<&Variation> {
         match self {
             ExplicitBOp::Choice(d, op1, op2) => op1.choices().union(op2.choices()).update(d),
-            _ => HashSet::new(),
+            _ => OrdSet::new(),
         }
     }
 
@@ -633,9 +633,9 @@ impl TargetExpr {
         }
     }
 
-    pub fn choices(&self) -> HashSet<&Variation> {
+    pub fn choices(&self) -> OrdSet<&Variation> {
         match self {
-            GradualExpr::Const(_) | GradualExpr::Var(_) => HashSet::new(),
+            GradualExpr::Const(_) | GradualExpr::Var(_) => OrdSet::new(),
             GradualExpr::Lam(_, t, e) | GradualExpr::Ann(e, t) => t.choices().union(e.choices()),
             GradualExpr::Hole(_, t) | GradualExpr::Nil(t) => t.choices(),
             GradualExpr::App(e1, e2) | GradualExpr::Cons(e1, e2) => {
@@ -649,11 +649,11 @@ impl TargetExpr {
                 let ds = defns
                     .iter()
                     .map(|(_x, t, e1)| t.choices().union(e1.choices()));
-                HashSet::unions(ds).union(e2.choices())
+                OrdSet::unions(ds).union(e2.choices())
             }
             GradualExpr::UOp(op, e) => op.choices().union(e.choices()),
             GradualExpr::BOp(op, e1, e2) => {
-                HashSet::unions(vec![op.choices(), e1.choices(), e2.choices()])
+                OrdSet::unions(vec![op.choices(), e1.choices(), e2.choices()])
             }
         }
     }
