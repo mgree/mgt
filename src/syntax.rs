@@ -968,7 +968,7 @@ impl ExplicitExpr {
             ExplicitExpr::Lam(_, _, e) | ExplicitExpr::UOp(_, e) => e.coercions(),
             ExplicitExpr::Coerce(e, c) => {
                 let mut cs = e.coercions();
-                cs.push(c.clone());
+                cs.push(c);
                 cs
             }
             ExplicitExpr::App(e1, e2)

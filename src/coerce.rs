@@ -199,7 +199,7 @@ impl CoercionInsertion {
 
                 let (e_nil, g_nil) = self.make_explicit(ctx, *e_nil);
                 let (e_cons, g_cons) = self.make_explicit(
-                    &ctx.extend(hd.clone(), g_elt.clone())
+                    &ctx.extend(hd.clone(), g_elt)
                         .extend(tl.clone(), g_list.clone()),
                     *e_cons,
                 );
@@ -434,7 +434,7 @@ impl CoercionInsertion {
 
                 let (e_nil, g_nil) = self.dynamize(ctx, *e_nil)?;
                 let (e_cons, g_cons) = self.dynamize(
-                    &ctx.extend(hd.clone(), g_elt.clone())
+                    &ctx.extend(hd.clone(), g_elt)
                         .extend(tl.clone(), g_list.clone()),
                     *e_cons,
                 )?;
