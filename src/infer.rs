@@ -650,7 +650,6 @@ impl TypeInference {
                 let (e, m_cod) =
                     self.generate_constraints(ctx.extend(x.clone(), m_dom.clone()), e)?;
 
-                let m_dom: MigrationalType = m_dom.clone();
                 Some((
                     GradualExpr::lam(x.clone(), m_dom.clone(), e),
                     MigrationalType::fun(m_dom, m_cod),
@@ -729,7 +728,7 @@ impl TypeInference {
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
                             m.clone(),
-                            m_def.clone(),
+                            m_def,
                         ));
 
                         m
@@ -744,7 +743,7 @@ impl TypeInference {
             }
             GradualExpr::LetRec(defns, e_body) => {
                 // extend context, mapping each variable to either its annotation or a fresh variable
-                let mut ctx = ctx.clone();
+                let mut ctx = ctx;
                 for (x, t, _) in defns.iter() {
                     ctx = ctx.extend(x.clone(), self.freshen_annotation(t));
                 }
@@ -769,7 +768,7 @@ impl TypeInference {
                 Some((GradualExpr::letrec(e_defns, e_body), m_body))
             }
             GradualExpr::UOp(op, e) => {
-                let (e, m) = self.generate_constraints(ctx.clone(), e)?;
+                let (e, m) = self.generate_constraints(ctx, e)?;
 
                 let op = op.explicit();
                 let (g_dom, g_cod) = op.signature();
@@ -780,7 +779,7 @@ impl TypeInference {
             }
             GradualExpr::BOp(op, e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
-                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
+                let (e2, m2) = self.generate_constraints(ctx, e2)?;
 
                 match op.explicit() {
                     BOpSignature::Simple(op) => {
@@ -790,12 +789,12 @@ impl TypeInference {
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
                             m_dom.clone(),
-                            m1.clone(),
+                            m1,
                         ));
                         self.add_constraint(Constraint::Consistent(
                             Pattern::Top(),
                             m_dom,
-                            m2.clone(),
+                            m2,
                         ));
 
                         Some((GradualExpr::bop(op, e1, e2), g_cod.into()))
@@ -856,7 +855,7 @@ impl TypeInference {
             }
             GradualExpr::Cons(e1, e2) => {
                 let (e1, m1) = self.generate_constraints(ctx.clone(), e1)?;
-                let (e2, m2) = self.generate_constraints(ctx.clone(), e2)?;
+                let (e2, m2) = self.generate_constraints(ctx, e2)?;
 
                 let (m_elt, cs_elt, pat_elt) = self.elt(&m2);
                 let m_list = MigrationalType::list(m_elt.clone());
@@ -888,7 +887,7 @@ impl TypeInference {
 
                 // check the cons branch
                 let (e_cons, m_cons) = self.generate_constraints(
-                    ctx.extend(hd.clone(), m_elt.clone())
+                    ctx.extend(hd.clone(), m_elt)
                         .extend(tl.clone(), m_list.clone()),
                     e_cons,
                 )?;
@@ -903,7 +902,7 @@ impl TypeInference {
 
                 Some((
                     GradualExpr::match_(
-                        GradualExpr::ann(e_scrutinee, m_list.clone()),
+                        GradualExpr::ann(e_scrutinee, m_list),
                         GradualExpr::ann(e_nil, m_res.clone()),
                         hd.clone(),
                         tl.clone(),
@@ -1195,13 +1194,13 @@ impl TypeInference {
 
                                 let (theta1, pi1) = self.unify1(Constraint::Consistent(
                                     Pattern::Top(),
-                                    alpha.clone(),
+                                    alpha,
                                     kfun.clone(),
                                 ));
                                 let (theta2, pi2) = self.unify1(Constraint::Consistent(
                                     Pattern::Top(),
                                     kfun,
-                                    m.clone(),
+                                    m,
                                 )); // ??? MMG paper says pi2, not Top
                                 return (theta2.compose(theta1), pi2.meet(pi1));
                             }
@@ -1211,7 +1210,7 @@ impl TypeInference {
 
                                 let (theta1, pi1) = self.unify1(Constraint::Consistent(
                                     Pattern::Top(),
-                                    alpha.clone(),
+                                    alpha,
                                     klist.clone(),
                                 ));
 
@@ -1235,8 +1234,8 @@ impl TypeInference {
                     Some(d) => {
                         // second case: case splitting
                         self.unify1(Constraint::Consistent(
-                            p.clone(),
-                            MigrationalType::choice(**d, alpha.clone(), alpha.clone()),
+                            p,
+                            MigrationalType::choice(**d, alpha.clone(), alpha),
                             m.clone(),
                         ))
                     }
@@ -1393,14 +1392,14 @@ impl TypeInference {
         let (theta, mut pi) = self.unify(self.constraints.clone());
         pi = pi.meet(self.pattern.clone());
         let e = e.apply(&theta);
-        let m = m.clone().apply(&theta);
+        let m = m.apply(&theta);
         debug!("Unified constraints:");
         debug!("  e = {}", e);
         debug!("  theta = {}", theta);
         debug!("  pi = {}", pi);
         debug!("  m = {}", m);
 
-        let ves = pi.clone().valid_eliminators();
+        let ves = pi.valid_eliminators();
         debug!("Valid eliminators:");
         debug!("ves = [");
         for ve in ves.iter() {
