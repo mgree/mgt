@@ -36,7 +36,10 @@ a07_double_f = "f" \\> vv "f" <> (vv "f" <> tru)
 a08_outflows = ("x" \\> plus (vv "x" <> Vi 5) (vv "x")) <> Vi 5
 
 -- 09-precision-relation.gtlc
-a09_precision_relation = ("f" \\> plus (vv "f" <> tru) (("g" \\> vv "g" <> Vi 5) <> vv "f")) <> ("x" \\> Vi 5)
+a09_precision_relation_fun = ("f" \\> plus (vv "f" <> tru) (("g" \\> vv "g" <> Vi 5) <> vv "f"))
+
+a09_precision_relation = a09_precision_relation_fun <> ("x" \\> Vi 5)
+
 
 -- 10-if-tag.gtlc
 a10_if_tag = ("tag" \\> "x" \\>
