@@ -1,0 +1,5 @@
+(fun h:any. (fun x:any. h (x x)) (fun x:any. h x x))
+(fun (e:any) (m:any).
+  m (fun x:any. x)
+    (fun (m:any) (n:any). (e m) (e n))
+    (fun (m:any) (v:any). e (m v)))

@@ -7,4 +7,4 @@ and sum (l : [int]) =
   | [] -> 0
   | hd::tl -> hd + sum tl
 in
-sum (map (\x. 2 * x) [1;2;3;4])
+sum (map (fun x. 2 * x) [1;2;3;4])

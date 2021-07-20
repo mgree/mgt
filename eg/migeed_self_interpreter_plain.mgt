@@ -1,0 +1,5 @@
+(fun h. (fun x. h (x x)) (fun x. h x x))
+(fun e m.
+  m (fun x. x)
+    (fun m n. (e m) (e n))
+    (fun m v. e (m v)))

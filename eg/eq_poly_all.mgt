@@ -1,1 +1,1 @@
-let eq = \x:?. \y:?. x == y in eq 5 true && eq 0 0 && eq false false
+let eq = fun x:any. fun y:any. x == y in eq 5 true && eq 0 0 && eq false false
