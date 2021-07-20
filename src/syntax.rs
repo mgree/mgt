@@ -111,7 +111,7 @@ pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
 pub type TargetExpr = GradualExpr<MigrationalType, ExplicitUOp, ExplicitBOp>;
 
 /// gamma
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum GroundType {
     Base(BaseType),
     List,
@@ -289,7 +289,10 @@ impl<T, U, B> GradualExpr<T, U, B> {
     }
 
     pub fn is_compound(&self) -> bool {
-        !matches!(self, GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _))
+        !matches!(
+            self,
+            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _)
+        )
     }
 
     pub fn is_app(&self) -> bool {
@@ -298,6 +301,46 @@ impl<T, U, B> GradualExpr<T, U, B> {
 }
 
 impl SourceExpr {
+    pub fn ignore_annotations(&mut self) {
+        match self {
+            GradualExpr::Var(_) | GradualExpr::Const(_) => (),
+            GradualExpr::Lam(_, t, e) => {
+                *t = Some(GradualType::Dyn());
+                e.ignore_annotations();
+            }
+            GradualExpr::Ann(e, _t) => {
+                // leave it in
+                e.ignore_annotations();
+            }
+            GradualExpr::Nil(None) => (),
+            GradualExpr::Hole(_, t) | GradualExpr::Nil(t) => {
+                *t = Some(GradualType::Dyn());
+            }
+            GradualExpr::App(e1, e2) | GradualExpr::BOp(_, e1, e2) | GradualExpr::Cons(e1, e2) => {
+                e1.ignore_annotations();
+                e2.ignore_annotations();
+            }
+            GradualExpr::UOp(_, e) => e.ignore_annotations(),
+            GradualExpr::Let(_, t, e1, e2) => {
+                e1.ignore_annotations();
+                e2.ignore_annotations();
+                *t = Some(GradualType::Dyn());
+            }
+            GradualExpr::LetRec(bindings, e) => {
+                for (_, ti, ei) in bindings {
+                    *ti = Some(GradualType::Dyn());
+                    ei.ignore_annotations();
+                }
+                e.ignore_annotations();
+            }
+            GradualExpr::If(e1, e2, e3) | GradualExpr::Match(e1, e2, _, _, e3) => {
+                e1.ignore_annotations();
+                e2.ignore_annotations();
+                e3.ignore_annotations();
+            }
+        }
+    }
+
     pub fn list(elts: Vec<Self>) -> Self {
         elts.into_iter()
             .rev()
@@ -320,14 +363,16 @@ impl SourceExpr {
             GradualExpr::Var(x) => pp.text(x),
             GradualExpr::Const(c) => pp.as_string(c),
             GradualExpr::Lam(x, None, e) => pp
-                .text("\\")
+                .text("fun")
+                .append(pp.space())
                 .append(pp.text(x))
                 .append(pp.text("."))
                 .append(pp.line())
                 .append(e.pretty(pp).nest(2))
                 .group(),
             GradualExpr::Lam(x, Some(t), e) => pp
-                .text("\\")
+                .text("fun")
+                .append(pp.space())
                 .append(pp.text(x))
                 .append(pp.space())
                 .append(pp.text(":"))
@@ -662,7 +707,8 @@ impl TargetExpr {
             GradualExpr::Var(x) => pp.text(x),
             GradualExpr::Const(c) => pp.as_string(c),
             GradualExpr::Lam(x, t, e) => pp
-                .text("\\")
+                .text("fun")
+                .append(pp.space())
                 .append(pp.text(x))
                 .append(pp.space())
                 .append(pp.text(":"))
@@ -952,7 +998,10 @@ impl ExplicitExpr {
     }
 
     pub fn is_compound(&self) -> bool {
-        !matches!(self, ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _))
+        !matches!(
+            self,
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _)
+        )
     }
 
     pub fn is_app(&self) -> bool {
@@ -1007,7 +1056,7 @@ impl ExplicitExpr {
             ExplicitExpr::Var(x) => pp.text(x),
             ExplicitExpr::Const(c) => pp.as_string(c),
             ExplicitExpr::Lam(x, t, e) => pp
-                .text("\\")
+                .text("fun ")
                 .append(pp.text(x))
                 .append(pp.space())
                 .append(pp.text(":"))
@@ -1024,13 +1073,12 @@ impl ExplicitExpr {
                 .append(pp.line())
                 .append(t.pretty(pp))
                 .group(),
-            ExplicitExpr::Coerce(e, c) => c
+            ExplicitExpr::Coerce(e, c) if c.is_doomed() => c
                 .pretty(pp)
                 .brackets()
-                .group()
-                .append(pp.line())
-                .append(e.pretty(pp).parens().nest(2))
-                .group(),
+                .append(pp.space())
+                .append(e.pretty(pp).parens()),
+            ExplicitExpr::Coerce(e, _c) => e.pretty(pp),
             ExplicitExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
                 let mut d2 = e2.pretty(pp);
@@ -1210,6 +1258,9 @@ impl IdType {
 }
 
 impl Coercion {
+    /// Returns `true` if no unsafe identity coercions are present
+    ///
+    /// See also `Coercion::is_doomed`
     pub fn is_safe(&self) -> bool {
         match self {
             Coercion::Id(IdType::Unsafe, _) => false,
@@ -1217,6 +1268,32 @@ impl Coercion {
             Coercion::Check(_) | Coercion::Tag(_) => true,
             Coercion::Fun(c1, c2) | Coercion::Seq(c1, c2) => c1.is_safe() && c2.is_safe(),
             Coercion::List(c) => c.is_safe(),
+        }
+    }
+
+    /// Returns the ground types that are immediately involved in checks and
+    /// tags.
+    fn flat_ground_types(&self) -> OrdSet<GroundType> {
+        match self {
+            Coercion::Id(..) | Coercion::Fun(..) => OrdSet::new(),
+            Coercion::Check(g) | Coercion::Tag(g) => OrdSet::unit(*g),
+            Coercion::List(c) => c.flat_ground_types(),
+            Coercion::Seq(c1, c2) => c1.flat_ground_types().union(c2.flat_ground_types()),
+        }
+    }
+
+    /// Returns `true` if the coercion could ever succeed.
+    ///
+    /// Function coercions are interpereted eagerly, i.e., it assumes the
+    /// function is applied.
+    pub fn is_doomed(&self) -> bool {
+        match self {
+            Coercion::Id(..) | Coercion::Tag(..) | Coercion::Check(..) => false,
+            Coercion::Fun(c1, c2) => c1.is_doomed() || c2.is_doomed(),
+            Coercion::List(c) => c.is_doomed(),
+            Coercion::Seq(c1, c2) => {
+                c1.is_doomed() || c2.is_doomed() || self.flat_ground_types().len() > 1
+            }
         }
     }
 
@@ -1478,9 +1555,9 @@ impl Display for ExplicitUOp {
 impl Display for ExplicitBOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            ExplicitBOp::PlusInt => "+i",
-            ExplicitBOp::PlusString => "+s",
-            ExplicitBOp::PlusDyn => "+?",
+            ExplicitBOp::PlusInt => "+",
+            ExplicitBOp::PlusString => "+",
+            ExplicitBOp::PlusDyn => "+",
             ExplicitBOp::Minus => "-",
             ExplicitBOp::Times => "*",
             ExplicitBOp::Divide => "/",
@@ -1516,12 +1593,12 @@ mod test {
     #[test]
     fn expr_id() {
         assert_eq!(
-            SourceExpr::parse("\\x. x").unwrap(),
+            SourceExpr::parse("fun x. x").unwrap(),
             GradualExpr::lam("x".into(), None, GradualExpr::Var("x".into()))
         );
 
         assert_eq!(
-            SourceExpr::parse("\\x:?. x").unwrap(),
+            SourceExpr::parse("fun x:?. x").unwrap(),
             GradualExpr::lam(
                 "x".into(),
                 Some(GradualType::Dyn()),
@@ -1530,7 +1607,7 @@ mod test {
         );
 
         assert_eq!(
-            SourceExpr::parse("\\x:bool. x").unwrap(),
+            SourceExpr::parse("fun x:bool. x").unwrap(),
             GradualExpr::lam(
                 "x".into(),
                 Some(BaseType::Bool.into()),
@@ -1579,7 +1656,7 @@ mod test {
     #[test]
     fn expr_neg() {
         assert_eq!(
-            SourceExpr::parse("\\b:bool. if b then false else true").unwrap(),
+            SourceExpr::parse("fun b:bool. if b then false else true").unwrap(),
             GradualExpr::lam(
                 "b".into(),
                 Some(BaseType::Bool.into()),
@@ -1647,7 +1724,7 @@ mod test {
     fn types_atomic() {
         assert_eq!(GradualType::parse("bool").unwrap(), BaseType::Bool.into());
         assert_eq!(GradualType::parse("int").unwrap(), BaseType::Int.into());
-        assert_eq!(GradualType::parse("?").unwrap(), GradualType::Dyn());
+        assert_eq!(GradualType::parse("any").unwrap(), GradualType::Dyn());
 
         assert_eq!(
             GradualType::parse("string").unwrap(),
@@ -1662,7 +1739,7 @@ mod test {
             GradualType::list(GradualType::bool())
         );
         assert_eq!(
-            GradualType::parse("[?]").unwrap(),
+            GradualType::parse("[any]").unwrap(),
             GradualType::list(GradualType::Dyn())
         );
         assert_eq!(
@@ -1670,7 +1747,7 @@ mod test {
             GradualType::list(GradualType::list(GradualType::bool()))
         );
         assert_eq!(
-            GradualType::parse("[?->[bool]]").unwrap(),
+            GradualType::parse("[any->[bool]]").unwrap(),
             GradualType::list(GradualType::fun(
                 GradualType::Dyn(),
                 GradualType::list(GradualType::bool())
@@ -1703,7 +1780,7 @@ mod test {
         );
 
         assert_eq!(
-            GradualType::parse("(bool -> ?) -> bool").unwrap(),
+            GradualType::parse("(bool -> any) -> bool").unwrap(),
             GradualType::fun(
                 GradualType::fun(BaseType::Bool.into(), GradualType::Dyn()),
                 BaseType::Bool.into()
@@ -1711,7 +1788,7 @@ mod test {
         );
 
         assert_eq!(
-            GradualType::parse("(bool -> string) -> int -> ?").unwrap(),
+            GradualType::parse("(bool -> string) -> int -> any").unwrap(),
             GradualType::fun(
                 GradualType::fun(BaseType::Bool.into(), BaseType::String.into()),
                 GradualType::fun(BaseType::Int.into(), GradualType::Dyn()),
@@ -1786,16 +1863,16 @@ mod test {
         se_round_trip("4747", "4747");
 
         se_round_trip("x", "x");
-        se_round_trip("\\x. x", "\\x. x");
-        se_round_trip("\\x:bool. x", "\\x : bool. x");
+        se_round_trip("fun x. x", "fun x. x");
+        se_round_trip("fun x:bool. x", "fun x : bool. x");
 
         se_round_trip("-x", "- x");
         se_round_trip("5-x", "5 - x");
         se_round_trip("-(m*x + b)", "- ((m * x) + b)");
 
         se_round_trip(
-            "if true then false else \\x. x",
-            "if true then false else \\x. x",
+            "if true then false else fun x. x",
+            "if true then false else fun x. x",
         );
 
         se_round_trip("a    b \t c", "a b c");
@@ -1803,43 +1880,44 @@ mod test {
         se_round_trip("let x = a in b", "let x = a in b");
 
         // durrrrr
-        se_round_trip("let x = (\\x. x) (\\y. y) (\\z. z) (\\w. w) 5 in (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x", 
-                      "let x =\n(\\x. x) (\\y. y) (\\z. z) (\\w. w) 5\nin\n(\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) (\\x. x) x");
+        se_round_trip_up_to_ws(
+            "let x = (fun x. x) (fun y. y) (fun z. z) (fun w. w) 5 in (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) x", 
+            "let x =\n(fun x. x) (fun y. y) (fun z. z) (fun w. w) 5\nin\n(fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) (fun x. x) x");
     }
 
     #[test]
     fn pretty_multi_lambda() {
-        se_round_trip("\\x y. x", "\\x. \\y. x");
-        se_round_trip("\\x y z. x", "\\x. \\y. \\z. x");
-        se_round_trip("\\x (y:bool) z. x", "\\x. \\y : bool. \\z. x");
-        se_round_trip("\\x y. x", "\\x. \\y. x");
-        se_round_trip("\\x y z. x", "\\x. \\y. \\z. x");
-        se_round_trip("\\x (y:bool) z. x", "\\x. \\y : bool. \\z. x");
+        se_round_trip("fun x y. x", "fun x. fun y. x");
+        se_round_trip("fun x y z. x", "fun x. fun y. fun z. x");
+        se_round_trip("fun x (y:bool) z. x", "fun x. fun y : bool. fun z. x");
+        se_round_trip("fun x y. x", "fun x. fun y. x");
+        se_round_trip("fun x y z. x", "fun x. fun y. fun z. x");
+        se_round_trip("fun x (y:bool) z. x", "fun x. fun y : bool. fun z. x");
     }
 
     #[test]
     fn pretty_let_fun() {
         se_round_trip(
             "let f x = if x then false else true in f false",
-            "let f = \\x. if x then false else true in f false",
+            "let f = fun x. if x then false else true in f false",
         );
         se_round_trip(
             "let f (x:bool) = if x then false else true in f false",
-            "let f = \\x : bool. if x then false else true in f false",
+            "let f = fun x : bool. if x then false else true in f false",
         );
         se_round_trip(
-            "let f (x:?) (y:bool) = if x && y then false else true in f false",
-            "let f = \\x : ?. \\y : bool. if x && y then false else true in f false",
+            "let f (x:any) (y:bool) = if x && y then false else true in f false",
+            "let f = fun x : any. fun y : bool. if x && y then false else true in f false",
         );
 
         se_round_trip_up_to_ws(
             "let rec f x = g x and g y = f y in f 0",
-            "let rec f = \\x. g x and g = \\y. f y in f 0",
+            "let rec f = fun x. g x and g = fun y. f y in f 0",
         );
 
         se_round_trip_up_to_ws(
             "let rec f (x:bool) = g x and g (y:int) = f y in f 0",
-            "let rec f = \\x : bool. g x and g = \\y : int. f y in f 0",
+            "let rec f = fun x : bool. g x and g = fun y : int. f y in f 0",
         )
     }
     #[test]
@@ -1885,10 +1963,10 @@ mod test {
     #[test]
     fn strings() {
         se_round_trip(r#""hello there""#, r#""hello there""#);
-        se_round_trip(r#"\x. "hello there""#, r#"\x. "hello there""#);
+        se_round_trip(r#"fun x. "hello there""#, r#"fun x. "hello there""#);
         se_round_trip(
-            r#"\x:string. "hello there""#,
-            r#"\x : string. "hello there""#,
+            r#"fun x:string. "hello there""#,
+            r#"fun x : string. "hello there""#,
         );
     }
 }

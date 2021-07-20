@@ -1,0 +1,1 @@
+(fun b:any. b (fun c:any. 5 5) (fun d:any. 0)) (fun t:any. fun f:any. f)

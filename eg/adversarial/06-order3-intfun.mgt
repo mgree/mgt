@@ -1,0 +1,1 @@
+fun f:any. fun g:any. (f g) ((g 10) + 1)

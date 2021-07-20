@@ -29,7 +29,7 @@ fn main() {
                 .help("Sets the level of verbosity"),
         )
         .arg(Arg::with_name("STRICT_IFS")
-                 .help("When set, conditionals must have consistent types; without it, mismatched conditionals have type `?` (may conflict with --unsafe error; defaults to off)")
+                 .help("When set, conditionals must have consistent types; without it, mismatched conditionals have type `any` (may conflict with --unsafe error; defaults to off)")
                  .long("strict-ifs"))
         .arg(Arg::with_name("UNSAFE_COERCIONS")
                  .help("Determines behavior on coercions between inconsistent types (should not be higher than `warn` with --strict-ifs on; defaults to warn)")
@@ -41,8 +41,14 @@ fn main() {
                  .help("When set, doesn't ensure left-to-right evaluation order of the compiled OCaml output (via ANF).")
                  .long("skip-ltr"))
         .arg(Arg::with_name("COERCION_PARAMETERS")
-                 .help("When set, uses coercion parameters to implement polymorphism rather than treating unresolved type variables as ?.")
+                 .help("When set, uses coercion parameters to implement polymorphism rather than treating unresolved type variables as `any`.")
                  .long("coercion-parameters"))
+        .arg(Arg::with_name("SHOW_ALL")
+                 .help("When set, outputs for all coercions, not just the first one.")
+                 .long("all"))
+        .arg(Arg::with_name("IGNORE_ANNOTATIONS")
+                 .help("Ignore all function and let annotations, treating everything as `any`; colon annotations are honored.")
+                 .long("ignore-annotations"))
         .arg(Arg::with_name("COMPILATION_MODE")
                  .help("Determines whether to `infer` and show types, `compile` and persist an executable, or compile a transient executable and `run` it.")
                  .long("mode")
@@ -85,6 +91,8 @@ fn main() {
 
     let input_source = config.value_of("INPUT").expect("input source");
 
+    options.ignore_annotations = config.is_present("IGNORE_ANNOTATIONS");
+    options.show_all = config.is_present("SHOW_ALL");
     options.strict_ifs = config.is_present("STRICT_IFS");
     options.safety_level = match config.value_of("UNSAFE_COERCIONS") {
         Some("quiet") => SafetyLevel::Quiet,
@@ -164,10 +172,14 @@ fn main() {
         std::process::exit(47);
     }
 
-    let e = SourceExpr::parse(&input).unwrap_or_else(|e| {
+    let mut e = SourceExpr::parse(&input).unwrap_or_else(|e| {
         error!("Parse error:\n{}", e);
         std::process::exit(2);
     });
+
+    if options.ignore_annotations {
+        e.ignore_annotations();
+    }
 
     let algorithm = match config
         .value_of("ALGORITHM")
@@ -181,7 +193,15 @@ fn main() {
     let progs: Vec<(_, _, _)> = algorithm(options.clone(), e).into_iter().collect();
 
     for (variation, e, g) in progs.iter() {
-        println!("\nPROGRAM {}\n{}\n:\n{}", variation, e, g);
+        if options.show_all {
+            println!("PROGRAM {} : {}", variation, g)
+        }
+
+        println!("{}", e);
+
+        if !options.show_all {
+            break;
+        }
     }
 
     if let CompilationMode::Compile(opts) = options.compile {
@@ -390,9 +410,9 @@ mod test {
 
     #[test]
     fn id() {
-        succeeds(vec![], "\\x. x");
-        succeeds(vec!["-a", "campora"], "\\x. x");
-        succeeds(vec!["-a", "dynamic"], "\\x. x");
+        succeeds(vec![], "fun x. x");
+        succeeds(vec!["-a", "campora"], "fun x. x");
+        succeeds(vec!["-a", "dynamic"], "fun x. x");
     }
 
     #[test]
@@ -417,42 +437,42 @@ mod test {
 
     #[test]
     fn lax_if_annotated() {
-        succeeds(vec![], "if true then true : ? else 0 : ?");
+        succeeds(vec![], "if true then true : any else 0 : any");
     }
 
     #[test]
     fn strict_if_annotated() {
-        succeeds(vec!["--strict-ifs"], "if true then true : ? else 0 : ?");
+        succeeds(vec!["--strict-ifs"], "if true then true : any else 0 : any");
     }
 
     #[test]
     fn lax_if_annotated_safe_only() {
-        fails_with_err(vec!["--unsafe", "error"], "if true then true : ? else 0 : ?", "", "inconsistent");
-        succeeds_with_err(vec!["--unsafe", "warn"], "if true then true : ? else 0 : ?", "", "inconsistent");
-        run(vec!["--unsafe", "quiet"],  "if true then true : ? else 0 : ?", |a| {
+        fails_with_err(vec!["--unsafe", "error"], "if true then true : any else 0 : any", "", "inconsistent");
+        succeeds_with_err(vec!["--unsafe", "warn"], "if true then true : any else 0 : any", "", "inconsistent");
+        run(vec!["--unsafe", "quiet"],  "if true then true : any else 0 : any", |a| {
             a.succeeds()
                 .and()
                 .stderr()
                 .doesnt_contain("inconsistent")
                 .unwrap()
         });
-        succeeds(vec!["-a", "dynamic"], "if true then true : ? else 0 : ?");
-        succeeds(vec!["-a", "dynamic", "--unsafe", "error"], "if true then true : ? else 0 : ?");
+        succeeds(vec!["-a", "dynamic"], "if true then true : any else 0 : any");
+        succeeds(vec!["-a", "dynamic", "--unsafe", "error"], "if true then true : any else 0 : any");
     }
 
     #[test]
     fn strict_if_annotated_safe_only() {
         fails(
             vec!["--unsafe error", "--strict-ifs"],
-            "if true then true : ? else 0 : ?",
+            "if true then true : any else 0 : any",
         );
     }
 
     #[test]
     fn parse_error() {
-        fails(vec![], "\\x.");
-        fails(vec!["-a", "campora"], "\\x.");
-        fails(vec!["-a", "dynamic"], "\\x.");
+        fails(vec![], "fun x.");
+        fails(vec!["-a", "campora"], "fun x.");
+        fails(vec!["-a", "dynamic"], "fun x.");
     }
 
     #[test]
@@ -470,7 +490,7 @@ mod test {
     #[test]
     #[serial(mgt)]
     fn compile_id() {
-        succeeds(vec!["-m", "compile"], "\\x. x");
+        succeeds(vec!["-m", "compile"], "fun x. x");
         assert!(std::fs::metadata("mgt")
             .expect("compiled directory")
             .is_dir());
@@ -492,7 +512,7 @@ and sum (l : [int]) =
     | [] -> 0
     | hd::tl -> hd + sum tl
 in
-sum (map (\x. 2 * x) [1;2;3;4])",
+sum (map (fun x. 2 * x) [1;2;3;4])",
             "20", // should output sum of [2;4;6;8] = 20
         );
         assert!(std::fs::metadata("mgt_run")
@@ -504,7 +524,7 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     #[test]
     #[serial(mgt_run)]
     fn compile_run_id() {
-        succeeds(vec!["-m", "run", "-o", "mgt_run"], "\\x. x");
+        succeeds(vec!["-m", "run", "-o", "mgt_run"], "fun x. x");
         assert!(std::fs::metadata("mgt_run")
             .expect("compiled directory")
             .is_dir());
@@ -514,7 +534,7 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     #[test]
     #[serial(mgt_test)]
     fn compile_id_output() {
-        succeeds(vec!["-m", "compile", "-o", "mgt_test"], "\\x. x");
+        succeeds(vec!["-m", "compile", "-o", "mgt_test"], "fun x. x");
         assert!(std::fs::metadata("mgt_test")
             .expect("compiled directory")
             .is_dir());
@@ -524,7 +544,7 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     #[test]
     #[serial(mgt)]
     fn compile_id_transient() {
-        succeeds(vec!["-m", "compile", "--transient"], "\\x. x");
+        succeeds(vec!["-m", "compile", "--transient"], "fun x. x");
         assert_eq!(
             std::fs::metadata("mgt")
                 .expect_err("no saved directory")
@@ -543,8 +563,8 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     fn arjun_arg() {
         // ocaml exit status isn't lifted
         succeeds_with_err(
-            vec!["-m", "run"],
-            r"if ((\x:? . x) 200) then 1 else 0",
+            vec!["-m", "run", "--all"],
+            r"if ((fun x:any . x) 200) then 1 else 0",
             "PROGRAM", // actually compiles
             "Fatal error: exception Mgt.Runtime.Coercion_failure(0, _)",
         );
@@ -555,8 +575,8 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     fn arjun_fun() {
         // ocaml exit status isn't lifted
         succeeds_with_err(
-            vec!["-m", "run"],
-            r"((\y:? . y) 400) 0",
+            vec!["-m", "run", "--all"],
+            r"((fun y:any . y) 400) 0",
             "PROGRAM", // actually compiles
             "Fatal error: exception Mgt.Runtime.Coercion_failure(4, _)",
         );
@@ -566,10 +586,20 @@ sum (map (\x. 2 * x) [1;2;3;4])",
     #[serial(mgt)]
     fn arjun_app() {
         succeeds_with_err(
-            vec!["-m", "run"],
-            r"((\y:? . y) 400) 0 (if ((\x:? . x) 200) then 1 else 0)",
+            vec!["-m", "run", "--all"],
+            r"((fun y:any . y) 400) 0 (if ((fun x:any . x) 200) then 1 else 0)",
             "PROGRAM", // actually compiles
             "Fatal error: exception Mgt.Runtime.Coercion_failure(4, _)",
+        );
+    }
+
+    #[test]
+    #[serial(mgt)]
+    fn ignore_ann() {
+        succeeds_with(
+            vec!["-m", "run", "--all", "--ignore-annotations"],
+            r"let id = (fun x:bool. x) in list? (id [id 5 + id 6])",
+            "true"
         );
     }
 }

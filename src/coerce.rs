@@ -592,15 +592,15 @@ mod test {
         has_no_coercions("1 == 0");
         has_no_coercions(r#""a" == "b""#);
 
-        has_no_coercions(r"\x. x");
-        has_no_coercions(r"\x. x + 1");
-        has_no_coercions(r#"\x. x + "hi""#);
-        has_no_coercions(r"let id = \x. x in id 12");
-        has_no_coercions(r"let id = \x. x in if true then false else id false");
+        has_no_coercions("fun x. x");
+        has_no_coercions("fun x. x + 1");
+        has_no_coercions(r#"fun x. x + "hi""#);
+        has_no_coercions(r"let id = fun x. x in id 12");
+        has_no_coercions(r"let id = fun x. x in if true then false else id false");
 
         has_no_coercions("__ + 1");
         has_no_coercions("__ + \"hi\"");
-        has_no_coercions("(\\x. x * 1) __should_be_int");
+        has_no_coercions("(fun x. x * 1) __should_be_int");
     }
 
     #[test]
@@ -616,7 +616,7 @@ mod test {
     fn heterogeneous_list_unique_coercions() {
         unique_coercion("[true; 1]");
         unique_coercion(r#"[1;2;3;4;"hi"]"#);
-        unique_coercion(r#"0::false::(\x. x*2)::""::[]"#);
+        unique_coercion(r#"0::false::(fun x. x*2)::""::[]"#);
     }
 
     #[test]
@@ -636,7 +636,7 @@ mod test {
     fn heterogeneous_list_match_unique_coercions() {
         unique_coercion("match [true; 1] with [] -> 0 | hd::tl -> hd");
         unique_coercion(r#"match [1;2;3;4;"hi"] with [] -> false | hd::tl -> hd"#);
-        unique_coercion(r#"match 0::false::(\x. x*2)::""::[] with [] -> "hello" | hd::tl -> hd"#);
+        unique_coercion(r#"match 0::false::(fun x. x*2)::""::[] with [] -> "hello" | hd::tl -> hd"#);
     }
 
     #[test]
@@ -693,7 +693,7 @@ mod test {
         rejected("true false");
         rejected("if 0 then 1 else true");
         rejected("if 0 then 1 else 1");
-        rejected("(\\x.x) * 1");
+        rejected("(fun x.x) * 1");
     }
 
     fn accepted(s: &str) {
@@ -711,8 +711,8 @@ mod test {
     #[test]
     fn dynamize_statically_accepted_surprisingly() {
         accepted("if 0 + 1 then 1 else true");
-        accepted("(\\x.x) == (\\y. y)");
-        accepted("(\\x.x) == \"hi\"");
+        accepted("(fun x.x) == (fun y. y)");
+        accepted("(fun x.x) == \"hi\"");
         accepted("false && (if true then (true:?) else (0:?))");
     }
 
@@ -720,7 +720,7 @@ mod test {
     fn dynamize_coerced_lists() {
         accepted("[true; 1]");
         accepted(r#"[1;2;3;4;"hi"]"#);
-        accepted(r#"0::false::(\s z. z)::""::[]"#);
+        accepted(r#"0::false::(fun s z. z)::""::[]"#);
     }
 
     fn coerce(s1: &str, s2: &str) -> Coercion {

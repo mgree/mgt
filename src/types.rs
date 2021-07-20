@@ -7,7 +7,7 @@ use im_rc::OrdSet;
 use crate::options::DEFAULT_WIDTH;
 
 /// gamma
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BaseType {
     Bool,
     Int,
@@ -80,7 +80,7 @@ impl GradualType {
         A: Clone,
     {
         match self {
-            GradualType::Dyn() => pp.text("?"),
+            GradualType::Dyn() => pp.text("any"),
             GradualType::Base(b) => pp.as_string(b),
             GradualType::Var(a) => pp.as_string(a),
             GradualType::List(g) => g.pretty(pp).brackets(),
@@ -369,7 +369,7 @@ impl MigrationalType {
         A: Clone,
     {
         match self {
-            MigrationalType::Dyn() => pp.text("?"),
+            MigrationalType::Dyn() => pp.text("any"),
             MigrationalType::Base(b) => pp.as_string(b),
             MigrationalType::Var(a) => pp.as_string(a),
             MigrationalType::List(g) => g.pretty(pp).brackets(),

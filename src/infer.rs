@@ -1762,13 +1762,13 @@ mod test {
         no_maximal_typing("2 * false");
         no_maximal_typing("false * 2");
         no_maximal_typing("false * false");
-        no_maximal_typing("false * (\\x:?. x)");
-        no_maximal_typing("false * (\\x. x)");
+        no_maximal_typing("false * (fun x:any. x)");
+        no_maximal_typing("false * (fun x. x)");
     }
 
     #[test]
     fn infer_strings() {
-        let (_, m, ve) = infer("\\x: string. x");
+        let (_, m, ve) = infer("fun x: string. x");
 
         assert_eq!(ve.len(), 1);
         assert!(ve.iter().next().unwrap().is_empty());
@@ -1782,7 +1782,7 @@ mod test {
         assert!(ve.iter().next().unwrap().is_empty());
         assert_eq!(m, BaseType::String.into());
 
-        let (_, m, ve) = infer(r#"\x: string. "suuuup""#);
+        let (_, m, ve) = infer(r#"fun x: string. "suuuup""#);
 
         assert_eq!(ve.len(), 1);
         assert!(ve.iter().next().unwrap().is_empty());
@@ -1834,7 +1834,7 @@ mod test {
             e => panic!("expected ==b, got {}", e),
         }
 
-        let (e, m, ves) = infer("(\\x. \\y. x == y) true false");
+        let (e, m, ves) = infer("(fun x. fun y. x == y) true false");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -1858,7 +1858,7 @@ mod test {
             e
         );
 
-        let (e, m, ves) = infer("(\\x:?. \\y. x == y) true false");
+        let (e, m, ves) = infer("(fun x:any. fun y. x == y) true false");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -1882,7 +1882,7 @@ mod test {
             e
         );
 
-        let (e, m, ves) = infer("(\\x. \\y:?. x == y) true false");
+        let (e, m, ves) = infer("(fun x. fun y:any. x == y) true false");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -1906,7 +1906,7 @@ mod test {
             e
         );
 
-        let (_e, m, ves) = infer("(\\x:?. \\y:?. x == y) true false");
+        let (_e, m, ves) = infer("(fun x:any. fun y:any. x == y) true false");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -1970,21 +1970,21 @@ mod test {
     #[test]
     fn overloaded_eq() {
         infer_eq(
-            "let eq = \\x:?. \\y:?. x == y in eq 5 true && eq 0 0 && eq false false",
+            "let eq = fun x:any. fun y:any. x == y in eq 5 true && eq 0 0 && eq false false",
             MigrationalType::Dyn(),
             MigrationalType::Dyn(),
             ExplicitBOp::EqualDyn,
         );
 
         infer_eq(
-            "let eq = \\x:?. \\y:?. x == y in eq false false && eq true false",
+            "let eq = fun x:any. fun y:any. x == y in eq false false && eq true false",
             MigrationalType::bool(),
             MigrationalType::bool(),
             ExplicitBOp::EqualBool,
         );
 
         infer_eq(
-            "let eq = \\x:?. \\y:?. x == y in eq 5 true",
+            "let eq = fun x:any. fun y:any. x == y in eq 5 true",
             MigrationalType::int(),
             MigrationalType::bool(),
             ExplicitBOp::EqualDyn,
@@ -2081,7 +2081,7 @@ mod test {
         let (_, m) = infer_unique("__a * __b");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("(\\x. x * 1) __a");
+        let (_, m) = infer_unique("(fun x. x * 1) __a");
         assert_eq!(m, MigrationalType::int());
 
         let (_, m) = infer_unique("__ : bool");
@@ -2099,7 +2099,7 @@ mod test {
         let (_, m) = infer_unique("assume x in x * 1");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("assume x:? in x * 1");
+        let (_, m) = infer_unique("assume x:any in x * 1");
         assert_eq!(m, MigrationalType::int());
 
         let (_, m) = infer_unique("assume x:int in x * 1");
@@ -2108,10 +2108,10 @@ mod test {
         let (_, _m, ves) = infer("assume x:int in if x then x * 1 else 0");
         assert!(ves.is_empty());
 
-        let (_, m) = infer_unique("assume x:? in if x then x * 1 else 0");
+        let (_, m) = infer_unique("assume x:any in if x then x * 1 else 0");
         assert_eq!(m, MigrationalType::int());
 
-        let (_, m) = infer_unique("assume x:? in if x then x * 1 else true");
+        let (_, m) = infer_unique("assume x:any in if x then x * 1 else true");
         assert_eq!(m, MigrationalType::Dyn());
 
         let (_, _m, ves) = infer("assume x in if x then x * 1 else 0");
@@ -2131,18 +2131,18 @@ mod test {
 
     #[test]
     fn strict_if_meet_not_join() {
-        assert!(infer_strict("\\x:?. if x then \\y:?. x else false").is_none());
-        assert!(infer_strict("\\x:?. if x then \\y. x else false").is_none());
-        assert!(infer_strict("\\x. if x then \\y:?. x else false").is_none());
-        assert!(infer_strict("\\x. if x then \\y. x else false").is_none());
+        assert!(infer_strict("fun x:any. if x then fun y:any. x else false").is_none());
+        assert!(infer_strict("fun x:any. if x then fun y. x else false").is_none());
+        assert!(infer_strict("fun x. if x then fun y:any. x else false").is_none());
+        assert!(infer_strict("fun x. if x then fun y. x else false").is_none());
     }
 
     #[test]
     fn lax_if_meet_not_join() {
-        let _ = infer("\\x:?. if x then \\y:?. x else false");
-        let _ = infer("\\x:?. if x then \\y. x else false");
-        let _ = infer("\\x. if x then \\y:?. x else false");
-        let _ = infer("\\x. if x then \\y. x else false");
+        let _ = infer("fun x:any. if x then fun y:any. x else false");
+        let _ = infer("fun x:any. if x then fun y. x else false");
+        let _ = infer("fun x. if x then fun y:any. x else false");
+        let _ = infer("fun x. if x then fun y. x else false");
     }
 
     #[test]
@@ -2169,7 +2169,7 @@ mod test {
 
     #[test]
     fn let_plain() {
-        let (_e, m, ves) = infer("let id = \\x. x in if id true then id true else id false");
+        let (_e, m, ves) = infer("let id = fun x. x in if id true then id true else id false");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -2180,7 +2180,7 @@ mod test {
 
     #[test]
     fn let_dynfun() {
-        let (_e, m, ves) = infer("let id = \\x:?. x in if id true then id true else id false");
+        let (_e, m, ves) = infer("let id = fun x:any. x in if id true then id true else id false");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -2191,11 +2191,11 @@ mod test {
 
     #[test]
     fn let_dyn_poly_error() {
-        let (_e, _m, ves) = infer("let id = \\x. x in if id true then id 5 else id 1");
+        let (_e, _m, ves) = infer("let id = fun x. x in if id true then id 5 else id 1");
 
         assert_eq!(ves.len(), 0);
 
-        let (_e, m, ves) = infer("let id = \\x:?. x in if id true then id 5 else id 1");
+        let (_e, m, ves) = infer("let id = fun x:any. x in if id true then id 5 else id 1");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -2203,7 +2203,7 @@ mod test {
 
         assert_eq!(m, MigrationalType::Dyn());
 
-        let (_e, m, ves) = infer("let id:? = \\x. x in if id true then id 5 else id 1");
+        let (_e, m, ves) = infer("let id:any = fun x. x in if id true then id 5 else id 1");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -2214,7 +2214,7 @@ mod test {
 
     #[test]
     fn let_poly_eq_both() {
-        let (_e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq true true && eq 0 0");
+        let (_e, m, ves) = infer("let eq : any = fun x. fun y. x == y in eq true true && eq 0 0");
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
         let m = m.eliminate(ve);
@@ -2223,7 +2223,7 @@ mod test {
 
     #[test]
     fn let_poly_eq_bool() {
-        let (_e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq true false");
+        let (_e, m, ves) = infer("let eq : any = fun x. fun y. x == y in eq true false");
         assert!(!ves.is_empty());
 
         for ve in ves.iter() {
@@ -2234,7 +2234,7 @@ mod test {
 
     #[test]
     fn let_poly_eq_int() {
-        let (_e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq 5 0");
+        let (_e, m, ves) = infer("let eq : any = fun x. fun y. x == y in eq 5 0");
         assert!(!ves.is_empty());
 
         for ve in ves.iter() {
@@ -2245,7 +2245,7 @@ mod test {
 
     #[test]
     fn let_poly_eq_mixed() {
-        let (e, m, ves) = infer("let eq : ? = \\x. \\y. x == y in eq 5 true");
+        let (e, m, ves) = infer("let eq : any = fun x. fun y. x == y in eq 5 true");
         assert!(!ves.is_empty());
 
         eprintln!("{} eliminators", ves.len());
@@ -2259,7 +2259,7 @@ mod test {
 
     #[test]
     fn let_polyargs_eq_mixed() {
-        let (e, m, ves) = infer("let eq = \\x:?. \\y:?. x == y in eq 5 true");
+        let (e, m, ves) = infer("let eq = fun x:any. fun y:any. x == y in eq 5 true");
         assert!(!ves.is_empty());
 
         eprintln!("{} eliminators", ves.len());
@@ -2273,13 +2273,13 @@ mod test {
 
     #[test]
     pub fn let_polyargs_bool_wouldbenice() {
-        let (e, m, ves) = infer("let eq = \\x:?. \\y:?. x == y in eq false false && eq true false");
+        let (e, m, ves) = infer("let eq = fun x:any. fun y:any. x == y in eq false false && eq true false");
         assert!(!ves.is_empty());
 
         // currently get three options:
         //
         // x, y : bool;  == --> ==b
-        // x, y : ?;     == --> ==i (?!)
+        // x, y : any;   == --> ==i (?!)
         // x:?, y: bool; == --> ==b
         //
         // this kind of sucks... should really only get the first one
@@ -2325,7 +2325,7 @@ mod test {
 
     #[test]
     fn list_kitchen_sink() {
-        let (_, m) = infer_unique(r#"["";3;\x. x * 2; true]"#);
+        let (_, m) = infer_unique(r#"["";3;fun x. x * 2; true]"#);
 
         assert_eq!(m, MigrationalType::list(MigrationalType::Dyn()));
     }
@@ -2356,7 +2356,7 @@ mod test {
 
     #[test]
     fn test_letrec() {
-        let (_e, m, ves) = infer("let rec f = \\x. if x then false else g x and g = \\y. if y then f y else false in f true");
+        let (_e, m, ves) = infer("let rec f = fun x. if x then false else g x and g = fun y. if y then f y else false in f true");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();
@@ -2364,7 +2364,7 @@ mod test {
 
         assert_eq!(m, MigrationalType::bool());
 
-        let (_e, m, ves) = infer("let rec f = \\x:?. if x then false else g x and g = \\y:?. if y then f y else false in f true");
+        let (_e, m, ves) = infer("let rec f = fun x:any. if x then false else g x and g = fun y:any. if y then f y else false in f true");
 
         assert_eq!(ves.len(), 1);
         let ve = ves.iter().next().unwrap();

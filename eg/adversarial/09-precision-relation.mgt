@@ -1,0 +1,1 @@
+(fun f:any. f true + (fun g:any.g 5) f) (fun x:any.5)
