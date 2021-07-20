@@ -7,7 +7,7 @@ use im_rc::OrdSet;
 use crate::options::DEFAULT_WIDTH;
 
 /// gamma
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BaseType {
     Bool,
     Int,

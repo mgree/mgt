@@ -111,7 +111,7 @@ pub type SourceExpr = GradualExpr<Option<GradualType>, SourceUOp, SourceBOp>;
 pub type TargetExpr = GradualExpr<MigrationalType, ExplicitUOp, ExplicitBOp>;
 
 /// gamma
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum GroundType {
     Base(BaseType),
     List,
@@ -289,7 +289,10 @@ impl<T, U, B> GradualExpr<T, U, B> {
     }
 
     pub fn is_compound(&self) -> bool {
-        !matches!(self, GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _))
+        !matches!(
+            self,
+            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _)
+        )
     }
 
     pub fn is_app(&self) -> bool {
@@ -952,7 +955,10 @@ impl ExplicitExpr {
     }
 
     pub fn is_compound(&self) -> bool {
-        !matches!(self, ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _))
+        !matches!(
+            self,
+            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _)
+        )
     }
 
     pub fn is_app(&self) -> bool {
@@ -1024,7 +1030,12 @@ impl ExplicitExpr {
                 .append(pp.line())
                 .append(t.pretty(pp))
                 .group(),
-            ExplicitExpr::Coerce(e, c) => e.pretty(pp).parens(),
+            ExplicitExpr::Coerce(e, c) if c.is_doomed() => c
+                .pretty(pp)
+                .brackets()
+                .append(pp.space())
+                .append(e.pretty(pp).parens()),
+            ExplicitExpr::Coerce(e, _c) => e.pretty(pp),
             ExplicitExpr::App(e1, e2) => {
                 let mut d1 = e1.pretty(pp);
                 let mut d2 = e2.pretty(pp);
@@ -1204,6 +1215,9 @@ impl IdType {
 }
 
 impl Coercion {
+    /// Returns `true` if no unsafe identity coercions are present
+    ///
+    /// See also `Coercion::is_doomed`
     pub fn is_safe(&self) -> bool {
         match self {
             Coercion::Id(IdType::Unsafe, _) => false,
@@ -1211,6 +1225,32 @@ impl Coercion {
             Coercion::Check(_) | Coercion::Tag(_) => true,
             Coercion::Fun(c1, c2) | Coercion::Seq(c1, c2) => c1.is_safe() && c2.is_safe(),
             Coercion::List(c) => c.is_safe(),
+        }
+    }
+
+    /// Returns the ground types that are immediately involved in checks and
+    /// tags.
+    fn flat_ground_types(&self) -> OrdSet<GroundType> {
+        match self {
+            Coercion::Id(..) | Coercion::Fun(..) => OrdSet::new(),
+            Coercion::Check(g) | Coercion::Tag(g) => OrdSet::unit(*g),
+            Coercion::List(c) => c.flat_ground_types(),
+            Coercion::Seq(c1, c2) => c1.flat_ground_types().union(c2.flat_ground_types()),
+        }
+    }
+
+    /// Returns `true` if the coercion could ever succeed.
+    ///
+    /// Function coercions are interpereted eagerly, i.e., it assumes the
+    /// function is applied.
+    pub fn is_doomed(&self) -> bool {
+        match self {
+            Coercion::Id(..) | Coercion::Tag(..) | Coercion::Check(..) => false,
+            Coercion::Fun(c1, c2) => c1.is_doomed() || c2.is_doomed(),
+            Coercion::List(c) => c.is_doomed(),
+            Coercion::Seq(c1, c2) => {
+                c1.is_doomed() || c2.is_doomed() || self.flat_ground_types().len() > 1
+            }
         }
     }
 

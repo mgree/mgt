@@ -57,6 +57,10 @@ pub struct Options {
     /// aren't generated yet.
     pub dynamic_type_variables: bool,
 
+    /// Whether to show just the first result (`false`) or all results (`true`).
+    /// Defaults to `false`.
+    pub show_all: bool,
+
     /// Whether to just infer types, infer types and compile with the OCaml
     /// optimizing native compiler, or infer, compile, and run. Defaults to
     /// `CompilationMode::CompileAndRun`.
@@ -97,6 +101,7 @@ impl Default for Options {
             strict_ifs: false,
             safety_level: SafetyLevel::Warn,
             dynamic_type_variables: true,
+            show_all: false,
             compile: CompilationMode::InferOnly,
         }
     }

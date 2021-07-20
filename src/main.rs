@@ -43,6 +43,10 @@ fn main() {
         .arg(Arg::with_name("COERCION_PARAMETERS")
                  .help("When set, uses coercion parameters to implement polymorphism rather than treating unresolved type variables as ?.")
                  .long("coercion-parameters"))
+        .arg(Arg::with_name("SHOW_ALL")
+                 .help("When set, outputs for all coercions, not just the first one.")
+                 .long("all")
+                 .short("a"))
         .arg(Arg::with_name("COMPILATION_MODE")
                  .help("Determines whether to `infer` and show types, `compile` and persist an executable, or compile a transient executable and `run` it.")
                  .long("mode")
@@ -85,6 +89,7 @@ fn main() {
 
     let input_source = config.value_of("INPUT").expect("input source");
 
+    options.show_all = config.is_present("SHOW_ALL");
     options.strict_ifs = config.is_present("STRICT_IFS");
     options.safety_level = match config.value_of("UNSAFE_COERCIONS") {
         Some("quiet") => SafetyLevel::Quiet,
@@ -181,8 +186,15 @@ fn main() {
     let progs: Vec<(_, _, _)> = algorithm(options.clone(), e).into_iter().collect();
 
     for (variation, e, g) in progs.iter() {
+        if options.show_all {
+            println!("VARIATION {} : {}", variation, g)
+        }
+        
         println!("{}", e);
-        break; // <-- this is how I get the first element of a list!
+
+        if !options.show_all {
+            break;
+        }
     }
 
     if let CompilationMode::Compile(opts) = options.compile {
