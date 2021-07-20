@@ -116,6 +116,7 @@ UOp: SourceUOp = {
     "int?" => SourceUOp::Is(GroundType::Base(BaseType::Int)),
     "string?" => SourceUOp::Is(GroundType::Base(BaseType::String)),
     "fun?" => SourceUOp::Is(GroundType::Fun),
+    "list?" => SourceUOp::Is(GroundType::List),
 }
 
 ExprAtom: SourceExpr = {
@@ -192,6 +193,7 @@ match {
     "int?",
     "string?",
     "fun?",
+    "list?",
     "if",
     "then",
     "else",

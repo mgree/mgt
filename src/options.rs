@@ -57,6 +57,10 @@ pub struct Options {
     /// aren't generated yet.
     pub dynamic_type_variables: bool,
 
+    /// Set to `true` to automatically turn every type annotation into `any` and
+    /// use `any` as the default annotation when not provided.
+    pub ignore_annotations: bool,
+
     /// Whether to show just the first result (`false`) or all results (`true`).
     /// Defaults to `false`.
     pub show_all: bool,
@@ -101,6 +105,7 @@ impl Default for Options {
             strict_ifs: false,
             safety_level: SafetyLevel::Warn,
             dynamic_type_variables: true,
+            ignore_annotations: false,
             show_all: false,
             compile: CompilationMode::InferOnly,
         }

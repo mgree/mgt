@@ -46,6 +46,9 @@ fn main() {
         .arg(Arg::with_name("SHOW_ALL")
                  .help("When set, outputs for all coercions, not just the first one.")
                  .long("all"))
+        .arg(Arg::with_name("IGNORE_ANNOTATIONS")
+                 .help("Ignore all function and let annotations, treating everything as `any`; colon annotations are honored.")
+                 .long("ignore-annotations"))
         .arg(Arg::with_name("COMPILATION_MODE")
                  .help("Determines whether to `infer` and show types, `compile` and persist an executable, or compile a transient executable and `run` it.")
                  .long("mode")
@@ -88,6 +91,7 @@ fn main() {
 
     let input_source = config.value_of("INPUT").expect("input source");
 
+    options.ignore_annotations = config.is_present("IGNORE_ANNOTATIONS");
     options.show_all = config.is_present("SHOW_ALL");
     options.strict_ifs = config.is_present("STRICT_IFS");
     options.safety_level = match config.value_of("UNSAFE_COERCIONS") {
@@ -168,10 +172,14 @@ fn main() {
         std::process::exit(47);
     }
 
-    let e = SourceExpr::parse(&input).unwrap_or_else(|e| {
+    let mut e = SourceExpr::parse(&input).unwrap_or_else(|e| {
         error!("Parse error:\n{}", e);
         std::process::exit(2);
     });
+
+    if options.ignore_annotations {
+        e.ignore_annotations();
+    }
 
     let algorithm = match config
         .value_of("ALGORITHM")
@@ -582,6 +590,16 @@ sum (map (fun x. 2 * x) [1;2;3;4])",
             r"((fun y:any . y) 400) 0 (if ((fun x:any . x) 200) then 1 else 0)",
             "PROGRAM", // actually compiles
             "Fatal error: exception Mgt.Runtime.Coercion_failure(4, _)",
+        );
+    }
+
+    #[test]
+    #[serial(mgt)]
+    fn ignore_ann() {
+        succeeds_with(
+            vec!["-m", "run", "--all", "--ignore-annotations"],
+            r"let id = (fun x:bool. x) in list? (id [id 5 + id 6])",
+            "true"
         );
     }
 }

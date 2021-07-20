@@ -301,6 +301,46 @@ impl<T, U, B> GradualExpr<T, U, B> {
 }
 
 impl SourceExpr {
+    pub fn ignore_annotations(&mut self) {
+        match self {
+            GradualExpr::Var(_) | GradualExpr::Const(_) => (),
+            GradualExpr::Lam(_, t, e) => {
+                *t = Some(GradualType::Dyn());
+                e.ignore_annotations();
+            }
+            GradualExpr::Ann(e, _t) => {
+                // leave it in
+                e.ignore_annotations();
+            }
+            GradualExpr::Nil(None) => (),
+            GradualExpr::Hole(_, t) | GradualExpr::Nil(t) => {
+                *t = Some(GradualType::Dyn());
+            }
+            GradualExpr::App(e1, e2) | GradualExpr::BOp(_, e1, e2) | GradualExpr::Cons(e1, e2) => {
+                e1.ignore_annotations();
+                e2.ignore_annotations();
+            }
+            GradualExpr::UOp(_, e) => e.ignore_annotations(),
+            GradualExpr::Let(_, t, e1, e2) => {
+                e1.ignore_annotations();
+                e2.ignore_annotations();
+                *t = Some(GradualType::Dyn());
+            }
+            GradualExpr::LetRec(bindings, e) => {
+                for (_, ti, ei) in bindings {
+                    *ti = Some(GradualType::Dyn());
+                    ei.ignore_annotations();
+                }
+                e.ignore_annotations();
+            }
+            GradualExpr::If(e1, e2, e3) | GradualExpr::Match(e1, e2, _, _, e3) => {
+                e1.ignore_annotations();
+                e2.ignore_annotations();
+                e3.ignore_annotations();
+            }
+        }
+    }
+
     pub fn list(elts: Vec<Self>) -> Self {
         elts.into_iter()
             .rev()
