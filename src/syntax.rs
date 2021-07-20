@@ -289,10 +289,7 @@ impl<T, U, B> GradualExpr<T, U, B> {
     }
 
     pub fn is_compound(&self) -> bool {
-        !matches!(
-            self,
-            GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _)
-        )
+        !matches!(self, GradualExpr::Var(_) | GradualExpr::Const(_) | GradualExpr::Hole(_, _))
     }
 
     pub fn is_app(&self) -> bool {
@@ -955,10 +952,7 @@ impl ExplicitExpr {
     }
 
     pub fn is_compound(&self) -> bool {
-        !matches!(
-            self,
-            ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _)
-        )
+        !matches!(self, ExplicitExpr::Var(_) | ExplicitExpr::Const(_) | ExplicitExpr::Hole(_, _))
     }
 
     pub fn is_app(&self) -> bool {
