@@ -1,0 +1,1 @@
+(fun f:any. f true) (fun x:any. x + 100)

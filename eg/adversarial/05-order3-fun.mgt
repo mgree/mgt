@@ -1,0 +1,1 @@
+fun f:any. fun x:any. x (f x)
