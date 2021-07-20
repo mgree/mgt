@@ -369,7 +369,7 @@ impl MigrationalType {
         A: Clone,
     {
         match self {
-            MigrationalType::Dyn() => pp.text("?"),
+            MigrationalType::Dyn() => pp.text("any"),
             MigrationalType::Base(b) => pp.as_string(b),
             MigrationalType::Var(a) => pp.as_string(a),
             MigrationalType::List(g) => g.pretty(pp).brackets(),

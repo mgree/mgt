@@ -11,6 +11,7 @@ pub Type: GradualType = {
 
 TypeAtomic: GradualType = {
     "?" => GradualType::Dyn(),
+    "any" => GradualType::Dyn(),
     "bool" => GradualType::Base(BaseType::Bool),
     "int" => GradualType::Base(BaseType::Int),
     "string" => GradualType::Base(BaseType::String),
@@ -19,13 +20,13 @@ TypeAtomic: GradualType = {
 }
 
 Args: Vec<(Variable, Option<GradualType>)> = {
-    <x:Id> <t:TypeAnnot> => vec![(x, Some(GradualType::Dyn()))],
+    <x:Id> <t:TypeAnnot> => vec![(x, Some(t))],
     <Arg+>
 }
 
 Arg: (Variable, Option<GradualType>) = {
-    <Id> => (<>, Some(GradualType::Dyn())),
-    "(" <x:Id> <t:TypeAnnot?> ")" => (x, Some(GradualType::Dyn())),
+    <Id> => (<>, None),
+    "(" <x:Id> <t:TypeAnnot?> ")" => (x, t),
 }
 
 RecDefns: Vec<(Variable, Option<GradualType>, SourceExpr)> = {
@@ -183,7 +184,7 @@ match {
     ">=",
 } else {
     "fun",
-    "dyn",
+    "any",
     "bool",
     "int",
     "string",
